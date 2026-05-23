@@ -3,11 +3,49 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+*.egg-info/
+dist/
+build/
 
-# Downloaded/generated contest artifacts
-external/FloorSet/LiteTensorDataTest/
-external/FloorSet/LiteTensorData/
-external/FloorSet/iccad2026contest/my_optimizer_solutions.json
+# ML artifacts
+*.pth
+*.pt
+*.ckpt
+checkpoints/
+wandb/
+runs/
+*.onnx
+
+# Data
+data/
+datasets/
+LiteTensorData/
+LiteTensorDataTest/
+*.tar.gz
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated contest artifacts
+my_optimizer_solutions.json
+*_results.json
+*_solutions.json
 
 # Local env
 .env
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Keep results structure but not large files
+results/*.json
+results/*.png
