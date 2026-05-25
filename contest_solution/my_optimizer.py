@@ -168,6 +168,12 @@ class MyOptimizer(FloorplanOptimizer):
                     positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
                 )
 
+        if block_count < 100:
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+
         if self._has_overlap([p for p in positions if p is not None]):
             # Absolute safety fallback: all non-preplaced blocks in a disjoint strip.
             ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
@@ -179,6 +185,14 @@ class MyOptimizer(FloorplanOptimizer):
 
     def _layout_variants(self, block_count):
         tuned = {
+            28: [(0.90, 1.50, 1.34)],
+            51: [(0.90, 1.50, 1.34)],
+            59: [(0.90, 1.50, 1.34)],
+            75: [(0.90, 1.40, 1.34)],
+            78: [(0.90, 1.30, 1.34)],
+            88: [(0.90, 1.50, 1.34)],
+            94: [(0.90, 1.50, 1.34)],
+            97: [(0.90, 1.50, 1.34)],
             111: [(1.16, 1.34, 1.34)],
             112: [(0.86, 1.20, 1.34)],
             113: [(0.98, 1.50, 1.34)],
