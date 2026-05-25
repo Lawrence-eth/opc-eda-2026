@@ -54,13 +54,31 @@ class MLGuidedOptimizer:
         p2b_connectivity: torch.Tensor,
         pins_pos: torch.Tensor,
         constraints: torch.Tensor,
+        target_positions: torch.Tensor = None,
     ) -> Optional[List[Tuple[float, float, float, float]]]:
         """Predict layout using ML-guided SP + deterministic packer.
+
+        Handles preplaced blocks by keeping them fixed and only packing
+        movable blocks via predicted SP permutations.
 
         Returns:
             List of (x, y, w, h) rectangles, or None if prediction fails.
         """
         try:
+            # Identify preplaced and movable blocks
+            preplaced = set()
+            movable = []
+            if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+                for i in range(block_count):
+                    if constraints[i, 1] != 0 and target_positions is not None:
+                        # Check if target_positions has valid coordinates
+                        if i < target_positions.shape[0] and target_positions[i, 2] > 0 and target_positions[i, 3] > 0:
+                            preplaced.add(i)
+                    else:
+                        movable.append(i)
+            else:
+                movable = list(range(block_count))
+
             # Add batch dimension for model
             areas = area_targets.unsqueeze(0).to(self.device)
             cons = constraints.unsqueeze(0).to(self.device) if constraints is not None else None
@@ -73,23 +91,47 @@ class MLGuidedOptimizer:
                 areas, b2b, p2b, pins, cons
             )
 
-            # Pack SP to get positions
-            # We need block dimensions. Use heuristic dims chooser from MyOptimizer.
-            # For now, use area targets to estimate dimensions.
+            # Filter permutations to only include movable blocks
+            sp_plus_movable = [b for b in sp_plus if b in movable]
+            sp_minus_movable = [b for b in sp_minus if b in movable]
+
+            # Estimate dimensions for movable blocks
             dims = self._estimate_dims(block_count, area_targets, constraints)
 
-            positions = pack_sequence_pair(
-                sp_plus, sp_minus, block_count, dims
+            # Pack only movable blocks
+            movable_positions = pack_sequence_pair(
+                sp_plus_movable, sp_minus_movable, len(movable), dims
             )
 
-            if not positions or len(positions) != block_count:
+            if not movable_positions or len(movable_positions) != len(movable):
                 return None
 
-            # Verify no overlaps
-            rects = [(positions[i][0], positions[i][1],
-                      positions[i][2] - positions[i][0],
-                      positions[i][3] - positions[i][1])
-                     for i in range(block_count)]
+            # Build final layout: preplaced + packed movable
+            final_positions = {}
+            for i in preplaced:
+                if i < target_positions.shape[0]:
+                    final_positions[i] = (
+                        float(target_positions[i, 0]),
+                        float(target_positions[i, 1]),
+                        float(target_positions[i, 2]),
+                        float(target_positions[i, 3]),
+                    )
+
+            # Offset movable blocks to start after preplaced blocks
+            if preplaced:
+                max_x = max((final_positions[i][0] + final_positions[i][2]) for i in preplaced)
+                offset_x = max_x + 1.0
+            else:
+                offset_x = 0.0
+
+            for idx, block_id in enumerate(movable):
+                x, y, x2, y2 = movable_positions[idx]
+                w = x2 - x
+                h = y2 - y
+                final_positions[block_id] = (x + offset_x, y, w, h)
+
+            # Convert to list ordered by block ID
+            rects = [final_positions.get(i, (0.0, 0.0, 1.0, 1.0)) for i in range(block_count)]
 
             # Check for overlaps
             if self._has_overlap(rects):
