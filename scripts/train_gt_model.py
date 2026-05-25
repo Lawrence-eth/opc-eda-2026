@@ -18,11 +18,11 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 
-sys.path.insert(0, str(Path(__file__).parent))
-from gt_model import GraphTransformer, sp_loss
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.gt_model import GraphTransformer, sp_loss
 
 
-class SPDataset(Dataset):
+class SPDataset(Dataset[dict[str, torch.Tensor | int]]):
     """Dataset of (features, sp_plus, sp_minus) pairs."""
 
     def __init__(self, data_path: str):
@@ -31,12 +31,12 @@ class SPDataset(Dataset):
         self.samples = data["dataset"].tolist()
         print(f"Loaded {len(self.samples)} samples")
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.samples)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor | int]:
         sample = self.samples[idx]
-        n = sample["n_blocks"]
+        n = int(sample["n_blocks"])
 
         # Convert to tensors
         areas = torch.tensor(sample["areas"], dtype=torch.float32)
@@ -135,8 +135,8 @@ def train_epoch(model, dataloader, optimizer, device):
 
             pred_plus, pred_minus = model(
                 areas[i:i+1, :valid_n],
-                b2b_conn[i],
-                p2b_conn[i],
+                b2b_conn[i].unsqueeze(0),
+                p2b_conn[i].unsqueeze(0),
                 None,  # pins_pos not used in current model
                 constraints[i:i+1, :valid_n],
             )
@@ -192,8 +192,8 @@ def validate(model, dataloader, device):
 
                 pred_plus, pred_minus = model(
                     areas[i:i+1, :valid_n],
-                    b2b_conn[i],
-                    p2b_conn[i],
+                    b2b_conn[i].unsqueeze(0),
+                    p2b_conn[i].unsqueeze(0),
                     None,  # pins_pos not used in current model
                     constraints[i:i+1, :valid_n],
                 )

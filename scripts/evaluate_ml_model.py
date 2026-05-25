@@ -13,11 +13,12 @@ from pathlib import Path
 
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "contest_solution"))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "FloorSet" / "iccad2026contest"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
+sys.path.insert(0, "/workspace/eda/FloorSet/iccad2026contest")
 
 from iccad2026_evaluate import get_training_dataloader
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "contest_solution"))
 from my_optimizer import MyOptimizer
 from ml_integration import integrate_ml_optimizer
 
