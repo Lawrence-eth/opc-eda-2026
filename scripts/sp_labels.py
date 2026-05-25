@@ -137,6 +137,53 @@ def relations_to_sequence_pair(relations: RelationMatrix) -> Tuple[Permutation, 
     return sp_plus, sp_minus
 
 
+def pack_sequence_pair(
+    sp_plus: Permutation,
+    sp_minus: Permutation,
+    n: int,
+    dims: dict[int, tuple[float, float]],
+) -> list[tuple[float, float, float, float]]:
+    """Pack blocks from Sequence Pair permutations using longest-path algorithm.
+
+    Args:
+        sp_plus:  Γ+ permutation (list of block indices).
+        sp_minus: Γ- permutation (list of block indices).
+        n:        Total number of blocks.
+        dims:     dict mapping block_id -> (width, height).
+
+    Returns:
+        List of (x, y, x2, y2) positions for each block 0..n-1.
+    """
+    if n == 0:
+        return []
+    if n == 1 and 0 in dims:
+        w, h = dims[0]
+        return [(0.0, 0.0, w, h)]
+
+    pos_plus = {block: idx for idx, block in enumerate(sp_plus)}
+    pos_minus = {block: idx for idx, block in enumerate(sp_minus)}
+
+    x = [0.0] * n
+    y = [0.0] * n
+
+    for i in sp_plus:
+        if i not in dims:
+            continue
+        wi, hi = dims[i]
+        for j in range(n):
+            if j == i or j not in dims:
+                continue
+            wj, hj = dims[j]
+            # j is left of i
+            if pos_plus[j] < pos_plus[i] and pos_minus[j] < pos_minus[i]:
+                x[i] = max(x[i], x[j] + wj)
+            # j is below i
+            if pos_plus[j] < pos_plus[i] and pos_minus[j] > pos_minus[i]:
+                y[i] = max(y[i], y[j] + hj)
+
+    return [(x[i], y[i], x[i] + dims[i][0], y[i] + dims[i][1]) if i in dims else (0.0, 0.0, 1.0, 1.0) for i in range(n)]
+
+
 def pack_from_sequence_pair(
     rectangles: List[Rect],
     sp_plus: Permutation,
