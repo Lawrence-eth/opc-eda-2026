@@ -86,7 +86,7 @@ class MLGuidedOptimizer:
             sp_plus_movable = [movable_to_dense[b] for b in sp_plus if b in movable_to_dense]
             sp_minus_movable = [movable_to_dense[b] for b in sp_minus if b in movable_to_dense]
 
-            dims = self._estimate_dims(block_count, area_targets, constraints)
+            dims = self._estimate_dims(block_count, area_targets, constraints, target_positions)
             movable_dims = {movable_to_dense[block_id]: dims[block_id] for block_id in movable if block_id in dims}
 
             movable_positions = pack_sequence_pair(
@@ -133,22 +133,24 @@ class MLGuidedOptimizer:
         block_count: int,
         area_targets: torch.Tensor,
         constraints: torch.Tensor,
+        target_positions: torch.Tensor = None,
     ) -> Dict[int, Tuple[float, float]]:
         """Estimate width/height for each block from area targets."""
         dims: Dict[int, Tuple[float, float]] = {}
         for i in range(block_count):
+            if (
+                target_positions is not None
+                and i < target_positions.shape[0]
+                and target_positions[i, 2] > 0
+                and target_positions[i, 3] > 0
+            ):
+                dims[i] = (float(target_positions[i, 2]), float(target_positions[i, 3]))
+                continue
+
             area = float(area_targets[i].item())
             if area <= 0:
                 continue
-            # Use aspect ratio 1.0 for soft blocks, or from constraints for fixed blocks
-            ar = 1.0
-            if constraints is not None and constraints.dim() > 1:
-                # Check if fixed block
-                if constraints[i, 0] != 0 or constraints[i, 1] != 0:
-                    # Fixed block: use exact dimensions from constraints if available
-                    # For now, approximate as sqrt(area)
-                    ar = 1.0
-            w = math.sqrt(area * ar)
+            w = math.sqrt(area)
             h = area / w if w > 0 else 1.0
             dims[i] = (w, h)
         return dims
@@ -196,19 +198,34 @@ def integrate_ml_optimizer(
         constraints: torch.Tensor,
         target_positions: torch.Tensor = None,
     ) -> List[Tuple[float, float, float, float]]:
-        # Try ML prediction first
+        heuristic_positions = original_solve(
+            block_count, area_targets, b2b_connectivity,
+            p2b_connectivity, pins_pos, constraints, target_positions
+        )
+
         ml_positions = ml_opt.predict_layout(
             block_count, area_targets, b2b_connectivity,
             p2b_connectivity, pins_pos, constraints,
             target_positions
         )
-        if ml_positions is not None:
-            return ml_positions
-        # Fall back to heuristic
-        return original_solve(
-            block_count, area_targets, b2b_connectivity,
-            p2b_connectivity, pins_pos, constraints, target_positions
-        )
+        if ml_positions is None:
+            return heuristic_positions
+
+        try:
+            b2b_edges = optimizer_instance._b2b_edges(b2b_connectivity) if block_count >= 100 else b2b_connectivity
+            p2b_edges = optimizer_instance._p2b_edges(p2b_connectivity) if block_count >= 100 else p2b_connectivity
+            heuristic_cost = optimizer_instance._selection_cost(
+                heuristic_positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            ml_cost = optimizer_instance._selection_cost(
+                ml_positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            if ml_cost < heuristic_cost:
+                return ml_positions
+        except Exception:
+            return heuristic_positions
+
+        return heuristic_positions
 
     optimizer_instance.solve = ml_solve
     return True
