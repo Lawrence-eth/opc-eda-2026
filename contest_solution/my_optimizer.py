@@ -148,7 +148,7 @@ class MyOptimizer(FloorplanOptimizer):
                     self._refine_top_boundary_compaction(
                         positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
                     )
-                if 110 <= block_count <= 119:
+                if 110 <= block_count <= 120:
                     self._refine_boundary_edge_inward_compactions(
                         positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
                     )
@@ -192,7 +192,7 @@ class MyOptimizer(FloorplanOptimizer):
         if block_count in tuned:
             return tuned[block_count]
         if block_count >= 120:
-            return [(0.70, 1.50, 1.34)]
+            return [(1.10, 1.50, 1.34)]
         if block_count >= 119:
             return [(0.88, 1.50, 1.34)]
         if block_count >= 118:
@@ -451,13 +451,10 @@ class MyOptimizer(FloorplanOptimizer):
             content_h + (bottom_h + gap if bottomish else 0.0) + (top_h + gap if topish else 0.0),
             bottom_h + top_h + max(left_col_h, right_col_h)
         )
-        # Reduce boundary extension: use a small fixed gap instead of full block width.
-        # Preplaced blocks already define much of the bounding box; large extensions waste area.
-        gap = 0.0
-        left_edge = cminx - (left_w * 0.1 if leftish else 0.0)
-        bottom_edge = cminy - (bottom_h * 0.1 if bottomish else 0.0)
-        right_edge = max(cmaxx + (right_w * 0.1 if rightish else 0.0), left_edge + width_needed)
-        top_edge = max(cmaxy + (top_h * 0.1 if topish else 0.0), bottom_edge + height_needed)
+        left_edge = cminx - (left_w + gap if leftish else 0.0)
+        bottom_edge = cminy - (bottom_h + gap if bottomish else 0.0)
+        right_edge = max(cmaxx + (right_w + gap if rightish else 0.0), left_edge + width_needed)
+        top_edge = max(cmaxy + (top_h + gap if topish else 0.0), bottom_edge + height_needed)
 
         def place_item(u, bx, by):
             for i, (lx, ly, w, h) in u['local'].items():
@@ -1733,9 +1730,7 @@ class MyOptimizer(FloorplanOptimizer):
                 w = float(target_positions[i, 2]); h = float(target_positions[i, 3]); hard.add(i)
             else:
                 area = float(area_targets[i]) if i < len(area_targets) and area_targets[i] > 0 else 1.0
-                area = max(area, 1e-9)
-                w = math.sqrt(area * 0.5)
-                h = math.sqrt(area * 2.0)
+                side = math.sqrt(max(area, 1e-9)); w = side; h = area / side
             dims.append((max(w, 1e-9), max(h, 1e-9)))
         if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 2:
             gids = sorted({int(constraints[i, 2].item()) for i in range(block_count) if constraints[i, 2] > 0})
