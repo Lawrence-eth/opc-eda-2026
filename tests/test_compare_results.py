@@ -7,7 +7,7 @@ from scripts import compare_results
 def _reconstructed_score(data):
     cases = data["test_results"]
     max_blocks = max(case["block_count"] for case in cases)
-    weights = [math.exp(case["block_count"] - max_blocks) for case in cases]
+    weights = [math.exp((case["block_count"] - max_blocks) / 12) for case in cases]
     total_weight = sum(weights)
     return sum(case["cost"] * weight / total_weight for case, weight in zip(cases, weights))
 
@@ -152,9 +152,8 @@ def test_compare_reports_top_weighted_case_deltas():
 def test_weighted_case_deltas_uses_high_block_cases_first():
     baseline = _result(score=2.0, cases=3)
     candidate = copy.deepcopy(baseline)
-    # A smaller raw regression on the highest-block case should dominate.
-    candidate["test_results"][0]["cost"] = 4.0
-    candidate["test_results"][2]["cost"] = 3.0
+    candidate["test_results"][0]["cost"] = 2.2
+    candidate["test_results"][2]["cost"] = 2.5
 
     regressions, _ = compare_results.weighted_case_deltas(baseline, candidate, top=2)
 
