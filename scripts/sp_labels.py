@@ -26,7 +26,7 @@ def _inverse_relation(rel: str) -> str:
     return mapping[rel]
 
 
-def rectangles_to_relations(rectangles: List[Rect]) -> RelationMatrix:
+def extract_pairwise_relations(rectangles: List[Rect]) -> RelationMatrix:
     """Convert a list of [w, h, x, y] rectangles into pairwise topological relations."""
     n = len(rectangles)
     relations: RelationMatrix = [[None] * n for _ in range(n)]
@@ -137,7 +137,7 @@ def relations_to_sequence_pair(relations: RelationMatrix) -> Tuple[Permutation, 
     return sp_plus, sp_minus
 
 
-def pack_sequence_pair(
+def pack_from_sequence_pair(
     rectangles: List[Rect],
     sp_plus: Permutation,
     sp_minus: Permutation,
