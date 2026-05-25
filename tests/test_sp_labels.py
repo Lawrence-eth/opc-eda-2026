@@ -301,8 +301,9 @@ def test_sequence_pair_packing_reconstructs_original_layout(rect_a, rect_b, rect
     sp_plus, sp_minus = sp_labels.relations_to_sequence_pair(relations)
     packed = sp_labels.pack_sequence_pair(original, sp_plus, sp_minus)
 
-    # For a feasible floorplan, packed positions should match original within tolerance
-    for (ox, oy, ow, oh), (px, py, pw, ph) in zip(original, packed):
+    # For a feasible floorplan, packed positions should match original within tolerance.
+    # Fixtures are (w, h, x, y); packed positions are (x, y, w, h).
+    for (ow, oh, ox, oy), (px, py, pw, ph) in zip(original, packed):
         assert math.isclose(ox, px, abs_tol=1e-6)
         assert math.isclose(oy, py, abs_tol=1e-6)
         assert math.isclose(ow, pw, abs_tol=1e-6)
