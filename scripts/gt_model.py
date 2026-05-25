@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 from typing import List, Tuple
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -105,7 +106,14 @@ class GraphTransformer(nn.Module):
         # Simple approach: create dense adjacency matrix
         adj = torch.zeros(bsz, n, n, device=x.device)
         for b in range(bsz):
-            for edge in b2b_conn[b]:
+            edges = b2b_conn[b]
+            if isinstance(edges, np.ndarray):
+                edges = torch.from_numpy(edges)
+            if edges.numel() == 0:
+                continue
+            if edges.dim() == 1 and edges.shape[0] == 3:
+                edges = edges.unsqueeze(0)
+            for edge in edges:
                 if edge[0] == -1:
                     continue
                 i, j = int(edge[0].item()), int(edge[1].item())

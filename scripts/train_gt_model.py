@@ -135,10 +135,10 @@ def train_epoch(model, dataloader, optimizer, device):
 
             pred_plus, pred_minus = model(
                 areas[i:i+1, :valid_n],
-                constraints[i:i+1, :valid_n],
                 b2b_conn[i],
                 p2b_conn[i],
-                mask[i:i+1, :valid_n],
+                None,  # pins_pos not used in current model
+                constraints[i:i+1, :valid_n],
             )
 
             l = sp_loss(
@@ -181,6 +181,8 @@ def validate(model, dataloader, device):
             b2b_conn = batch["b2b_conn"]
             p2b_conn = batch["p2b_conn"]
 
+            pins_pos = batch["pins_pos"]
+
             loss = torch.tensor(0.0, device=device)
             bsz = areas.shape[0]
             for i in range(bsz):
@@ -190,10 +192,10 @@ def validate(model, dataloader, device):
 
                 pred_plus, pred_minus = model(
                     areas[i:i+1, :valid_n],
-                    constraints[i:i+1, :valid_n],
                     b2b_conn[i],
                     p2b_conn[i],
-                    mask[i:i+1, :valid_n],
+                    None,  # pins_pos not used in current model
+                    constraints[i:i+1, :valid_n],
                 )
 
                 l = sp_loss(
