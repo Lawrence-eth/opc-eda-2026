@@ -42,7 +42,7 @@ class MLGuidedOptimizer:
             n_layers=args.get("n_layers", 4),
             dropout=0.0,
         ).to(self.device)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.model.load_state_dict(checkpoint["model_state_dict"], strict=False)
         self.model.eval()
 
     @torch.no_grad()
@@ -80,13 +80,17 @@ class MLGuidedOptimizer:
                 areas, b2b, p2b, pins, cons
             )
 
-            sp_plus_movable = [b for b in sp_plus if b in movable]
-            sp_minus_movable = [b for b in sp_minus if b in movable]
+            movable_to_dense = {block_id: idx for idx, block_id in enumerate(movable)}
+            dense_to_movable = {idx: block_id for block_id, idx in movable_to_dense.items()}
+
+            sp_plus_movable = [movable_to_dense[b] for b in sp_plus if b in movable_to_dense]
+            sp_minus_movable = [movable_to_dense[b] for b in sp_minus if b in movable_to_dense]
 
             dims = self._estimate_dims(block_count, area_targets, constraints)
+            movable_dims = {movable_to_dense[block_id]: dims[block_id] for block_id in movable if block_id in dims}
 
             movable_positions = pack_sequence_pair(
-                sp_plus_movable, sp_minus_movable, len(movable), dims
+                sp_plus_movable, sp_minus_movable, len(movable), movable_dims
             )
 
             if not movable_positions or len(movable_positions) != len(movable):
@@ -108,7 +112,7 @@ class MLGuidedOptimizer:
             else:
                 offset_x = 0.0
 
-            for idx, block_id in enumerate(movable):
+            for idx, block_id in dense_to_movable.items():
                 x, y, x2, y2 = movable_positions[idx]
                 w = x2 - x
                 h = y2 - y
