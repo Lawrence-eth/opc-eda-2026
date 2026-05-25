@@ -59,6 +59,10 @@ def _num(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _block_weight(block_count: int, max_blocks: int) -> float:
+    return math.exp((block_count - max_blocks) / 12)
+
+
 def _get_any(case: dict[str, Any], names: Iterable[str], default: Any = None) -> Any:
     for name in names:
         if name in case:
@@ -423,7 +427,7 @@ def add_weights(cases: list[dict[str, Any]]) -> None:
     if not cases:
         return
     max_blocks = max(int(_num(c.get("block_count"))) for c in cases)
-    raw_weights = [math.exp(int(_num(c.get("block_count"))) - max_blocks) for c in cases]
+    raw_weights = [_block_weight(int(_num(c.get("block_count"))), max_blocks) for c in cases]
     total_weight = sum(raw_weights) or 1.0
     for case, weight in zip(cases, raw_weights):
         norm = weight / total_weight

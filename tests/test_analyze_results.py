@@ -7,15 +7,16 @@ from scripts import analyze_results
 def test_add_weights_matches_exponential_block_count_normalization():
     cases = [
         {"block_count": 10, "cost": 3.0},
-        {"block_count": 12, "cost": 2.0},
+        {"block_count": 22, "cost": 2.0},
     ]
 
     analyze_results.add_weights(cases)
 
-    expected_low = math.exp(-2) / (math.exp(-2) + 1.0)
-    expected_high = 1.0 / (math.exp(-2) + 1.0)
+    expected_low = math.exp(-1) / (math.exp(-1) + 1.0)
+    expected_high = 1.0 / (math.exp(-1) + 1.0)
     assert math.isclose(cases[0]["_score_weight"], expected_low)
     assert math.isclose(cases[1]["_score_weight"], expected_high)
+    assert math.isclose(cases[0]["_score_weight"] / cases[1]["_score_weight"], math.exp(-1))
     assert math.isclose(cases[0]["_weighted_contribution"], 3.0 * expected_low)
     assert math.isclose(cases[1]["_weighted_contribution"], 2.0 * expected_high)
 
@@ -139,7 +140,8 @@ def test_dominant_block_range_reflects_exponential_hidden_score_weighting():
     label, share = analyze_results.dominant_block_range(cases)
 
     assert label == "101-120"
-    assert share > 0.999999
+    expected = (2.0 * math.exp(0.0)) / (9.0 * math.exp((99 - 120) / 12) + 2.0 * math.exp(0.0))
+    assert math.isclose(share, expected)
 
 
 def test_score_concentration_reports_top_weighted_cases():
