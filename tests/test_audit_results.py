@@ -24,7 +24,7 @@ def _valid_result():
             }
         )
     max_blocks = max(case["block_count"] for case in cases)
-    weights = [math.exp(case["block_count"] - max_blocks) for case in cases]
+    weights = [math.exp((case["block_count"] - max_blocks) / 12) for case in cases]
     total_weight = sum(weights)
     return {
         "total_score": sum(case["cost"] * weight / total_weight for case, weight in zip(cases, weights)),

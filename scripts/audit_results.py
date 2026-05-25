@@ -52,6 +52,10 @@ def _num(value: Any, default: float = math.nan) -> float:
         return default
 
 
+def _block_weight(block_count: int, max_blocks: int) -> float:
+    return math.exp((block_count - max_blocks) / 12)
+
+
 def load_result(path: Path) -> dict[str, Any]:
     with path.open() as f:
         data = json.load(f)
@@ -69,7 +73,7 @@ def _weighted_score(cases: list[dict[str, Any]]) -> float:
     """Reconstruct the evaluator's block-count weighted total score."""
 
     max_blocks = max(int(_num(case.get("block_count"))) for case in cases)
-    raw_weights = [math.exp(int(_num(case.get("block_count"))) - max_blocks) for case in cases]
+    raw_weights = [_block_weight(int(_num(case.get("block_count"))), max_blocks) for case in cases]
     total_weight = sum(raw_weights) or 1.0
     return sum(_num(case.get("cost")) * weight / total_weight for case, weight in zip(cases, raw_weights))
 
