@@ -56,22 +56,13 @@ class MLGuidedOptimizer:
         constraints: torch.Tensor,
         target_positions: torch.Tensor = None,
     ) -> Optional[List[Tuple[float, float, float, float]]]:
-        """Predict layout using ML-guided SP + deterministic packer.
-
-        Handles preplaced blocks by keeping them fixed and only packing
-        movable blocks via predicted SP permutations.
-
-        Returns:
-            List of (x, y, w, h) rectangles, or None if prediction fails.
-        """
+        """Predict layout using ML-guided SP + deterministic packer."""
         try:
-            # Identify preplaced and movable blocks
             preplaced = set()
             movable = []
             if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
                 for i in range(block_count):
                     if constraints[i, 1] != 0 and target_positions is not None:
-                        # Check if target_positions has valid coordinates
                         if i < target_positions.shape[0] and target_positions[i, 2] > 0 and target_positions[i, 3] > 0:
                             preplaced.add(i)
                     else:
@@ -79,26 +70,21 @@ class MLGuidedOptimizer:
             else:
                 movable = list(range(block_count))
 
-            # Add batch dimension for model
             areas = area_targets.unsqueeze(0).to(self.device)
             cons = constraints.unsqueeze(0).to(self.device) if constraints is not None else None
             b2b = b2b_connectivity.to(self.device)
             p2b = p2b_connectivity.to(self.device)
             pins = pins_pos.to(self.device) if pins_pos is not None else None
 
-            # Predict SP permutations
             sp_plus, sp_minus = self.model.predict_permutations(
                 areas, b2b, p2b, pins, cons
             )
 
-            # Filter permutations to only include movable blocks
             sp_plus_movable = [b for b in sp_plus if b in movable]
             sp_minus_movable = [b for b in sp_minus if b in movable]
 
-            # Estimate dimensions for movable blocks
             dims = self._estimate_dims(block_count, area_targets, constraints)
 
-            # Pack only movable blocks
             movable_positions = pack_sequence_pair(
                 sp_plus_movable, sp_minus_movable, len(movable), dims
             )
@@ -106,7 +92,6 @@ class MLGuidedOptimizer:
             if not movable_positions or len(movable_positions) != len(movable):
                 return None
 
-            # Build final layout: preplaced + packed movable
             final_positions = {}
             for i in preplaced:
                 if i < target_positions.shape[0]:
@@ -117,7 +102,6 @@ class MLGuidedOptimizer:
                         float(target_positions[i, 3]),
                     )
 
-            # Offset movable blocks to start after preplaced blocks
             if preplaced:
                 max_x = max((final_positions[i][0] + final_positions[i][2]) for i in preplaced)
                 offset_x = max_x + 1.0
@@ -130,10 +114,8 @@ class MLGuidedOptimizer:
                 h = y2 - y
                 final_positions[block_id] = (x + offset_x, y, w, h)
 
-            # Convert to list ordered by block ID
             rects = [final_positions.get(i, (0.0, 0.0, 1.0, 1.0)) for i in range(block_count)]
 
-            # Check for overlaps
             if self._has_overlap(rects):
                 return None
 
@@ -213,7 +195,8 @@ def integrate_ml_optimizer(
         # Try ML prediction first
         ml_positions = ml_opt.predict_layout(
             block_count, area_targets, b2b_connectivity,
-            p2b_connectivity, pins_pos, constraints
+            p2b_connectivity, pins_pos, constraints,
+            target_positions
         )
         if ml_positions is not None:
             return ml_positions
