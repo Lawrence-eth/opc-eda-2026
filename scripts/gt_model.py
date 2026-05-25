@@ -36,6 +36,7 @@ class GraphTransformer(nn.Module):
         # Input embeddings
         self.area_embed = nn.Linear(1, d_model // 4)
         self.constraint_embed = nn.Embedding(10, d_model // 4)  # Small vocab for constraint codes
+        self.index_embed = nn.Linear(1, d_model // 4)
         self.type_embed = nn.Embedding(5, d_model // 4)  # Boundary type, cluster id, etc.
         self.edge_proj = nn.Linear(1, d_model // 4)
 
@@ -90,8 +91,11 @@ class GraphTransformer(nn.Module):
         constraint_ids = constraints.clamp(0, 9).long()  # Clamp to valid range
         constraint_feat = self.constraint_embed(constraint_ids).mean(dim=2)  # [bsz, n, d/4]
 
+        block_index = torch.linspace(0.0, 1.0, n, device=area_target.device).view(1, n, 1).expand(bsz, n, 1)
+        index_feat = self.index_embed(block_index)
+
         # Combine features
-        node_feat = torch.cat([area_feat, constraint_feat], dim=-1)  # [bsz, n, d/2]
+        node_feat = torch.cat([area_feat, constraint_feat, index_feat], dim=-1)
 
         # Pad to d_model if needed
         if node_feat.shape[-1] < self.d_model:

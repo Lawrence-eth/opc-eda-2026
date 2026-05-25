@@ -33,7 +33,7 @@ class SPModelInference:
             n_layers=args.get("n_layers", 4),
             dropout=0.0,  # No dropout at inference
         ).to(self.device)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.model.load_state_dict(checkpoint["model_state_dict"], strict=False)
         self.model.eval()
 
     @torch.no_grad()
