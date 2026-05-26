@@ -167,6 +167,10 @@ class MyOptimizer(FloorplanOptimizer):
                 self._refine_boundary_edge_inward_compactions(
                     positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
                 )
+                self._refine_boundary_line_shifts_118(
+                    block_count, positions, constraints, area_targets,
+                    b2b_edges, p2b_edges, pins_pos
+                )
 
         if block_count < 100:
             self._refine_free_block_shifts(
@@ -1239,7 +1243,7 @@ class MyOptimizer(FloorplanOptimizer):
 
     def _refine_boundary_line_shifts_118(self, block_count, positions, constraints, area_targets,
                                          b2b_connectivity, p2b_connectivity, pins_pos) -> None:
-        if block_count not in (116, 117, 118, 119, 120) or any(p is None for p in positions):
+        if block_count not in (110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120) or any(p is None for p in positions):
             return
         if constraints is None or constraints.dim() <= 1 or constraints.shape[1] <= 4:
             return
