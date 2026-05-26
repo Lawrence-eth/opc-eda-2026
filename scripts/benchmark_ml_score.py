@@ -54,24 +54,43 @@ def summarize(costs: list[float], blocks: list[int]) -> dict[str, float]:
     }
 
 
-def run_benchmark(num_cases: int, model: Path | None, output: Path, data_dir: Path) -> dict[str, Any]:
+def apply_layout_variant(optimizer: MyOptimizer, variant: tuple[float, float, float] | None) -> None:
+    if variant is None:
+        return
+
+    optimizer._layout_variants = lambda block_count: [variant]
+
+
+def run_benchmark(
+    num_cases: int,
+    model: Path | None,
+    output: Path,
+    data_dir: Path,
+    case_index: int | None,
+    variant: tuple[float, float, float] | None,
+) -> dict[str, Any]:
     evaluator = ContestEvaluator(data_path=str(data_dir), verbose=False)
     evaluator._load_dataset()
 
     heuristic = MyOptimizer()
     ml = MyOptimizer()
+    apply_layout_variant(heuristic, variant)
+    apply_layout_variant(ml, variant)
     ml_available = bool(model and integrate_ml_optimizer(ml, model))
+
+    case_indices = [case_index] if case_index is not None else list(range(num_cases))
 
     heuristic_costs: list[float] = []
     ml_costs: list[float] = []
     blocks: list[int] = []
     cases: list[dict[str, Any]] = []
 
-    for idx in range(num_cases):
+    for idx in case_indices:
         sample = evaluator.dataset[idx]
         inputs, labels = sample["input"], sample["label"]
         area_target, b2b_conn, p2b_conn, pins_pos, constraints = inputs
         block_count = int((area_target != -1).sum().item())
+        print(f"Evaluating case={idx} blocks={block_count}", flush=True)
         baseline, target_pos = evaluator._extract_baseline(
             idx, labels, b2b_conn, p2b_conn, pins_pos, block_count
         )
@@ -132,7 +151,7 @@ def run_benchmark(num_cases: int, model: Path | None, output: Path, data_dir: Pa
         cases.append(case)
 
     result: dict[str, Any] = {
-        "num_cases": num_cases,
+        "num_cases": len(case_indices),
         "model": str(model) if model else None,
         "ml_available": ml_available,
         "heuristic": summarize(heuristic_costs, blocks),
@@ -149,12 +168,22 @@ def run_benchmark(num_cases: int, model: Path | None, output: Path, data_dir: Pa
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-cases", type=int, default=10)
+    parser.add_argument("--case-index", type=int, default=None)
+    parser.add_argument("--variant", nargs=3, type=float, default=None, metavar=("ROW", "SMALL", "LARGE"))
     parser.add_argument("--model", type=Path, default=None)
     parser.add_argument("--data-dir", type=Path, default=DATA_DIR)
     parser.add_argument("--output", type=Path, default=ROOT / "results" / "benchmark_ml_score.json")
     args = parser.parse_args()
 
-    result = run_benchmark(args.num_cases, args.model, args.output, args.data_dir)
+    variant = tuple(args.variant) if args.variant is not None else None
+    result = run_benchmark(
+        args.num_cases,
+        args.model,
+        args.output,
+        args.data_dir,
+        args.case_index,
+        variant,
+    )
     print(json.dumps(result, indent=2))
     print(f"Results saved to {args.output}")
 
