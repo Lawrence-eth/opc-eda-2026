@@ -194,12 +194,20 @@ class MyOptimizer(FloorplanOptimizer):
                 self._refine_boundary_edge_inward_compactions(
                     positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
                 )
+                self._refine_boundary_line_shifts_118(
+                    block_count, positions, constraints, area_targets,
+                    b2b_edges, p2b_edges, pins_pos
+                )
                 self._refine_equal_shape_swaps(
                     block_count, positions, constraints, area_targets,
                     b2b_edges, p2b_edges, pins_pos
                 )
                 self._refine_boundary_adjacent_wire_swaps(
                     block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
+                )
+                self._refine_boundary_line_shifts_118(
+                    block_count, positions, constraints, area_targets,
+                    b2b_edges, p2b_edges, pins_pos
                 )
 
         if block_count < 100:
