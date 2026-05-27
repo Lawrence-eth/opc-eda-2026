@@ -58,5 +58,6 @@ PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py
 ## Contest
 
 - Problem: [FloorSet Challenge](https://www.iccad-contest.org/Problems.html)
-- Repository: [IntelLabs/FloorSet](https://github.com/IntelLabs/FloorSet/tree/main/iccad2026contest)
+- Repository: [IntelLabs/FloorSet](https://github.com/IntelLabs/FloorSet)
+- Contest dir: `iccad2026contest/`
 - Scoring: `Cost = (1 + 0.5*(HPWL_gap + Area_gap)) * exp(2*V_rel) * max(0.7, RuntimeFactor^0.3)`
