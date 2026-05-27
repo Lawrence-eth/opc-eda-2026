@@ -38,14 +38,22 @@ my_optimizer_solutions.json
 *_results.json
 *_solutions.json
 
+# Local external checkouts
+# The active FloorSet checkout is copied/synced for validation only.
+external/FloorSet/
+
 # Local env
 .env
 *.log
+logs/
 
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
 
-# Keep results structure but not large files
+# Local experiment artifacts
+# Curated result JSONs are tracked explicitly with git add -f when needed.
 results/*.json
 results/*.png
+results/archive/
+results/local/
