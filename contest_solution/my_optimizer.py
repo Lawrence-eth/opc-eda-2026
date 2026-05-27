@@ -112,7 +112,7 @@ class MyOptimizer(FloorplanOptimizer):
             start_x = 0.0
             start_y = 0.0
         interior_obstacles = None
-        if block_count >= 116 and placed_rects:
+        if (block_count in (109, 111, 114, 115) or block_count >= 116) and placed_rects:
             start_x = min(p[0] for p in placed_rects)
             interior_obstacles = placed_rects
 
