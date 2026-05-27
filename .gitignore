@@ -65,6 +65,7 @@ results/*.json
 !results/tuned35_official_full.json
 !results/tuned36_official_full.json
 !results/tuned37_official_full.json
+!results/tuned39_official_full.json
 results/*.png
 results/archive/
 results/local/
