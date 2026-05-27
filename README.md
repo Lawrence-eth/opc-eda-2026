@@ -6,9 +6,9 @@ Deterministic heuristic optimizer for data-driven SoC floorplanning (21–120 bl
 
 | Metric | Value |
 |--------|-------|
-| Validation score | **2.7132** |
+| Validation score | **2.7025** |
 | Feasible cases | 100 / 100 |
-| Average runtime | 0.98s |
+| Average runtime | 0.91s |
 
 *Validation-set results only. Final ranking uses hidden test data.*
 
@@ -50,8 +50,8 @@ PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py
 ```bash
 .venv/bin/python -m pytest -q tests/test_optimizer_soft_constraints.py tests/test_sp_labels.py
 .venv/bin/python scripts/check_public_release.py \
-  --result results/tuned37_official_full.json \
-  --max-score 2.7132479301385657 \
+  --result results/tuned39_official_full.json \
+  --max-score 2.702495729888689 \
   --contest-optimizer "$CONTEST_OPTIMIZER"
 ```
 
