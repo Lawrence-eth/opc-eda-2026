@@ -83,15 +83,15 @@ The optimizer is a constructive heuristic:
 Latest local official validation over 100 Lite validation cases:
 
 - Feasible: 100 / 100
-- Total score: 2.7494
-- Average cost: 3.0726
-- Average runtime: 0.91s
+- Total score: 2.7187
+- Average cost: 3.0630
+- Average runtime: 0.90s
 - Official quick validator: PASSED
 - Public release guard: PASSED against the official evaluator JSON
 
 Current official-format result file:
 
-- `results/tuned35_official_full.json`
+- `results/tuned36_official_full.json`
 
 Curated historical result file:
 
