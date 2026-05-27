@@ -42,6 +42,9 @@ my_optimizer_solutions.json
 # The active FloorSet checkout is copied/synced for validation only.
 external/FloorSet/
 
+# Submission package (generated, not source)
+submission/
+
 # Local env
 .env
 *.log
