@@ -219,6 +219,16 @@ class MyOptimizer(FloorplanOptimizer):
                 block_count, positions, constraints, area_targets,
                 b2b_edges, p2b_edges, pins_pos
             )
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
+            )
 
         if self._has_overlap([p for p in positions if p is not None]):
             # Absolute safety fallback: all non-preplaced blocks in a disjoint strip.
