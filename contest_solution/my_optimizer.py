@@ -1047,7 +1047,18 @@ class MyOptimizer(FloorplanOptimizer):
         degrees = self._connection_degrees(movable, b2b_connectivity, p2b_connectivity)
         ordered = sorted(movable, key=lambda i: (-degrees.get(i, 0.0), -float(area_targets[i]), i))
         if block_count >= 120:
-            ordered = ordered[:20]
+            ordered = ordered[:60]
+            base_positions = list(positions)
+            base_soft = self._soft_violation_count(base_positions, constraints)
+            base_area = calculate_bbox_area(base_positions)
+            base_cost = self._selection_cost(
+                base_positions, constraints, area_targets, b2b_connectivity, p2b_connectivity, pins_pos
+            )
+        else:
+            base_positions = None
+            base_soft = 0
+            base_area = 0.0
+            base_cost = 0.0
 
         passes = 2 if block_count in (117, 119, 120) else 1
         for _pass in range(passes):
@@ -1067,7 +1078,7 @@ class MyOptimizer(FloorplanOptimizer):
                 y_clamped = self._clamp_axis_position(i, positions, y_target, 1, bbox)
                 if y_clamped is not None and abs(y_clamped - y) > 1e-6:
                     candidates.append((x, y_clamped))
-                if (block_count < 120 and x_clamped is not None and y_clamped is not None and
+                if (x_clamped is not None and y_clamped is not None and
                         (abs(x_clamped - x) > 1e-6 or abs(y_clamped - y) > 1e-6)):
                     candidates.append((x_clamped, y_clamped))
 
@@ -1087,6 +1098,17 @@ class MyOptimizer(FloorplanOptimizer):
                     improved = True
             if not improved:
                 break
+
+        if block_count >= 120:
+            new_soft = self._soft_violation_count(positions, constraints)
+            new_area = calculate_bbox_area(positions)
+            new_cost = self._selection_cost(
+                positions, constraints, area_targets, b2b_connectivity, p2b_connectivity, pins_pos
+            )
+            if (self._has_overlap(positions) or new_soft > base_soft or
+                    new_area > base_area + 1e-6 or new_cost >= base_cost - 1e-6):
+                for i, rect in enumerate(base_positions):
+                    positions[i] = rect
 
     def _refine_top_boundary_compaction(self, positions, constraints, area_targets,
                                         b2b_connectivity, p2b_connectivity, pins_pos) -> None:
