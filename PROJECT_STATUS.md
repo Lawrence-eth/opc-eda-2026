@@ -80,21 +80,20 @@ The optimizer is a constructive heuristic:
 
 ## Validation Results
 
-Final local validation over 100 Lite validation cases:
+Latest local official validation over 100 Lite validation cases:
 
 - Feasible: 100 / 100
-- Total score: 1.5168
-- Average cost: 3.7757
-- Average runtime: 1.4836s
-- Average HPWL gap: 1.5420
-- Average area gap: 1.5085
-- Average soft violation ratio: 0.1255
-- Worst per-case cost: 8.7882
-- Tests: 2 / 2 passed
-- Public regression tests: 52 / 52 passed
-- Official validator: PASSED
+- Total score: 2.7526
+- Average cost: 3.0751
+- Average runtime: 1.10s
+- Official quick validator: PASSED
+- Public release guard: PASSED against the official evaluator JSON
 
-Result file:
+Current official-format result file:
+
+- `results/tuned34_official_full.json`
+
+Curated historical result file:
 
 - `results/boundary_full.json`
 
