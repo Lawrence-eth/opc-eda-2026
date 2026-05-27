@@ -59,6 +59,7 @@ results/*.json
 !results/focus_cases.json
 !results/summary.json
 !results/tuned34_official_full.json
+!results/tuned35_official_full.json
 results/*.png
 results/archive/
 results/local/

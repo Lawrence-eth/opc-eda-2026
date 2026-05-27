@@ -25,13 +25,13 @@ This repository currently contains a deterministic heuristic optimizer and suppo
 
 Latest local official-evaluator run against the synced contest checkout:
 
-- Result file: `results/tuned34_official_full.json`
+- Result file: `results/tuned35_official_full.json`
 - Validation cases: 100
 - Feasible cases: 100 / 100
-- Total score: 2.7526
-- Average runtime: 1.10s
+- Total score: 2.7494
+- Average runtime: 0.91s
 - Official quick validator: passed
-- Public release guard: passed against `results/tuned34_official_full.json`
+- Public release guard: passed against `results/tuned35_official_full.json`
 
 These are validation-set results. Final contest ranking uses hidden test data and official leaderboard evaluation.
 
@@ -61,8 +61,8 @@ Before publishing optimizer changes, run:
 ```bash
 .venv/bin/python -m pytest -q tests/test_optimizer_soft_constraints.py tests/test_sp_labels.py
 .venv/bin/python scripts/check_public_release.py \
-  --result results/tuned34_official_full.json \
-  --max-score 2.7525658980099994 \
+  --result results/tuned35_official_full.json \
+  --max-score 2.7493747535028557 \
   --contest-optimizer "$CONTEST_OPTIMIZER"
 ```
 
