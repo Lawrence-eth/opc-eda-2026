@@ -52,8 +52,13 @@ logs/
 *.ipynb
 
 # Local experiment artifacts
-# Curated result JSONs are tracked explicitly with git add -f when needed.
+# Curated result JSONs are tracked explicitly below or with git add -f.
 results/*.json
+!results/boundary_full.json
+!results/enriched_diagnostics.json
+!results/focus_cases.json
+!results/summary.json
+!results/tuned34_official_full.json
 results/*.png
 results/archive/
 results/local/
