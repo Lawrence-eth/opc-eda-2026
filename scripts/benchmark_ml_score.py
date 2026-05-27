@@ -19,8 +19,6 @@ sys.path.insert(0, str(CONTEST_DIR))
 from iccad2026_evaluate import ContestEvaluator, compute_total_score, evaluate_solution
 
 sys.path.insert(0, str(ROOT / "contest_solution"))
-sys.path.insert(0, str(ROOT / "scripts"))
-from ml_integration import integrate_ml_optimizer
 from my_optimizer import MyOptimizer
 
 
@@ -76,7 +74,7 @@ def run_benchmark(
     ml = MyOptimizer()
     apply_layout_variant(heuristic, variant)
     apply_layout_variant(ml, variant)
-    ml_available = bool(model and integrate_ml_optimizer(ml, model))
+    ml_available = False
 
     case_indices = [case_index] if case_index is not None else list(range(num_cases))
 
