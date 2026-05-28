@@ -231,11 +231,18 @@ class MyOptimizer(FloorplanOptimizer):
             )
 
         if self._has_overlap([p for p in positions if p is not None]):
-            # Absolute safety fallback: all non-preplaced blocks in a disjoint strip.
             ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
             safe_x = max((p[0] + p[2] for k, p in enumerate(positions) if p is not None and k in preplaced), default=0.0) + 1.0
             for i, rect in self._shelf_pack(ordered, dims, safe_x, start_y).items():
                 positions[i] = rect
+
+        if block_count >= 50 and len(movable) >= 2:
+            max_sa_time = min(8.0, max(2.0, block_count * 0.05))
+            self._sa_post_optimization(
+                positions, block_count, set(movable), preplaced, boundary,
+                dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                max_time=max_sa_time
+            )
 
         return [self._clean_tuple(p) for p in positions]  # type: ignore[arg-type]
 
@@ -1113,7 +1120,7 @@ class MyOptimizer(FloorplanOptimizer):
             base_area = 0.0
             base_cost = 0.0
 
-        passes = 5 if block_count >= 100 else 1
+        passes = 12 if block_count >= 100 else 5
         for _pass in range(passes):
             improved = False
             bbox = self._bbox(positions)
@@ -1134,6 +1141,14 @@ class MyOptimizer(FloorplanOptimizer):
                 if (x_clamped is not None and y_clamped is not None and
                         (abs(x_clamped - x) > 1e-6 or abs(y_clamped - y) > 1e-6)):
                     candidates.append((x_clamped, y_clamped))
+                x_mid = x + 0.5 * (x_clamped - x) if x_clamped is not None else None
+                y_mid = y + 0.5 * (y_clamped - y) if y_clamped is not None else None
+                if x_mid is not None and abs(x_mid - x) > 1e-6:
+                    candidates.append((x_mid, y))
+                if y_mid is not None and abs(y_mid - y) > 1e-6:
+                    candidates.append((x, y_mid))
+                if x_mid is not None and y_mid is not None:
+                    candidates.append((x_mid, y_mid))
 
                 best_rect = None
                 best_cost = self._local_wirelength_fast(i, positions[i], positions, b_adj[i], p_adj[i], pins_pos)
@@ -2088,3 +2103,146 @@ class MyOptimizer(FloorplanOptimizer):
 
     def _cost(self, positions, b2b_conn, p2b_conn, pins_pos) -> float:
         return calculate_hpwl_b2b(positions, b2b_conn) + calculate_hpwl_p2b(positions, p2b_conn, pins_pos) + 0.01 * calculate_bbox_area(positions)
+
+    def _sa_post_optimization(self, positions, block_count, movable, preplaced, boundary_map,
+                              dims, area_targets, b2b_conn, p2b_conn, pins_pos, constraints,
+                              max_time=5.0):
+        """SA post-optimization to reduce HPWL using safe moves."""
+        import time
+        import random
+        import math
+        
+        start_time = time.time()
+        if len(movable) < 2:
+            return
+        
+        pos_list = [positions[i] for i in range(block_count)]
+        current_hpwl = calculate_hpwl_b2b(pos_list, b2b_conn) + calculate_hpwl_p2b(pos_list, p2b_conn, pins_pos)
+        current_area = calculate_bbox_area(pos_list)
+        current_cost = current_hpwl + 0.01 * current_area
+        
+        best_positions = {i: positions[i] for i in range(block_count)}
+        best_cost = current_cost
+        
+        temp = 10.0
+        final_temp = 0.1
+        cooling_rate = 0.995
+        moves_per_temp = min(50, len(movable) * 2)
+        
+        movable_list = list(movable)
+        
+        while temp > final_temp:
+            for _ in range(moves_per_temp):
+                if time.time() - start_time > max_time:
+                    break
+                
+                move_type = random.choice(['swap', 'shift'])
+                
+                if move_type == 'swap' and len(movable_list) >= 2:
+                    idx1, idx2 = random.sample(movable_list, 2)
+                    i, j = idx1, idx2
+                    
+                    if i in boundary_map or j in boundary_map:
+                        continue
+                    
+                    wi, hi = dims[i]
+                    wj, hj = dims[j]
+                    if abs(wi * hi - wj * hj) > 0.02 * max(wi * hi, wj * hj):
+                        continue
+                    
+                    xi, yi, wi_pos, hi_pos = positions[i]
+                    xj, yj, wj_pos, hj_pos = positions[j]
+                    
+                    new_rect_i = (xj, yj, wi_pos, hi_pos)
+                    new_rect_j = (xi, yi, wj_pos, hj_pos)
+                    
+                    overlap = False
+                    for k in range(block_count):
+                        if k == i or k == j:
+                            continue
+                        xk, yk, wk, hk = positions[k]
+                        if min(xj + wi_pos, xk + wk) - max(xj, xk) > 1e-6 and \
+                           min(yj + hi_pos, yk + hk) - max(yj, yk) > 1e-6:
+                            overlap = True
+                            break
+                        if min(xi + wj_pos, xk + wk) - max(xi, xk) > 1e-6 and \
+                           min(yi + hj_pos, yk + hk) - max(yi, yk) > 1e-6:
+                            overlap = True
+                            break
+                    
+                    if overlap:
+                        continue
+                    
+                    positions[i] = new_rect_i
+                    positions[j] = new_rect_j
+                    
+                    new_pos_list = [positions[k] for k in range(block_count)]
+                    new_hpwl = calculate_hpwl_b2b(new_pos_list, b2b_conn) + calculate_hpwl_p2b(new_pos_list, p2b_conn, pins_pos)
+                    new_area = calculate_bbox_area(new_pos_list)
+                    new_cost = new_hpwl + 0.01 * new_area
+                    
+                    delta = new_cost - current_cost
+                    if delta < 0 or random.random() < math.exp(-delta / max(temp, 1e-10)):
+                        current_cost = new_cost
+                        if current_cost < best_cost:
+                            best_cost = current_cost
+                            best_positions = {k: positions[k] for k in range(block_count)}
+                    else:
+                        positions[i] = (xi, yi, wi_pos, hi_pos)
+                        positions[j] = (xj, yj, wj_pos, hj_pos)
+                
+                elif move_type == 'shift':
+                    i = random.choice(movable_list)
+                    if i in boundary_map:
+                        continue
+                    
+                    x, y, w, h = positions[i]
+                    best_shift = None
+                    best_shift_cost = current_cost
+                    
+                    for dx, dy in [(w*0.1, 0), (-w*0.1, 0), (0, h*0.1), (0, -h*0.1)]:
+                        new_x = x + dx
+                        new_y = y + dy
+                        new_rect = (new_x, new_y, w, h)
+                        
+                        overlap = False
+                        for k in range(block_count):
+                            if k == i:
+                                continue
+                            xk, yk, wk, hk = positions[k]
+                            if min(new_x + w, xk + wk) - max(new_x, xk) > 1e-6 and \
+                               min(new_y + h, yk + hk) - max(new_y, yk) > 1e-6:
+                                overlap = True
+                                break
+                        
+                        if overlap:
+                            continue
+                        
+                        positions[i] = new_rect
+                        new_pos_list = [positions[k] for k in range(block_count)]
+                        new_hpwl = calculate_hpwl_b2b(new_pos_list, b2b_conn) + calculate_hpwl_p2b(new_pos_list, p2b_conn, pins_pos)
+                        new_area = calculate_bbox_area(new_pos_list)
+                        new_cost = new_hpwl + 0.01 * new_area
+                        
+                        if new_cost < best_shift_cost:
+                            best_shift_cost = new_cost
+                            best_shift = new_rect
+                        
+                        positions[i] = (x, y, w, h)
+                    
+                    if best_shift is not None:
+                        delta = best_shift_cost - current_cost
+                        if delta < 0 or random.random() < math.exp(-delta / max(temp, 1e-10)):
+                            positions[i] = best_shift
+                            current_cost = best_shift_cost
+                            if current_cost < best_cost:
+                                best_cost = current_cost
+                                best_positions = {k: positions[k] for k in range(block_count)}
+            
+            if time.time() - start_time > max_time:
+                break
+            
+            temp *= cooling_rate
+        
+        for i in range(block_count):
+            positions[i] = best_positions[i]
