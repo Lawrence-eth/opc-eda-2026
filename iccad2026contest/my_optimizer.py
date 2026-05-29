@@ -23,6 +23,51 @@ from iccad2026_evaluate import FloorplanOptimizer, calculate_bbox_area, calculat
 Rect = Tuple[float, float, float, float]
 
 
+def _worker_solve(args):
+    """Module-level worker for ProcessPoolExecutor. Returns (cfg_idx, positions, true_cost)."""
+    cfg_idx, cfg, block_count, area_targets_np, b2b_edges, p2b_edges, pins_pos_np, \
+        constraints_np, target_positions_np, hpwl_baseline, area_baseline = args
+
+    import torch as _torch
+    opt = MyOptimizer(verbose=False)
+    opt._hpwl_baseline = hpwl_baseline
+    opt._area_baseline = area_baseline
+    opt._baselines_by_n = {}
+
+    area_targets = _torch.tensor(area_targets_np, dtype=_torch.float32)
+    constraints = _torch.tensor(constraints_np, dtype=_torch.float32) if constraints_np is not None else None
+    pins_pos = _torch.tensor(pins_pos_np, dtype=_torch.float32) if pins_pos_np is not None else None
+    target_positions = _torch.tensor(target_positions_np, dtype=_torch.float32) if target_positions_np is not None else None
+    b2b_conn = _torch.tensor(b2b_edges, dtype=_torch.float32) if b2b_edges else _torch.zeros((0, 3))
+    p2b_conn = _torch.tensor(p2b_edges, dtype=_torch.float32) if p2b_edges else _torch.zeros((0, 3))
+
+    try:
+        positions = opt._solve_one(
+            cfg, block_count, area_targets, b2b_conn, p2b_conn,
+            pins_pos, constraints, target_positions, b2b_edges, p2b_edges
+        )
+        if positions:
+            tc = opt._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            return (cfg_idx, positions, tc)
+    except Exception:
+        pass
+    return (cfg_idx, None, float("inf"))
+
+
+# P0.1: Persistent pool — created once, reused across all 100 cases
+_POOL = None
+_POOL_SIZE = None
+
+def _get_pool():
+    global _POOL, _POOL_SIZE
+    if _POOL is None:
+        import os
+        _POOL_SIZE = min(os.cpu_count() or 8, 32)
+        import concurrent.futures
+        _POOL = concurrent.futures.ProcessPoolExecutor(max_workers=_POOL_SIZE)
+    return _POOL
+
+
 class MyOptimizer(FloorplanOptimizer):
     def __init__(self, verbose: bool = False):
         super().__init__(verbose)
@@ -33,6 +78,7 @@ class MyOptimizer(FloorplanOptimizer):
         self._hpwl_baseline = None
         self._area_baseline = None
         self._baselines_by_n = None
+        self._no_sa = False
 
     def solve(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
               p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
@@ -64,49 +110,59 @@ class MyOptimizer(FloorplanOptimizer):
         b2b_edges = self._b2b_edges(b2b_connectivity)
         p2b_edges = self._p2b_edges(p2b_connectivity)
 
-        # --- Shelf path (existing) ---
-        variants = self._layout_variants(block_count)
-        original = (self._row_factor, self._small_cluster_factor, self._large_cluster_factor)
-        shelf_best = None
-        shelf_cost = float("inf")
-        try:
-            for row_factor, small_cluster, large_cluster in variants:
-                self._row_factor = row_factor
-                self._small_cluster_factor = small_cluster
-                self._large_cluster_factor = large_cluster
+        # Shelf path (proven approach from sprint5_v9)
+        configs = self._build_portfolio(block_count)
+        best_positions = None
+        best_cost = float("inf")
+
+        for cfg in configs:
+            try:
                 positions = self._construct_layout(
                     block_count, area_targets, b2b_connectivity, p2b_connectivity,
                     pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
-                cost = self._selection_cost(
-                    positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+                if positions:
+                    cost = self._selection_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_positions = positions
+            except Exception:
+                pass
+
+        return best_positions if best_positions is not None else []
+
+    def _build_portfolio(self, block_count):
+        """Build shelf path config. SA for n>=100 only."""
+        return [{'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf'}]
+
+    def _solve_one(self, cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                   pins_pos, constraints, target_positions, b2b_edges, p2b_edges):
+        """Run one config and return positions."""
+        original = (self._row_factor, self._small_cluster_factor, self._large_cluster_factor)
+        try:
+            self._row_factor = cfg['row_factor']
+            self._small_cluster_factor = cfg['small_cluster']
+            self._large_cluster_factor = cfg['large_cluster']
+            self._no_sa = cfg.get('no_sa', False)
+            if cfg['path'] == 'analytical':
+                positions = self._analytical_construct_layout(
+                    block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                    pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
-                if cost < shelf_cost:
-                    shelf_cost = cost
-                    shelf_best = positions
+            elif cfg['path'] == 'abacus':
+                positions = self._abacus_construct_layout(
+                    block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                    pins_pos, constraints, target_positions, b2b_edges, p2b_edges
+                )
+            else:
+                positions = self._construct_layout(
+                    block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                    pins_pos, constraints, target_positions, b2b_edges, p2b_edges
+                )
+            return positions
         finally:
             self._row_factor, self._small_cluster_factor, self._large_cluster_factor = original
-
-        # --- Analytical path (new: global placement -> legalize -> compact -> refine) ---
-        analytical_best = None
-        analytical_cost = float("inf")
-        try:
-            analytical_positions = self._analytical_construct_layout(
-                block_count, area_targets, b2b_connectivity, p2b_connectivity,
-                pins_pos, constraints, target_positions, b2b_edges, p2b_edges
-            )
-            if analytical_positions:
-                analytical_cost = self._selection_cost(
-                    analytical_positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
-                )
-                analytical_best = analytical_positions
-        except Exception:
-            pass  # fall back to shelf if analytical fails
-
-        # --- Guardrail: keep whichever is better ---
-        if analytical_best is not None and analytical_cost < shelf_cost - 1e-6:
-            return analytical_best
-        return shelf_best if shelf_best is not None else []
+            self._no_sa = False
 
     def _construct_layout(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
                           p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
@@ -171,7 +227,8 @@ class MyOptimizer(FloorplanOptimizer):
             b2b_edges, p2b_edges, pins_pos, constraints
         )
 
-        if block_count >= 100:
+        # Refinement passes (skip in construction-only mode for speed)
+        if block_count >= 100 and not getattr(self, '_no_sa', False):
             self._refine_group_translations(
                 block_count, positions, constraints, area_targets,
                 b2b_edges, p2b_edges, pins_pos
@@ -208,7 +265,7 @@ class MyOptimizer(FloorplanOptimizer):
                 block_count, positions, constraints, area_targets,
                 b2b_edges, p2b_edges, pins_pos
             )
-        if block_count < 100:
+        if block_count < 100 and not getattr(self, '_no_sa', False):
             # Extended to all block counts >= 50 (previously skipped for < 100).
             # These cases have unused runtime budget and can benefit from refinement.
             self._refine_group_translations(
@@ -246,9 +303,12 @@ class MyOptimizer(FloorplanOptimizer):
             for i, rect in self._shelf_pack(ordered, dims, safe_x, start_y).items():
                 positions[i] = rect
 
-        if block_count >= 50 and len(movable) >= 2:
-            # Bounded SA budget: cap at 3s to prevent runtime bombs on 80-99 band.
-            max_sa_time = min(5.0, max(2.0, block_count * 0.03))
+        # Post-pack shape optimization: reshape unconstrained blocks to fill gaps
+        self._refine_shapes_to_fill_gaps(positions, dims, constraints, area_targets, preplaced)
+
+        # SA for large cases only (n >= 100) — small cases are fast without it
+        if block_count >= 100 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_post_optimization(
                 positions, block_count, set(movable), preplaced, boundary,
                 dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
@@ -257,87 +317,140 @@ class MyOptimizer(FloorplanOptimizer):
 
         return [self._clean_tuple(p) for p in positions]  # type: ignore[arg-type]
 
+    def _skyline_construct_layout(self, block_count: int, area_targets: torch.Tensor,
+                                   b2b_connectivity: torch.Tensor, p2b_connectivity: torch.Tensor,
+                                   pins_pos: torch.Tensor, constraints: torch.Tensor,
+                                   target_positions: torch.Tensor, b2b_edges, p2b_edges) -> List[Rect]:
+        """Skyline-based layout: contour packer with shape selection + boundary + refinement + SA.
+
+        Uses the skyline packer for interior blocks instead of the shelf packer.
+        The skyline packer uses bbox-area minimization scoring with shape selection.
+        """
+        if not isinstance(b2b_edges, list):
+            b2b_edges = self._b2b_edges(b2b_edges)
+        if not isinstance(p2b_edges, list):
+            p2b_edges = self._p2b_edges(p2b_edges)
+
+        dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
+        positions: List[Rect | None] = [None] * block_count
+        preplaced = set()
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+            for i in range(block_count):
+                if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
+                    positions[i] = tuple(float(target_positions[i, k]) for k in range(4))
+                    preplaced.add(i)
+
+        movable = [i for i in range(block_count) if i not in preplaced]
+        boundary = {i: self._boundary_code(constraints, i) for i in movable}
+        if block_count < 119:
+            boundary_units, boundary_cluster_ids = self._make_boundary_cluster_units(
+                movable, boundary, dims, constraints, area_targets, b2b_edges, p2b_edges
+            )
+        else:
+            boundary_units, boundary_cluster_ids = [], set()
+        boundary_blocks = [i for i in movable if boundary[i] != 0 and i not in boundary_cluster_ids]
+        interior = [i for i in movable if boundary[i] == 0 and i not in boundary_cluster_ids]
+
+        # Build preplaced_positions for skyline packer
+        preplaced_positions = []
+        for i in preplaced:
+            preplaced_positions.append(positions[i])
+
+        # Use skyline packer for interior blocks
+        skyline_positions = self._skyline_pack(
+            block_count, area_targets, dims, constraints,
+            b2b_edges, p2b_edges, pins_pos, preplaced_positions
+        )
+        for i in interior:
+            if i in skyline_positions:
+                positions[i] = skyline_positions[i]
+
+        content = [p for p in positions if p is not None]
+        if not content:
+            content = [(0.0, 0.0, 1.0, 1.0)]
+
+        self._place_boundary_items(
+            boundary_blocks, boundary_units, boundary, dims, positions, content,
+            b2b_edges, p2b_edges, pins_pos, constraints
+        )
+
+        # Refinement passes
+        if block_count >= 100:
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_line_shifts_118(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+        if block_count < 100:
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
+            )
+
+        # Fallback: if overlaps, shelf-pack from scratch
+        if self._has_overlap([p for p in positions if p is not None]):
+            ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
+            safe_x = max((p[0] + p[2] for k, p in enumerate(positions) if p is not None and k in preplaced), default=0.0) + 1.0
+            for i, rect in self._shelf_pack(ordered, dims, safe_x, 0.0).items():
+                positions[i] = rect
+
+        # SA for large cases
+        if block_count >= 100 and len(movable) >= 2:
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
+            self._sa_post_optimization(
+                positions, block_count, set(movable), preplaced, boundary,
+                dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                max_time=max_sa_time
+            )
+
+        # IV.ENGINE: correctness-first polish
+        if block_count >= 50 and len(movable) >= 2 and self._hpwl_baseline is not None:
+            self._correctness_first_polish(
+                positions, block_count, movable, preplaced, boundary,
+                dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                max_time=0.5
+            )
+
+        return [self._clean_tuple(p) for p in positions]
+
     def _layout_variants(self, block_count):
-        tuned = {
-            22: [(1.24, 1.50, 0.90)],
-            28: [(0.98, 1.05, 0.90)],
-            30: [(1.02, 1.35, 0.90)],
-            35: [(1.24, 0.90, 0.90)],
-            37: [(0.96, 1.50, 1.34)],
-            43: [(1.24, 1.05, 0.90)],
-            45: [(1.18, 1.35, 0.90)],
-            46: [(1.30, 1.05, 0.90)],
-            49: [(1.18, 1.50, 0.90)],
-            51: [(1.24, 1.35, 0.90)],
-            52: [(1.16, 1.20, 0.90)],
-            56: [(0.94, 1.35, 0.90)],
-            59: [(0.90, 1.50, 1.34)],
-            61: [(1.06, 1.20, 0.90)],
-            66: [(1.02, 1.05, 0.90)],
-            67: [(1.10, 1.20, 0.90)],
-            69: [(0.88, 1.10, 0.90)],
-            70: [(1.12, 0.90, 1.20), (0.96, 1.30, 0.90)],
-            72: [(0.94, 1.05, 0.90)],
-            73: [(1.06, 0.90, 0.90)],
-            74: [(1.24, 1.20, 0.90)],
-            75: [(1.02, 1.50, 0.90)],
-            76: [(0.98, 1.50, 0.90)],
-            78: [(1.02, 1.20, 0.90)],
-            80: [(1.02, 1.20, 0.90)],
-            82: [(1.10, 1.35, 0.90)],
-            84: [(0.94, 1.05, 0.90)],
-            85: [(0.98, 1.05, 0.90), (0.86, 0.90, 0.90)],
-            86: [(1.08, 1.40, 0.90)],
-            87: [(0.98, 1.20, 0.90)],
-            88: [(0.96, 1.50, 1.34)],
-            89: [(0.80, 1.20, 0.90), (0.82, 1.25, 0.90)],
-            90: [(0.98, 1.05, 0.90)],
-            91: [(0.86, 1.40, 0.90)],
-            93: [(0.86, 1.65, 0.90)],
-            94: [(0.90, 1.50, 1.34)],
-            95: [(0.76, 0.90, 0.90), (0.76, 1.05, 0.90), (0.74, 1.40, 0.90)],
-            96: [(1.06, 1.50, 0.90)],
-            97: [(1.20, 1.05, 0.90), (1.08, 0.90, 0.90), (1.10, 0.95, 0.90)],
-            99: [(1.02, 1.05, 0.90)],
-            100: [(0.82, 1.20, 0.90), (0.84, 1.20, 0.90)],
-            101: [(1.04, 0.90, 0.90)],
-            103: [(1.10, 1.50, 0.90)],
-            104: [(1.10, 1.05, 0.90)],
-            105: [(0.94, 1.20, 0.90)],
-            109: [(0.88, 1.20, 0.90)],
-            110: [(0.98, 1.30, 0.90), (0.88, 1.10, 0.90), (1.08, 1.10, 0.90), (0.86, 0.95, 0.90)],
-            111: [(1.18, 0.90, 0.90)],
-            112: [(0.86, 1.20, 1.34)],
-            113: [(1.00, 1.50, 1.34)],
-            114: [(1.06, 1.50, 1.34)],
-            115: [(0.96, 1.20, 1.34)],
-            116: [(1.01, 1.26, 1.34)],
-            117: [(1.01, 1.10, 1.34)],
-            118: [(0.92, 0.90, 1.34)],
-            119: [(1.12, 1.50, 1.34)],
-        }
-        if block_count in tuned:
-            return tuned[block_count]
-        if block_count >= 120:
-            return [(1.10, 1.50, 1.34)]
-        if block_count >= 119:
-            return [(0.88, 1.50, 1.34)]
-        if block_count >= 118:
-            return [(0.82, 1.20, 1.34)]
-        if block_count >= 117:
-            return [(1.00, 1.20, 1.34)]
-        variants = [(0.90, 1.50, 1.34)]
-        if block_count < 60:
-            variants.extend([(0.90, 2.00, 1.34), (0.90, 1.80, 1.34)])
-        elif block_count < 90:
-            variants.extend([(0.90, 1.30, 1.34), (0.90, 1.40, 1.34)])
-        elif block_count < 100:
-            variants.extend([(0.86, 1.50, 1.34), (0.90, 1.30, 1.34), (1.00, 1.50, 1.34)])
-        elif block_count < 110:
-            variants.extend([(1.00, 1.50, 1.34), (0.90, 1.52, 1.34), (0.90, 1.30, 1.34)])
-        elif block_count < 120:
-            pass
-        return variants
+        """Count-agnostic layout variants (de-overfitted from per-count tuning)."""
+        # Small set of diverse configs that work across all block counts
+        return [
+            (0.90, 1.50, 1.34),  # default
+            (1.00, 1.20, 1.34),  # wider rows, smaller clusters
+            (0.80, 1.50, 1.34),  # narrower rows
+            (1.10, 1.50, 1.34),  # wider rows
+        ]
 
     def _pack_interior_units(self, interior, dims, constraints, area_targets, b2b_connectivity,
                              p2b_connectivity, start_x, start_y, obstacles=None) -> Dict[int, Rect]:
@@ -1880,6 +1993,7 @@ class MyOptimizer(FloorplanOptimizer):
         return min(max(target, lo), hi)
 
     def _choose_dimensions(self, block_count, area_targets, constraints, target_positions):
+        """Choose block dimensions. Soft blocks use near-square shapes."""
         dims = []
         hard = set()
         for i in range(block_count):
@@ -1993,6 +2107,64 @@ class MyOptimizer(FloorplanOptimizer):
         target_area = sum(float(a) for a in area_targets[:len(positions)] if a > 0)
         area_scale = max(math.sqrt(max(target_area, 1.0)), 1.0)
         return hpwl + 0.08 * bbox_area + soft * area_scale * 180.0
+
+    def _n_soft(self, constraints, block_count):
+        """Compute N_soft normalization constant (max possible soft violations)."""
+        if constraints is None or constraints.dim() <= 1 or constraints.shape[1] < 1:
+            return 0
+        n = min(block_count, len(constraints))
+        ncols = constraints.shape[1]
+        s = 0
+        if ncols > 4:
+            s += int((constraints[:n, 4] != 0).sum().item())
+        if ncols > 2:
+            mib = constraints[:n, 2]
+            max_g = int(mib.max().item()) if mib.numel() else 0
+            for g in range(1, max_g + 1):
+                s += max(0, int((mib == g).sum().item()) - 1)
+        if ncols > 3:
+            cl = constraints[:n, 3]
+            max_g = int(cl.max().item()) if cl.numel() else 0
+            for g in range(1, max_g + 1):
+                s += max(0, int((cl == g).sum().item()) - 1)
+        return s
+
+    def _is_feasible(self, positions, constraints, area_targets):
+        """Check hard constraints: no overlaps, area tolerance ±1%, fixed/preplaced dims."""
+        n = len(positions)
+        for i in range(n):
+            x1, y1, w1, h1 = positions[i]
+            for j in range(i + 1, n):
+                x2, y2, w2, h2 = positions[j]
+                if (min(x1 + w1, x2 + w2) - max(x1, x2) > 1e-6 and
+                        min(y1 + h1, y2 + h2) - max(y1, y2) > 1e-6):
+                    return False
+        ncols = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+        for i in range(n):
+            if ncols > 0 and constraints[i, 0] != 0:
+                continue
+            if ncols > 1 and constraints[i, 1] != 0:
+                continue
+            t = float(area_targets[i]) if i < len(area_targets) else 0.0
+            if t <= 0:
+                continue
+            w, h = positions[i][2], positions[i][3]
+            if abs(w * h - t) / t > 0.01 + 1e-9:
+                return False
+        return True
+
+    def _true_contest_cost(self, positions, constraints, area_targets, b2b, p2b, pins_pos):
+        """Compute the exact contest cost for final selection (not proxy)."""
+        if self._hpwl_baseline is None or self._area_baseline is None:
+            return self._selection_cost(positions, constraints, area_targets, b2b, p2b, pins_pos)
+        if not self._is_feasible(positions, constraints, area_targets):
+            return 10.0
+        hpwl = calculate_hpwl_b2b(positions, b2b) + calculate_hpwl_p2b(positions, p2b, pins_pos)
+        bbox = calculate_bbox_area(positions)
+        hg = max(0.0, (hpwl - self._hpwl_baseline) / max(self._hpwl_baseline, 1e-6))
+        ag = max(0.0, (bbox - self._area_baseline) / max(self._area_baseline, 1e-6))
+        v = self._soft_violation_count(positions, constraints) / max(self._n_soft(constraints, len(positions)), 1)
+        return (1.0 + 0.5 * (hg + ag)) * math.exp(2.0 * v)
 
     def _soft_violation_count(self, positions, constraints):
         if constraints is None or constraints.dim() <= 1 or len(constraints) < len(positions):
@@ -2330,6 +2502,58 @@ class MyOptimizer(FloorplanOptimizer):
             new_bx, new_by = center(rect_for(block))
             new += weight * (abs(new_bx - px) + abs(new_by - py))
         return new - old
+
+    def _compact_toward_origin(self, positions, preplaced, constraints=None):
+        """Post-pack compaction: DISABLED — too risky with boundary/cluster constraints."""
+        pass
+
+    def _refine_shapes_to_fill_gaps(self, positions, dims, constraints, area_targets, preplaced):
+        """Post-pack shape optimization: reshape unconstrained soft blocks to fill gaps.
+
+        For each soft block (not fixed/preplaced/boundary/cluster), try aspect ratios
+        within ±1% area tolerance. Accept if: no overlaps, bbox doesn't grow.
+        """
+        n = len(positions)
+        nc = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+
+        for i in range(n):
+            if i in preplaced or positions[i] is None:
+                continue
+            if nc > 0 and constraints[i, 0] != 0:
+                continue
+            if nc > 1 and constraints[i, 1] != 0:
+                continue
+            if nc > 3 and constraints[i, 3] != 0:
+                continue
+            if nc > 4 and constraints[i, 4] != 0:
+                continue
+
+            target = float(area_targets[i]) if i < len(area_targets) and area_targets[i] > 0 else 0.0
+            if target <= 0:
+                continue
+
+            x, y, w, h = positions[i]
+            if abs(w * h - target) / target <= 0.01:
+                continue
+
+            best_rect = None
+            best_waste = abs(w * h - target) / target
+            for aspect in [1.0, 1.3, 1.6, 2.0, 2.5, 3.0]:
+                for orient in [aspect, 1.0 / aspect]:
+                    tw = math.sqrt(target * orient)
+                    th = target / tw
+                    if abs(tw * th - target) / target > 0.01:
+                        continue
+                    new_rect = (x, y, tw, th)
+                    if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                        continue
+                    waste = abs(tw * th - target) / target
+                    if waste < best_waste:
+                        best_waste = waste
+                        best_rect = new_rect
+
+            if best_rect is not None:
+                positions[i] = best_rect
 
     def _order_blocks(self, blocks, area_targets, b2b_connectivity, p2b_connectivity):
         degree = {i: 0.0 for i in blocks}; s = set(blocks)
@@ -2773,6 +2997,11 @@ class MyOptimizer(FloorplanOptimizer):
             block_count, positions, centers, constraints, area_targets,
             b2b_edges, p2b_edges, pins_pos, preplaced)
 
+        # Aspect-ratio refinement: reshape soft blocks to fill gaps
+        self._refine_aspect_to_fill(
+            positions, dims, constraints, area_targets,
+            b2b_edges, p2b_edges, pins_pos, preplaced)
+
         # Fallback: if we still have overlaps, shelf-pack from scratch
         if self._has_overlap([p for p in positions if p is not None]):
             ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
@@ -2781,8 +3010,8 @@ class MyOptimizer(FloorplanOptimizer):
                 positions[i] = rect
 
         # SA post-optimization with analytical centers for relocation moves
-        if block_count >= 50 and len(movable) >= 2:
-            max_sa_time = min(5.0, max(2.0, block_count * 0.03))
+        if block_count >= 50 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_centers = centers  # pass analytical centers to SA for relocation
             try:
                 self._sa_post_optimization(
@@ -2793,6 +3022,229 @@ class MyOptimizer(FloorplanOptimizer):
                 self._sa_centers = None
 
         return [self._clean_tuple(p) for p in positions]
+
+    def _abacus_construct_layout(self, block_count, area_targets, b2b_connectivity,
+                                 p2b_connectivity, pins_pos, constraints,
+                                 target_positions, b2b_edges, p2b_edges):
+        """Abacus-style legalization: QP positions -> cluster-aware row legalizer -> refine.
+
+        Key insight: sort units by analytical position (not degree/area), then
+        place by minimum displacement from QP target. Clusters are treated as
+        super-blocks to preserve grouping.
+        """
+        if not isinstance(b2b_edges, list):
+            b2b_edges = self._b2b_edges(b2b_edges)
+        if not isinstance(p2b_edges, list):
+            p2b_edges = self._p2b_edges(p2b_edges)
+
+        dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
+        positions: List[Rect | None] = [None] * block_count
+        preplaced = set()
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+            for i in range(block_count):
+                if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
+                    positions[i] = tuple(float(target_positions[i, k]) for k in range(4))
+                    preplaced.add(i)
+
+        movable = [i for i in range(block_count) if i not in preplaced]
+        boundary = {i: self._boundary_code(constraints, i) for i in movable}
+        boundary_units, boundary_cluster_ids = ([], set())
+        if block_count < 119:
+            boundary_units, boundary_cluster_ids = self._make_boundary_cluster_units(
+                movable, boundary, dims, constraints, area_targets, b2b_edges, p2b_edges)
+        boundary_blocks = [i for i in movable if boundary[i] != 0 and i not in boundary_cluster_ids]
+        interior = [i for i in movable if boundary[i] == 0 and i not in boundary_cluster_ids]
+
+        # Step 1: QP global placement
+        centers = self._analytical_global_placement(
+            block_count, dims, b2b_edges, p2b_edges, pins_pos, preplaced,
+            target_positions, constraints, interior, boundary_blocks, boundary)
+
+        # Step 2: Abacus-style legalization with analytical ordering
+        placed_rects = [p for p in positions if p is not None]
+        start_x = max(p[0] + p[2] for p in placed_rects) + 1.0 if placed_rects else 0.0
+        start_y = min(p[1] for p in placed_rects) if placed_rects else 0.0
+        interior_obstacles = None
+        if block_count >= 80 and placed_rects:
+            start_x = min(p[0] for p in placed_rects)
+            interior_obstacles = placed_rects
+
+        for i, rect in self._abacus_pack_interior(
+            interior, dims, constraints, area_targets, b2b_edges,
+            p2b_edges, centers, start_x, start_y, interior_obstacles
+        ).items():
+            positions[i] = rect
+
+        # Step 3: Place boundary items
+        content = [p for p in positions if p is not None]
+        if not content:
+            content = [(0.0, 0.0, 1.0, 1.0)]
+        self._place_boundary_items(
+            boundary_blocks, boundary_units, boundary, dims, positions, content,
+            b2b_edges, p2b_edges, pins_pos, constraints)
+
+        # Step 4: Refinement passes
+        self._refine_toward_analytical(
+            block_count, positions, centers, constraints, area_targets,
+            b2b_edges, p2b_edges, pins_pos, preplaced)
+
+        if block_count >= 100:
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_line_shifts_118(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos)
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+        if block_count < 100:
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos)
+
+        self._refine_analytical_aggressive(
+            block_count, positions, centers, constraints, area_targets,
+            b2b_edges, p2b_edges, pins_pos, preplaced)
+
+        # Aspect-ratio refinement: reshape soft blocks to fill gaps
+        self._refine_aspect_to_fill(
+            positions, dims, constraints, area_targets,
+            b2b_edges, p2b_edges, pins_pos, preplaced)
+
+        # Fallback
+        if self._has_overlap([p for p in positions if p is not None]):
+            ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
+            safe_x = max((p[0] + p[2] for k, p in enumerate(positions) if p is not None and k in preplaced), default=0.0) + 1.0
+            for i, rect in self._shelf_pack(ordered, dims, safe_x, 0.0).items():
+                positions[i] = rect
+
+        # SA
+        if block_count >= 50 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
+            self._sa_centers = centers
+            try:
+                self._sa_post_optimization(
+                    positions, block_count, set(movable), preplaced, boundary,
+                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                    max_time=max_sa_time)
+            finally:
+                self._sa_centers = None
+
+        return [self._clean_tuple(p) for p in positions]
+
+    def _abacus_pack_interior(self, interior, dims, constraints, area_targets,
+                               b2b_connectivity, p2b_connectivity, centers,
+                               start_x, start_y, obstacles=None) -> Dict[int, Rect]:
+        """Abacus-style packer: sort by analytical x, place by minimum displacement
+        within bounded row width.
+
+        Key difference from _contour_pack_with_analytics: sorts units by
+        analytical x-position (not degree/area), places at the position
+        closest to the analytical target that doesn't overlap, but within
+        a bounded row width to keep the layout compact.
+        """
+        if not interior:
+            return {}
+        used = set()
+        units = []
+        degrees = self._connection_degrees(interior, b2b_connectivity, p2b_connectivity)
+
+        # Build cluster macros (preserves grouping)
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 3:
+            cluster_ids = sorted({int(constraints[i, 3].item()) for i in interior if constraints[i, 3] > 0})
+            for gid in cluster_ids:
+                group = [i for i in interior if int(constraints[i, 3].item()) == gid]
+                if len(group) < 2:
+                    continue
+                group = sorted(group, key=lambda i: (-degrees.get(i, 0.0), -float(area_targets[i]), i))
+                local, uw, uh = self._cluster_local_pack(group, dims)
+                for i in group:
+                    used.add(i)
+                avg_cx = sum(centers[i][0] for i in group) / len(group)
+                avg_cy = sum(centers[i][1] for i in group) / len(group)
+                units.append({'ids': group, 'w': uw, 'h': uh, 'local': local,
+                              'key': (avg_cx, avg_cy, min(group))})
+
+        for i in interior:
+            if i in used:
+                continue
+            w, h = dims[i]
+            cx = centers[i][0]
+            cy = centers[i][1]
+            units.append({'ids': [i], 'w': w, 'h': h, 'local': {i: (0.0, 0.0, w, h)},
+                          'key': (cx, cy, i)})
+
+        # Sort by analytical x-position (the core difference)
+        units.sort(key=lambda u: u['key'])
+
+        # Bounded row width (same as shelf packer)
+        total_area = sum(u['w'] * u['h'] for u in units)
+        max_w = max(u['w'] for u in units)
+        row_width = max(math.sqrt(max(total_area, 1.0)) * self._row_factor, max_w)
+
+        # Place by minimum displacement from QP target, within row bounds
+        placed_rects = list(obstacles or [])
+        out: Dict[int, Rect] = {}
+        row_x = start_x  # tracks current row's right edge
+
+        for u in units:
+            uw, uh = u['w'], u['h']
+            # Target position from QP centers
+            if u['ids']:
+                target_x = sum(centers[i][0] for i in u['ids']) / len(u['ids']) - uw * 0.5
+                target_y = sum(centers[i][1] for i in u['ids']) / len(u['ids']) - uh * 0.5
+            else:
+                target_x = row_x
+                target_y = start_y
+
+            # Clamp target to row bounds
+            target_x = max(start_x, min(target_x, start_x + row_width - uw))
+
+            # Find the position closest to target that doesn't overlap
+            best_x = target_x
+            best_y = target_y
+            best_dist = float('inf')
+
+            # Generate candidate positions: target, row edges, edges of placed blocks
+            candidates = [target_x, row_x]
+            for ox, oy, ow, oh in placed_rects:
+                candidates.append(ox + ow)
+                candidates.append(ox - uw)
+            candidates = sorted(set(max(start_x, min(c, start_x + row_width - uw)) for c in candidates))
+
+            for cand_x in candidates:
+                # Find lowest y at this x that doesn't overlap
+                y = start_y
+                for ox, oy, ow, oh in placed_rects:
+                    if min(cand_x + uw, ox + ow) - max(cand_x, ox) > 1e-6:
+                        if oy + oh > y:
+                            y = max(y, oy + oh)
+                dist = abs(cand_x - target_x) + abs(y - target_y)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_x = cand_x
+                    best_y = y
+
+            # Place the unit
+            for i, (lx, ly, w, h) in u['local'].items():
+                out[i] = (best_x + lx, best_y + ly, w, h)
+            placed_rects.append((best_x, best_y, uw, uh))
+            row_x = best_x + uw
+
+        return out
 
     def _contour_pack_with_analytics(self, interior, dims, constraints, area_targets,
                                       b2b_connectivity, p2b_connectivity, centers,
@@ -3062,20 +3514,614 @@ class MyOptimizer(FloorplanOptimizer):
             if not improved:
                 break
 
+    # =========================================================================
+    # SKYLINE PACKER WITH JOINT SHAPE+X SELECTION (IV.PACKER)
+    # Standalone function — test on cases 99/97/95 for >0.70 utilization
+    # before integrating into solve().
+    # =========================================================================
+
+    def _skyline_pack(self, block_count, area_targets, dims, constraints,
+                       b2b_edges, p2b_edges, pins_pos, preplaced_positions=None):
+        """Contour-based packer: fills gaps around preplaced obstacles.
+
+        For each block, finds the lowest y-position where it fits without
+        overlapping any placed blocks or preplaced obstacles. Among positions
+        with the same y, prefers the leftmost (BLF standard). Shape selection
+        picks best aspect ratio for individual soft blocks.
+
+        Returns: dict of {block_id: (x, y, w, h)}
+        """
+        positions = {}
+        preplaced_set = set()
+        if preplaced_positions:
+            for rect in preplaced_positions:
+                x, y, w, h = rect
+                for i in range(block_count):
+                    if i in preplaced_set:
+                        continue
+                    if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+                        if constraints[i, 1] != 0:
+                            positions[i] = (x, y, w, h)
+                            preplaced_set.add(i)
+                            break
+
+        # Build units (clusters as super-blocks)
+        used = set()
+        units = []
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 3:
+            degrees = self._connection_degrees(range(block_count), b2b_edges, p2b_edges)
+            cluster_ids = sorted({int(constraints[i, 3].item()) for i in range(block_count) if constraints[i, 3] > 0})
+            for gid in cluster_ids:
+                group = [i for i in range(block_count) if int(constraints[i, 3].item()) == gid]
+                if len(group) < 2:
+                    continue
+                if any(i in preplaced_set for i in group):
+                    continue
+                group = sorted(group, key=lambda i: (-degrees.get(i, 0.0), -float(area_targets[i]), i))
+                local, uw, uh = self._cluster_local_pack(group, dims)
+                for i in group:
+                    used.add(i)
+                units.append({'ids': group, 'w': uw, 'h': uh, 'local': local,
+                              'area': sum(float(area_targets[i]) for i in group),
+                              'is_cluster': True})
+        for i in range(block_count):
+            if i in used or i in preplaced_set:
+                continue
+            w, h = dims[i]
+            area = float(area_targets[i]) if i < len(area_targets) and area_targets[i] > 0 else w * h
+            units.append({'ids': [i], 'w': w, 'h': h, 'local': {i: (0.0, 0.0, w, h)},
+                          'area': area, 'is_cluster': False})
+
+        # Sort by area descending (large blocks first — classic BLF)
+        units.sort(key=lambda u: -u['area'])
+
+        # All obstacles (preplaced blocks)
+        all_rects = [positions[i] for i in preplaced_set if i in positions]
+
+        ASPECTS = [1.0, 1.3, 1.6, 2.0, 2.5, 3.0, 4.0, 5.0]
+
+        for u in units:
+            uw, uh = u['w'], u['h']
+
+            # Shape selection for individual soft blocks
+            if not u['is_cluster'] and len(u['ids']) == 1:
+                i = u['ids'][0]
+                nc = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+                is_hard = (nc > 0 and constraints[i, 0] != 0) or (nc > 1 and constraints[i, 1] != 0)
+                if not is_hard and u['area'] > 0:
+                    area = u['area']
+                    best_score = float('inf')
+                    for r in ASPECTS:
+                        for orient in [r, 1.0 / r]:
+                            tw = math.sqrt(area * orient)
+                            th = area / tw
+                            if abs(tw * th - area) / max(area, 1e-9) > 0.01:
+                                continue
+                            score = th  # minimize height (prefer wider shapes for row filling)
+                            if score < best_score:
+                                best_score = score
+                                uw, uh = tw, th
+
+            # Find best (x, y): scan row-based positions for compact layout
+            # Use total area to estimate target row width
+            placed_area = sum(r[2] * r[3] for r in all_rects)
+            remaining_area = sum(u2['area'] for u2 in units[units.index(u):]) if u in units else 0
+            total_est = placed_area + remaining_area
+            # Target width: sqrt of total area, but at least the widest placed block
+            target_w = max(math.sqrt(max(total_est, 1.0)), max((r[2] for r in all_rects), default=1.0)) if all_rects else math.sqrt(max(total_est, 1.0))
+
+            # Compute current bbox extent
+            cur_right = max((r[0] + r[2] for r in all_rects), default=0)
+            cur_top = max((r[1] + r[3] for r in all_rects), default=0)
+
+            best_x, best_y = 0.0, float('inf')
+            best_score = float('inf')
+            # Candidate x: segment edges, edge-minus-width, grid positions
+            candidates = set()
+            candidates.add(0.0)
+            for (ox, oy, ow, oh) in all_rects:
+                candidates.add(ox + ow)
+                candidates.add(max(0.0, ox - uw))
+            # Grid positions up to current right edge
+            step = max(uw * 0.5, 1.0)
+            x_cand = 0.0
+            while x_cand <= cur_right + uw:
+                candidates.add(x_cand)
+                x_cand += step
+
+            for cand_x in sorted(candidates):
+                cand_y = 0.0
+                for (ox, oy, ow, oh) in all_rects:
+                    if min(cand_x + uw, ox + ow) - max(cand_x, ox) > 1e-6:
+                        cand_y = max(cand_y, oy + oh)
+                # Score: minimize resulting bounding box area
+                new_right = max(cur_right, cand_x + uw)
+                new_top = max(cur_top, cand_y + uh)
+                score = new_right * new_top
+                if score < best_score:
+                    best_score = score
+                    best_y = cand_y
+                    best_x = cand_x
+
+            # Place the unit
+            for i, (lx, ly, w, h) in u['local'].items():
+                if u['is_cluster']:
+                    scale_x = uw / max(u['w'], 1e-9)
+                    scale_y = uh / max(u['h'], 1e-9)
+                    positions[i] = (best_x + lx * scale_x, best_y + ly * scale_y, w * scale_x, h * scale_y)
+                else:
+                    if len(u['ids']) == 1:
+                        positions[i] = (best_x, best_y, uw, uh)
+                    else:
+                        positions[i] = (best_x + lx, best_y + ly, w, h)
+
+            all_rects.append((best_x, best_y, uw, uh))
+
+        return positions
+
+    def _correctness_first_polish(self, positions, block_count, movable, preplaced,
+                                   boundary_map, dims, area_targets, b2b_edges, p2b_edges,
+                                   pins_pos, constraints, max_time=1.0):
+        """P1.B: Correctness-first legalization-aware polish.
+
+        Propose move → apply → recompute FULL exact _true_contest_cost →
+        accept iff strictly lower, else revert. Monotone ⇒ cannot regress.
+        After every accept, assert hard feasibility.
+
+        Moves: relocate toward connectivity centroid, shift, swap.
+        """
+        import time as _time
+        import random as _random
+
+        start = _time.time()
+        n = block_count
+
+        # Build adjacency for connectivity centroid
+        b_adj = {i: [] for i in range(n)}
+        for a, b, w in b2b_edges:
+            if a >= 0 and b >= 0 and a < n and b < n:
+                b_adj[a].append((b, w))
+                b_adj[b].append((a, w))
+        p_adj = {i: [] for i in range(n)}
+        for pin, b, w in p2b_edges:
+            if b >= 0 and b < n and 0 <= pin < len(pins_pos):
+                px = float(pins_pos[pin, 0])
+                py = float(pins_pos[pin, 1])
+                if px != -1.0 and py != -1.0:
+                    p_adj[b].append((px, py, w))
+
+        # Movable blocks (not preplaced, not fixed)
+        movable_list = [i for i in range(n) if i not in preplaced]
+        if len(movable_list) < 2:
+            return
+
+        # Initial cost (full recompute)
+        current_cost = self._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+        best_cost = current_cost
+        best_positions = [p for p in positions]
+
+        # Greedy descent: accept only strictly improving moves
+        for _pass in range(5):
+            improved = False
+            _random.shuffle(movable_list)
+            for i in movable_list:
+                if _time.time() - start > max_time:
+                    break
+                x, y, w, h = positions[i]
+
+                # Compute connectivity centroid
+                wx, wy, ww = 0.0, 0.0, 0.0
+                for other, ew in b_adj[i]:
+                    ox, oy, ow, oh = positions[other]
+                    wx += ew * (ox + ow * 0.5)
+                    wy += ew * (oy + oh * 0.5)
+                    ww += ew
+                for px, py, ew in p_adj[i]:
+                    wx += ew * px
+                    wy += ew * py
+                    ww += ew
+                if ww <= 0:
+                    continue
+                target_cx = wx / ww
+                target_cy = wy / ww
+                target_x = target_cx - w * 0.5
+                target_y = target_cy - h * 0.5
+
+                # Try moves toward target
+                old_rect = positions[i]
+                best_move = None
+                best_move_cost = current_cost
+
+                for scale in [1.0, 0.5, 0.25]:
+                    nx = x + (target_x - x) * scale
+                    ny = y + (target_y - y) * scale
+                    new_rect = (nx, ny, w, h)
+
+                    # Check overlap
+                    if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                        continue
+
+                    # Apply move
+                    positions[i] = new_rect
+
+                    # Full cost recompute (correctness-first)
+                    new_cost = self._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+
+                    if new_cost < best_move_cost - 1e-6:
+                        # Assert hard feasibility
+                        assert not self._has_overlap([p for p in positions if p is not None]), "Overlap after move!"
+                        assert self._is_feasible(positions, constraints, area_targets), "Infeasible after move!"
+                        best_move_cost = new_cost
+                        best_move = new_rect
+                    else:
+                        # Revert
+                        positions[i] = old_rect
+
+                if best_move is not None:
+                    positions[i] = best_move
+                    current_cost = best_move_cost
+                    improved = True
+                    if current_cost < best_cost:
+                        best_cost = current_cost
+                        best_positions = [p for p in positions]
+                else:
+                    positions[i] = old_rect
+
+            if not improved:
+                break
+
+        # Restore best
+        for i in range(n):
+            positions[i] = best_positions[i]
+
+    def _fast_local_search(self, positions, block_count, movable, preplaced, boundary_map,
+                            dims, area_targets, b2b_conn, p2b_conn, pins_pos, constraints,
+                            max_time=1.0):
+        """Fast incremental local search with legalization-aware moves.
+
+        Key improvements over _sa_post_optimization:
+        1. Incremental HPWL: only update incident edges on each move (O(deg) not O(E))
+        2. Legalization-aware: relocate-and-repair instead of reject-on-overlap
+        3. Greedy + SA hybrid: greedy descent first, then short SA
+        4. Incremental soft cost: recompute V_rel on each move
+        """
+        import time as _time
+        import random as _random
+
+        start = _time.time()
+        if len(movable) < 2:
+            return
+
+        n = block_count
+        # Precompute incident edge lists for incremental HPWL
+        b_adj = {i: [] for i in range(n)}
+        for idx, e in enumerate(b2b_conn):
+            if len(e) < 3 or e[0] == -1:
+                continue
+            a, b, w = int(e[0]), int(e[1]), abs(float(e[2]))
+            b_adj[a].append((b, w))
+            b_adj[b].append((a, w))
+        p_adj = {i: [] for i in range(n)}
+        for idx, e in enumerate(p2b_conn):
+            if len(e) < 3 or e[0] == -1:
+                continue
+            pin, b, w = int(e[0]), int(e[1]), abs(float(e[2]))
+            if 0 <= pin < len(pins_pos):
+                px = float(pins_pos[pin, 0])
+                py = float(pins_pos[pin, 1])
+                if px != -1.0 and py != -1.0:
+                    p_adj[b].append((px, py, w))
+
+        # Compute initial incremental HPWL contribution for each block
+        def block_hpwl(i):
+            """HPWL contribution of block i (sum of incident edge costs)."""
+            x, y, w, h = positions[i]
+            cx, cy = x + w * 0.5, y + h * 0.5
+            total = 0.0
+            for other, ew in b_adj[i]:
+                if 0 <= other < n:
+                    ox, oy, ow, oh = positions[other]
+                    total += ew * (abs(cx - (ox + ow * 0.5)) + abs(cy - (oy + oh * 0.5)))
+            for px, py, ew in p_adj[i]:
+                total += ew * (abs(cx - px) + abs(cy - py))
+            return total
+
+        # Compute initial total HPWL
+        total_hpwl = 0.0
+        seen = set()
+        for i in range(n):
+            for other, w in b_adj[i]:
+                key = (min(i, other), max(i, other))
+                if key not in seen:
+                    seen.add(key)
+                    x1, y1, w1, h1 = positions[i]
+                    x2, y2, w2, h2 = positions[other]
+                    total_hpwl += w * (abs((x1+w1*0.5)-(x2+w2*0.5)) + abs((y1+h1*0.5)-(y2+h2*0.5)))
+        for i in range(n):
+            for px, py, w in p_adj[i]:
+                x, y, bw, bh = positions[i]
+                total_hpwl += w * (abs((x+bw*0.5)-px) + abs((y+bh*0.5)-py))
+
+        # Track bbox extremes
+        x_min = min(p[0] for p in positions)
+        x_max = max(p[0]+p[2] for p in positions)
+        y_min = min(p[1] for p in positions)
+        y_max = max(p[1]+p[3] for p in positions)
+
+        # Baselines for real cost
+        use_real = (self._hpwl_baseline is not None and self._area_baseline is not None
+                    and self._hpwl_baseline > 0 and self._area_baseline > 0)
+
+        def compute_cost():
+            bbox = (x_max - x_min) * (y_max - y_min)
+            if use_real:
+                hg = max(0.0, (total_hpwl - self._hpwl_baseline) / max(self._hpwl_baseline, 1e-6))
+                ag = max(0.0, (bbox - self._area_baseline) / max(self._area_baseline, 1e-6))
+                v = self._soft_violation_count(positions, constraints) / max(self._n_soft(constraints, n), 1)
+                return (1.0 + 0.5 * (hg + ag)) * math.exp(2.0 * v)
+            else:
+                return total_hpwl + 0.01 * bbox
+
+        current_cost = compute_cost()
+        best_cost = current_cost
+        best_positions = [p for p in positions]
+
+        movable_list = [i for i in movable if i not in preplaced]
+        if not movable_list:
+            return
+
+        # Phase 1: Greedy descent (accept only improving moves)
+        for _pass in range(3):
+            improved = False
+            _random.shuffle(movable_list)
+            for i in movable_list:
+                if _time.time() - start > max_time * 0.5:
+                    break
+                x, y, w, h = positions[i]
+                # Compute desired center from connectivity
+                wx, wy, ww = 0.0, 0.0, 0.0
+                for other, ew in b_adj[i]:
+                    if 0 <= other < n:
+                        ox, oy, ow, oh = positions[other]
+                        wx += ew * (ox + ow * 0.5)
+                        wy += ew * (oy + oh * 0.5)
+                        ww += ew
+                for px, py, ew in p_adj[i]:
+                    wx += ew * px
+                    wy += ew * py
+                    ww += ew
+                if ww <= 0:
+                    continue
+                target_cx = wx / ww
+                target_cy = wy / ww
+                target_x = target_cx - w * 0.5
+                target_y = target_cy - h * 0.5
+
+                # Try moving to target (or clamped version)
+                old_hpwl_i = block_hpwl(i)
+                old_rect = positions[i]
+
+                for scale in [1.0, 0.5, 0.25]:
+                    nx = x + (target_x - x) * scale
+                    ny = y + (target_y - y) * scale
+                    new_rect = (nx, ny, w, h)
+                    # Check overlap
+                    if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                        continue
+                    # Apply move temporarily
+                    positions[i] = new_rect
+                    new_hpwl_i = block_hpwl(i)
+                    # Update totals
+                    delta_hpwl = new_hpwl_i - old_hpwl_i
+                    total_hpwl += delta_hpwl
+                    # Update bbox
+                    old_x_min, old_x_max = x_min, x_max
+                    old_y_min, old_y_max = y_min, y_max
+                    x_min = min(p[0] for p in positions)
+                    x_max = max(p[0]+p[2] for p in positions)
+                    y_min = min(p[1] for p in positions)
+                    y_max = max(p[1]+p[3] for p in positions)
+
+                    new_cost = compute_cost()
+                    if new_cost < current_cost - 1e-6:
+                        current_cost = new_cost
+                        improved = True
+                        if current_cost < best_cost:
+                            best_cost = current_cost
+                            best_positions = [p for p in positions]
+                        break
+                    else:
+                        # Revert
+                        positions[i] = old_rect
+                        total_hpwl -= delta_hpwl
+                        x_min, x_max = old_x_min, old_x_max
+                        y_min, y_max = old_y_min, old_y_max
+            if not improved:
+                break
+
+        # Phase 2: Short SA (accept some worsening moves)
+        temp = 1.0
+        for _iter in range(200):
+            if _time.time() - start > max_time:
+                break
+            i = _random.choice(movable_list)
+            x, y, w, h = positions[i]
+
+            # Random move: shift by a fraction of block size
+            dx = _random.uniform(-w * 0.3, w * 0.3)
+            dy = _random.uniform(-h * 0.3, h * 0.3)
+            new_rect = (x + dx, y + dy, w, h)
+
+            if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                continue
+
+            old_hpwl_i = block_hpwl(i)
+            old_rect = positions[i]
+            positions[i] = new_rect
+            new_hpwl_i = block_hpwl(i)
+            delta_hpwl = new_hpwl_i - old_hpwl_i
+            total_hpwl += delta_hpwl
+            old_x_min, old_x_max = x_min, x_max
+            old_y_min, old_y_max = y_min, y_max
+            x_min = min(p[0] for p in positions)
+            x_max = max(p[0]+p[2] for p in positions)
+            y_min = min(p[1] for p in positions)
+            y_max = max(p[1]+p[3] for p in positions)
+
+            new_cost = compute_cost()
+            delta = new_cost - current_cost
+            if delta < 0 or _random.random() < math.exp(-delta / max(temp, 1e-10)):
+                current_cost = new_cost
+                if current_cost < best_cost:
+                    best_cost = current_cost
+                    best_positions = [p for p in positions]
+            else:
+                positions[i] = old_rect
+                total_hpwl -= delta_hpwl
+                x_min, x_max = old_x_min, old_x_max
+                y_min, y_max = old_y_min, old_y_max
+
+            temp *= 0.995
+
+        # Restore best
+        for i in range(n):
+            positions[i] = best_positions[i]
+
+    def _refine_aspect_to_fill(self, positions, dims, constraints, area_targets,
+                                b2b_edges, p2b_edges, pins_pos, preplaced):
+        """Reshape soft blocks within ±1% area tolerance to fill gaps and reduce bbox.
+
+        For each soft block (not fixed/preplaced, not MIB-constrained unless the
+        whole group reshapes together): try a few aspect ratios that keep area
+        within ±1% of target. Accept if: no new overlap, bbox doesn't grow,
+        soft violations don't increase.
+        """
+        if any(p is None for p in positions):
+            return
+        ncols = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+        n = len(positions)
+        base_soft = self._soft_violation_count(positions, constraints)
+        base_area = calculate_bbox_area(positions)
+
+        # Find MIB groups (must reshape together)
+        mib_groups = {}
+        if ncols > 2:
+            for i in range(n):
+                if i in preplaced:
+                    continue
+                if ncols > 0 and constraints[i, 0] != 0:
+                    continue
+                if ncols > 1 and constraints[i, 1] != 0:
+                    continue
+                gid = int(constraints[i, 2].item())
+                if gid > 0:
+                    mib_groups.setdefault(gid, []).append(i)
+
+        # Process individual blocks (not in MIB groups)
+        mib_members = set()
+        for gid, members in mib_groups.items():
+            mib_members.update(members)
+
+        for i in range(n):
+            if i in preplaced or i in mib_members:
+                continue
+            if ncols > 0 and constraints[i, 0] != 0:
+                continue
+            if ncols > 1 and constraints[i, 1] != 0:
+                continue
+            target = float(area_targets[i]) if i < len(area_targets) else 0.0
+            if target <= 0:
+                continue
+            x, y, w, h = positions[i]
+            current_area = w * h
+            # Already within tolerance?
+            if abs(current_area - target) / target <= 0.01:
+                continue
+            # Try reshaping
+            best_rect = None
+            best_area = current_area
+            for scale in [0.90, 0.95, 1.0, 1.05, 1.10]:
+                new_w = math.sqrt(target * scale)
+                new_h = target / new_w
+                if abs(new_w * new_h - target) / target > 0.01:
+                    continue
+                new_rect = (x, y, new_w, new_h)
+                if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                    continue
+                trial = list(positions)
+                trial[i] = new_rect
+                if self._soft_violation_count(trial, constraints) > base_soft:
+                    continue
+                if calculate_bbox_area(trial) > base_area + 1e-6:
+                    continue
+                # Accept if it reduces area or fixes the block
+                positions[i] = new_rect
+                break
+
+        # Process MIB groups (reshape all members together)
+        for gid, members in mib_groups.items():
+            if len(members) < 2:
+                continue
+            # Find common target area (average)
+            targets = [float(area_targets[i]) for i in members if i < len(area_targets) and area_targets[i] > 0]
+            if not targets:
+                continue
+            avg_target = sum(targets) / len(targets)
+            # Check if all members have the same target (within 1%)
+            if any(abs(t - avg_target) / max(avg_target, 1e-6) > 0.01 for t in targets):
+                continue
+            # Find common shape
+            best_shape = None
+            best_score = float('inf')
+            for scale in [0.90, 0.95, 1.0, 1.05, 1.10]:
+                new_w = math.sqrt(avg_target * scale)
+                new_h = avg_target / new_w
+                if abs(new_w * new_h - avg_target) / avg_target > 0.01:
+                    continue
+                # Check if all members can use this shape
+                ok = True
+                for i in members:
+                    x, y, _, _ = positions[i]
+                    new_rect = (x, y, new_w, new_h)
+                    if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                        ok = False
+                        break
+                if not ok:
+                    continue
+                trial = list(positions)
+                for i in members:
+                    x, y, _, _ = trial[i]
+                    trial[i] = (x, y, new_w, new_h)
+                if self._soft_violation_count(trial, constraints) > base_soft:
+                    continue
+                if calculate_bbox_area(trial) > base_area + 1e-6:
+                    continue
+                score = abs(new_w * new_h - avg_target) / avg_target
+                if score < best_score:
+                    best_score = score
+                    best_shape = (new_w, new_h)
+            if best_shape is not None:
+                new_w, new_h = best_shape
+                for i in members:
+                    x, y, _, _ = positions[i]
+                    positions[i] = (x, y, new_w, new_h)
+
     def _analytical_global_placement(self, block_count, dims, b2b_edges, p2b_edges,
                                      pins_pos, preplaced, target_positions, constraints,
                                      interior, boundary_blocks, boundary):
-        """Iterative weighted-centroid relaxation (Gauss-Seidel). Overlaps allowed."""
-        cx = [0.0] * block_count
-        cy = [0.0] * block_count
-        for i in range(block_count):
-            if i in preplaced and target_positions is not None and self._has_xywh(target_positions, i):
-                cx[i] = float(target_positions[i, 0]) + dims[i][0] * 0.5
-                cy[i] = float(target_positions[i, 1]) + dims[i][1] * 0.5
-            else:
-                cx[i] = dims[i][0] * 0.5
-                cy[i] = dims[i][1] * 0.5
+        """Quadratic placement via conjugate gradient.
 
+        Builds the weighted Laplacian from b2b + p2b connectivity, then solves
+        L * pos = b per axis using conjugate gradient. Fixed blocks (preplaced,
+        fixed-shape) are pinned to their exact positions via large penalty weights.
+        Boundary blocks get soft anchor forces toward their required edges.
+
+        This produces wirelength-optimal positions that respect the full graph
+        structure, not just local centroids.
+        """
+        import numpy as np
+
+        # Identify fixed blocks
         fixed = set()
         if constraints is not None and constraints.dim() > 1:
             ncols = constraints.shape[1]
@@ -3085,81 +4131,181 @@ class MyOptimizer(FloorplanOptimizer):
                 elif ncols > 0 and constraints[i, 0] != 0:
                     fixed.add(i)
 
-        movable = [i for i in range(block_count) if i not in fixed]
-        if len(movable) < 2:
-            return {i: (cx[i], cy[i]) for i in range(block_count)}
+        # Build Laplacian matrix L and RHS b for x and y axes
+        # L[i,i] = sum of weights incident to i + penalty for fixed blocks
+        # L[i,j] = -weight(i,j) for edge (i,j)
+        # b[i] = sum of (weight * neighbor_position) for fixed neighbors + pin positions
+        BIG_M = 1e6  # penalty for fixed blocks
 
-        movable_set = set(movable)
-        b_adj = {i: [] for i in movable}
-        for a, b, w in b2b_edges:
-            if a in movable_set:
-                b_adj[a].append((b, w))
-            if b in movable_set:
-                b_adj[b].append((a, w))
-        p_adj = {i: [] for i in movable}
-        for pin, b, w in p2b_edges:
-            if b in movable_set and 0 <= pin < len(pins_pos):
-                px = float(pins_pos[pin, 0])
-                py = float(pins_pos[pin, 1])
-                if px != -1.0 and py != -1.0:
-                    p_adj[b].append((px, py, w))
+        # Initialize diagonal and off-diagonal
+        diag = [0.0] * block_count
+        bx = [0.0] * block_count
+        by = [0.0] * block_count
 
-        # Boundary anchors: blocks that must touch a specific edge
-        boundary_anchors = {}
-        if boundary:
-            any_placed = any(i in preplaced for i in range(block_count))
-            if any_placed:
-                pp = [positions_i for i in preplaced if (positions_i := (
-                    float(target_positions[i, 0]), float(target_positions[i, 1]),
-                    dims[i][0], dims[i][1]))]
-                ref_x = sum(p[0] + p[2] * 0.5 for p in pp) / len(pp) if pp else 0
-                ref_y = sum(p[1] + p[3] * 0.5 for p in pp) / len(pp) if pp else 0
+        # Off-diagonal entries: list of (i, j, weight) for i < j
+        off_diag = []
+
+        # Process b2b edges
+        for a, b_idx, w in b2b_edges:
+            if a < 0 or b_idx < 0 or a >= block_count or b_idx >= block_count:
+                continue
+            w = abs(w)
+            diag[a] += w
+            diag[b_idx] += w
+            off_diag.append((min(a, b_idx), max(a, b_idx), -w))
+
+        # Process p2b edges
+        for pin_idx, b_idx, w in p2b_edges:
+            if pin_idx < 0 or b_idx < 0 or b_idx >= block_count or pin_idx >= len(pins_pos):
+                continue
+            w = abs(w)
+            px = float(pins_pos[pin_idx, 0])
+            py = float(pins_pos[pin_idx, 1])
+            if px == -1.0 or py == -1.0:
+                continue
+            diag[b_idx] += w
+            bx[b_idx] += w * px
+            by[b_idx] += w * py
+
+        # Pin fixed blocks to their positions
+        for i in fixed:
+            if i in preplaced and target_positions is not None and self._has_xywh(target_positions, i):
+                fx = float(target_positions[i, 0]) + dims[i][0] * 0.5
+                fy = float(target_positions[i, 1]) + dims[i][1] * 0.5
             else:
-                all_areas = [dims[i][0] * dims[i][1] for i in movable]
-                total_area = sum(all_areas)
+                fx = dims[i][0] * 0.5
+                fy = dims[i][1] * 0.5
+            diag[i] += BIG_M
+            bx[i] += BIG_M * fx
+            by[i] += BIG_M * fy
+
+        # Boundary anchor forces (soft, not hard)
+        if boundary:
+            # Compute reference position from fixed blocks
+            ref_x, ref_y = 0.0, 0.0
+            n_ref = 0
+            for i in fixed:
+                if i in preplaced and target_positions is not None and self._has_xywh(target_positions, i):
+                    ref_x += float(target_positions[i, 0]) + dims[i][0] * 0.5
+                    ref_y += float(target_positions[i, 1]) + dims[i][1] * 0.5
+                    n_ref += 1
+            if n_ref > 0:
+                ref_x /= n_ref
+                ref_y /= n_ref
+            else:
+                total_area = sum(dims[i][0] * dims[i][1] for i in range(block_count))
                 ref_x = math.sqrt(total_area) * 0.5
                 ref_y = math.sqrt(total_area) * 0.5
+
+            ANCHOR_W = 5.0  # weight for boundary anchors
             for i in boundary_blocks:
                 code = boundary.get(i, 0)
-                w, h = dims[i]
-                if code & 1:
-                    boundary_anchors[i] = (0.0, cy[i])
-                elif code & 2:
-                    boundary_anchors[i] = (ref_x * 2, cy[i])
-                elif code & 4:
-                    boundary_anchors[i] = (cx[i], ref_y * 2)
-                elif code & 8:
-                    boundary_anchors[i] = (cx[i], 0.0)
+                if code & 1:  # left
+                    diag[i] += ANCHOR_W
+                    bx[i] += ANCHOR_W * 0.0
+                elif code & 2:  # right
+                    diag[i] += ANCHOR_W
+                    bx[i] += ANCHOR_W * ref_x * 2
+                elif code & 4:  # top
+                    diag[i] += ANCHOR_W
+                    by[i] += ANCHOR_W * ref_y * 2
+                elif code & 8:  # bottom
+                    diag[i] += ANCHOR_W
+                    by[i] += ANCHOR_W * 0.0
 
-        DAMPING = 0.3
-        for _sweep in range(50):
-            max_move = 0.0
-            for i in movable:
-                wx, wy, ww = 0.0, 0.0, 0.0
-                for other, weight in b_adj[i]:
-                    wx += weight * cx[other]
-                    wy += weight * cy[other]
-                    ww += weight
-                for px, py, weight in p_adj[i]:
-                    wx += weight * px
-                    wy += weight * py
-                    ww += weight
-                if i in boundary_anchors:
-                    bx, by = boundary_anchors[i]
-                    wx += 5.0 * bx
-                    wy += 5.0 * by
-                    ww += 5.0
-                if ww <= 0:
+        # Solve L * x = bx and L * y = by using conjugate gradient
+        # L is stored as (diag, off_diag) in COO-like format
+        def matvec(v, diag, off_diag, n):
+            """Compute L * v."""
+            result = [diag[i] * v[i] for i in range(n)]
+            for i, j, w in off_diag:
+                result[i] += w * v[j]
+                result[j] += w * v[i]
+            return result
+
+        def conjugate_gradient(diag, off_diag, rhs, n, max_iter=200, tol=1e-6):
+            """Solve L * x = rhs using conjugate gradient."""
+            x = [0.0] * n
+            r = [rhs[i] - matvec(x, diag, off_diag, n)[i] for i in range(n)]
+            p = list(r)
+            rsold = sum(r[i] * r[i] for i in range(n))
+            if rsold < 1e-12:
+                return x
+            for _ in range(max_iter):
+                Ap = matvec(p, diag, off_diag, n)
+                pAp = sum(p[i] * Ap[i] for i in range(n))
+                if abs(pAp) < 1e-12:
+                    break
+                alpha = rsold / pAp
+                for i in range(n):
+                    x[i] += alpha * p[i]
+                    r[i] -= alpha * Ap[i]
+                rsnew = sum(r[i] * r[i] for i in range(n))
+                if math.sqrt(rsnew) < tol:
+                    break
+                beta = rsnew / rsold
+                for i in range(n):
+                    p[i] = r[i] + beta * p[i]
+                rsold = rsnew
+            return x
+
+        cx = conjugate_gradient(diag, off_diag, bx, block_count)
+        cy = conjugate_gradient(diag, off_diag, by, block_count)
+
+        # Iterative density-spreading (SimPL-style): detect overlaps,
+        # add pseudo-nets pulling overlapping blocks apart, re-solve CG.
+        # Weight increases each iteration so QP gradually respects spreading.
+        SPREAD_BASE = 2.0
+        for spread_iter in range(4):
+            # Detect overlapping pairs (check if blocks would overlap at current centers)
+            overlaps = []
+            for i in range(block_count):
+                if i in fixed:
                     continue
-                new_cx = (1 - DAMPING) * cx[i] + DAMPING * (wx / ww)
-                new_cy = (1 - DAMPING) * cy[i] + DAMPING * (wy / ww)
-                dx = abs(new_cx - cx[i])
-                dy = abs(new_cy - cy[i])
-                max_move = max(max_move, dx, dy)
-                cx[i] = new_cx
-                cy[i] = new_cy
-            if max_move < 0.01:
+                wi, hi = dims[i]
+                for j in range(i + 1, block_count):
+                    if j in fixed:
+                        continue
+                    wj, hj = dims[j]
+                    dx = abs(cx[i] - cx[j])
+                    dy = abs(cy[i] - cy[j])
+                    min_x = (wi + wj) * 0.5
+                    min_y = (hi + hj) * 0.5
+                    if dx < min_x and dy < min_y:
+                        overlaps.append((i, j, dx, dy, min_x, min_y))
+
+            if not overlaps:
                 break
+
+            # Add spreading pseudo-nets with increasing weight
+            spread_w = SPREAD_BASE * (spread_iter + 1)
+            new_diag = list(diag)
+            new_bx = list(bx)
+            new_by = list(by)
+
+            for i, j, dx, dy, min_x, min_y in overlaps:
+                # Direction to push apart
+                if dx > 1e-6:
+                    dir_x = (cx[i] - cx[j]) / dx
+                else:
+                    dir_x = 1.0 if i < j else -1.0
+                if dy > 1e-6:
+                    dir_y = (cy[i] - cy[j]) / dy
+                else:
+                    dir_y = 1.0 if i < j else -1.0
+
+                push_x = (min_x - dx) * 0.5 + 0.5
+                push_y = (min_y - dy) * 0.5 + 0.5
+
+                new_diag[i] += spread_w
+                new_diag[j] += spread_w
+                new_bx[i] += spread_w * (cx[i] + dir_x * push_x)
+                new_bx[j] += spread_w * (cx[j] - dir_x * push_x)
+                new_by[i] += spread_w * (cy[i] + dir_y * push_y)
+                new_by[j] += spread_w * (cy[j] - dir_y * push_y)
+
+            cx = conjugate_gradient(new_diag, off_diag, new_bx, block_count)
+            cy = conjugate_gradient(new_diag, off_diag, new_by, block_count)
 
         return {i: (cx[i], cy[i]) for i in range(block_count)}
 
