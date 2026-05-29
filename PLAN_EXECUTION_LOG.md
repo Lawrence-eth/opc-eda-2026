@@ -54,6 +54,12 @@
 - SA for all cases (too slow for small cases)
 - Iterative QP + spreading (no improvement)
 - Aspect-ratio refinement (no effect)
+- Analytical path in portfolio for n>=100 (worse than shelf — legalization loses QP gains)
+- Density-spread QP in _analytical_global_placement (doesn't affect shelf path, analytical path still worse)
+
+**Key insight:** The shelf packer with degree-based ordering is already well-optimized for the big cases. The analytical/QP approach produces better wirelength targets but the contour-based legalization is worse than the shelf packer's degree-based ordering. The density-spread QP doesn't help because it only affects the analytical path, not the shelf path.
+
+**Best result:** sprint5_v9 — SA for n>=100 only, 0.18s avg, wins at median≤2.0s.
 
 ---
 
