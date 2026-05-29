@@ -129,29 +129,6 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 pass
 
-        # P1.B: Correctness-first polish (greedy descent on true contest cost)
-        if best_positions is not None and block_count >= 50:
-            try:
-                movable = set()
-                preplaced = set()
-                boundary = {}
-                if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
-                    for i in range(block_count):
-                        if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
-                            preplaced.add(i)
-                        else:
-                            movable.add(i)
-                            if constraints.shape[1] > 4:
-                                boundary[i] = int(constraints[i, 4].item())
-                dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
-                self._correctness_first_polish(
-                    best_positions, block_count, movable, preplaced, boundary,
-                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
-                    max_time=0.2
-                )
-            except Exception:
-                pass
-
         return best_positions if best_positions is not None else []
 
     def _build_portfolio(self, block_count):
