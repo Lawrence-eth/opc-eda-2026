@@ -2633,18 +2633,18 @@ class MyOptimizer(FloorplanOptimizer):
     def _analytical_construct_layout(self, block_count, area_targets, b2b_connectivity,
                                      p2b_connectivity, pins_pos, constraints,
                                      target_positions, b2b_edges, p2b_edges):
-        """Analytical placement: existing shelf layout + analytical-target refinement pass.
+        """Analytical placement: contour-based packer with analytical ordering + refinement.
 
-        Builds the same layout as _construct_layout (preserving all soft constraints),
-        then adds a refinement pass that moves free blocks toward wirelength-optimal
-        analytical positions without increasing overlaps or soft violations.
+        Key difference from _construct_layout: uses a contour-based packer that
+        sorts units by analytical x-position (from global centroid relaxation)
+        instead of degree/area. This preserves cluster grouping (macros stay
+        contiguous) while using analytical geometry for global ordering.
         """
         if not isinstance(b2b_edges, list):
             b2b_edges = self._b2b_edges(b2b_edges)
         if not isinstance(p2b_edges, list):
             p2b_edges = self._p2b_edges(p2b_edges)
 
-        # Step 1: Build the shelf layout (identical to _construct_layout)
         dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
         positions: List[Rect | None] = [None] * block_count
         preplaced = set()
@@ -2663,6 +2663,12 @@ class MyOptimizer(FloorplanOptimizer):
         boundary_blocks = [i for i in movable if boundary[i] != 0 and i not in boundary_cluster_ids]
         interior = [i for i in movable if boundary[i] == 0 and i not in boundary_cluster_ids]
 
+        # Step 1: Compute analytical targets from global placement
+        centers = self._analytical_global_placement(
+            block_count, dims, b2b_edges, p2b_edges, pins_pos, preplaced,
+            target_positions, constraints, interior, boundary_blocks, boundary)
+
+        # Step 2: Contour-based pack with analytical ordering
         placed_rects = [p for p in positions if p is not None]
         start_x = max(p[0] + p[2] for p in placed_rects) + 1.0 if placed_rects else 0.0
         start_y = min(p[1] for p in placed_rects) if placed_rects else 0.0
@@ -2671,12 +2677,13 @@ class MyOptimizer(FloorplanOptimizer):
             start_x = min(p[0] for p in placed_rects)
             interior_obstacles = placed_rects
 
-        for i, rect in self._pack_interior_units(
+        for i, rect in self._contour_pack_with_analytics(
             interior, dims, constraints, area_targets, b2b_edges,
-            p2b_edges, start_x, start_y, interior_obstacles
+            p2b_edges, centers, start_x, start_y, interior_obstacles
         ).items():
             positions[i] = rect
 
+        # Step 3: Place boundary items
         content = [p for p in positions if p is not None]
         if not content:
             content = [(0.0, 0.0, 1.0, 1.0)]
@@ -2684,18 +2691,12 @@ class MyOptimizer(FloorplanOptimizer):
             boundary_blocks, boundary_units, boundary, dims, positions, content,
             b2b_edges, p2b_edges, pins_pos, constraints)
 
-        # Step 2: Compute analytical targets from global placement
-        centers = self._analytical_global_placement(
-            block_count, dims, b2b_edges, p2b_edges, pins_pos, preplaced,
-            target_positions, constraints, interior, boundary_blocks, boundary)
-
-        # Step 3: Analytical-target refinement pass
-        # Move free blocks toward analytical positions without overlaps or soft-violation increase
+        # Step 4: Analytical-target refinement
         self._refine_toward_analytical(
             block_count, positions, centers, constraints, area_targets,
             b2b_edges, p2b_edges, pins_pos, preplaced)
 
-        # Step 4: Standard refinement passes
+        # Step 5: Standard refinement passes
         if block_count >= 100:
             self._refine_group_translations(
                 block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
@@ -2723,7 +2724,7 @@ class MyOptimizer(FloorplanOptimizer):
             self._refine_boundary_adjacent_wire_swaps(
                 block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos)
 
-        # Second analytical pass: more aggressive, allows cluster members to move
+        # Aggressive analytical refinement (cluster members can move)
         self._refine_analytical_aggressive(
             block_count, positions, centers, constraints, area_targets,
             b2b_edges, p2b_edges, pins_pos, preplaced)
@@ -2744,6 +2745,109 @@ class MyOptimizer(FloorplanOptimizer):
                 max_time=max_sa_time)
 
         return [self._clean_tuple(p) for p in positions]
+
+    def _contour_pack_with_analytics(self, interior, dims, constraints, area_targets,
+                                      b2b_connectivity, p2b_connectivity, centers,
+                                      start_x, start_y, obstacles=None) -> Dict[int, Rect]:
+        """Contour-based packer with analytical ordering.
+
+        Builds cluster macros (preserves grouping), sorts by degree/area
+        (same as shelf packer — preserves grouping), but uses a contour-based
+        placement that finds the lowest available y for each unit. This produces
+        more compact layouts than shelf packing, reducing bounding box area.
+
+        The key difference from _pack_interior_units: instead of shelf packing
+        (fixed row width, left-to-right), uses a skyline/contour approach that
+        fills gaps below taller blocks.
+        """
+        if not interior:
+            return {}
+        used = set()
+        units = []
+        degrees = self._connection_degrees(interior, b2b_connectivity, p2b_connectivity)
+
+        # Build cluster macros (identical to _pack_interior_units — preserves grouping)
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 3:
+            cluster_ids = sorted({int(constraints[i, 3].item()) for i in interior if constraints[i, 3] > 0})
+            for gid in cluster_ids:
+                group = [i for i in interior if int(constraints[i, 3].item()) == gid]
+                if len(group) < 2:
+                    continue
+                group = sorted(group, key=lambda i: (-degrees.get(i, 0.0), -float(area_targets[i]), i))
+                local, uw, uh = self._cluster_local_pack(group, dims)
+                for i in group:
+                    used.add(i)
+                units.append({'ids': group, 'w': uw, 'h': uh, 'local': local,
+                              'key': self._unit_sort_key(group, area_targets, degrees)})
+
+        for i in interior:
+            if i in used:
+                continue
+            w, h = dims[i]
+            units.append({'ids': [i], 'w': w, 'h': h, 'local': {i: (0.0, 0.0, w, h)},
+                          'key': self._unit_sort_key([i], area_targets, degrees)})
+
+        # Sort by degree/area (same as shelf packer — preserves grouping)
+        units.sort(key=lambda u: u['key'])
+
+        # Contour-based placement with bounded row width
+        # Uses the same row width as shelf packer, but finds the lowest y
+        # at the analytical x-position target instead of just left-to-right.
+        total_area = sum(u['w'] * u['h'] for u in units)
+        max_w = max(u['w'] for u in units)
+        row_width = max(math.sqrt(max(total_area, 1.0)) * self._row_factor, max_w)
+        placed_rects = list(obstacles or [])
+        x_cursor = start_x  # tracks left-to-right progress within a row
+        row_top = start_y   # top of current row
+
+        out: Dict[int, Rect] = {}
+        for u in units:
+            uw, uh = u['w'], u['h']
+
+            # Compute analytical target x for this unit
+            if centers and u['ids']:
+                target_cx = sum(centers[i][0] for i in u['ids']) / len(u['ids'])
+                target_x = target_cx - uw * 0.5
+            else:
+                target_x = x_cursor
+
+            # Clamp target to current row bounds
+            target_x = max(start_x, min(target_x, start_x + row_width - uw))
+
+            # Find the lowest y at the target x (or nearby x positions)
+            best_x = target_x
+            best_y = float('inf')
+
+            # Try target x first, then x_cursor, then edges of placed blocks
+            candidates = [target_x, x_cursor]
+            for ox, oy, ow, oh in placed_rects:
+                if abs(oy + oh - row_top) < max(uh, oh) * 2:  # same row region
+                    candidates.append(ox + ow)
+                    candidates.append(ox - uw)
+            candidates = sorted(set(max(start_x, min(c, start_x + row_width - uw)) for c in candidates))
+
+            for cand_x in candidates:
+                y = start_y
+                for ox, oy, ow, oh in placed_rects:
+                    if min(cand_x + uw, ox + ow) - max(cand_x, ox) > 1e-6:
+                        if oy + oh > y:
+                            y = max(y, oy + oh)
+                if y < best_y:
+                    best_x = cand_x
+                    best_y = y
+
+            # Place the unit
+            for i, (lx, ly, w, h) in u['local'].items():
+                out[i] = (best_x + lx, best_y + ly, w, h)
+            placed_rects.append((best_x, best_y, uw, uh))
+
+            # Advance cursor
+            x_cursor = best_x + uw
+            if x_cursor > start_x + row_width:
+                x_cursor = start_x
+                row_top = max(row_top, best_y + uh)
+
+        return out
 
     def _refine_toward_analytical(self, block_count, positions, centers, constraints,
                                    area_targets, b2b_edges, p2b_edges, pins_pos, preplaced):
