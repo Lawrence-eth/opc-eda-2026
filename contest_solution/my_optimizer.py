@@ -87,12 +87,6 @@ class MyOptimizer(FloorplanOptimizer):
             p2b_edges = self._p2b_edges(p2b_edges)
 
         dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
-        
-        # Force-directed centroid seeding: compute (x,y) targets from connectivity.
-        # This directly attacks HPWL which is the dominant quality issue.
-        centroid_targets = self._force_directed_centroids(
-            block_count, dims, b2b_edges, p2b_edges, pins_pos, constraints
-        )
         positions: List[Rect | None] = [None] * block_count
         preplaced = set()
         if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
@@ -115,9 +109,26 @@ class MyOptimizer(FloorplanOptimizer):
         boundary_blocks = [i for i in movable if boundary[i] != 0 and i not in boundary_cluster_ids]
         interior = [i for i in movable if boundary[i] == 0 and i not in boundary_cluster_ids]
 
-        # Sort interior blocks by centroid proximity for better HPWL
-        if centroid_targets and len(interior) > 1:
-            interior.sort(key=lambda i: (centroid_targets[i][0] + centroid_targets[i][1], i))
+        # Sort interior blocks by connectivity centroid for better HPWL.
+        # Connected blocks end up in adjacent rows/positions.
+        if len(interior) > 1:
+            # Compute weighted centroid index for each block
+            centroid_idx = {}
+            for i in interior:
+                wx, ww = 0.0, 0.0
+                for a, b, w in b2b_edges:
+                    if a == i:
+                        wx += w * b
+                        ww += w
+                    elif b == i:
+                        wx += w * a
+                        ww += w
+                for pin, b, w in p2b_edges:
+                    if b == i:
+                        wx += w * (len(positions) + pin)  # pins get high indices
+                        ww += w
+                centroid_idx[i] = wx / ww if ww > 0 else float(i)
+            interior.sort(key=lambda i: centroid_idx.get(i, float(i)))
 
         placed_rects = [p for p in positions if p is not None]
         if placed_rects:
@@ -134,6 +145,7 @@ class MyOptimizer(FloorplanOptimizer):
         # Pack non-boundary clusters as contiguous macro-blocks.  A horizontal
         # chain guarantees each member shares an edge with the next one, which
         # sharply lowers grouping violations while preserving exact areas.
+        # Use centroid targets to guide packing order for better HPWL.
         for i, rect in self._pack_interior_units(
             interior, dims, constraints, area_targets, b2b_edges,
             p2b_edges, start_x, start_y, interior_obstacles
@@ -1110,7 +1122,7 @@ class MyOptimizer(FloorplanOptimizer):
             base_area = 0.0
             base_cost = 0.0
 
-        passes = 12 if block_count >= 100 else 5
+        passes = 18 if block_count >= 100 else 8
         for _pass in range(passes):
             improved = False
             bbox = self._bbox(positions)
@@ -2102,6 +2114,87 @@ class MyOptimizer(FloorplanOptimizer):
             cx, cy = new_cx, new_cy
         
         return {i: (cx[i], cy[i]) for i in range(block_count)}
+
+    def _force_directed_refinement(self, interior, positions, dims, b2b_edges, p2b_edges, pins_pos, constraints):
+        """Iteratively move interior blocks toward connectivity centroids to reduce HPWL.
+
+        Each iteration computes the weighted centroid of each block's neighbors
+        and moves the block toward it if no overlap results.  This is a simple
+        Jacobi-style force-directed placement that works on top of the shelf layout.
+        """
+        if any(p is None for p in positions):
+            return
+        
+        ncols = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+        locked = set()
+        for i in interior:
+            if ncols > 0 and constraints[i, 0] != 0:
+                locked.add(i)
+            if ncols > 1 and constraints[i, 1] != 0:
+                locked.add(i)
+        
+        movable = [i for i in interior if i not in locked]
+        if len(movable) < 2:
+            return
+        
+        # Build adjacency for movable blocks
+        movable_set = set(movable)
+        adj = {i: [] for i in movable}
+        for a, b, w in b2b_edges:
+            if a in movable_set:
+                adj[a].append((b, w))
+            if b in movable_set:
+                adj[b].append((a, w))
+        pin_adj = {i: [] for i in movable}
+        for pin, b, w in p2b_edges:
+            if b in movable_set and 0 <= pin < len(pins_pos):
+                px = float(pins_pos[pin, 0])
+                py = float(pins_pos[pin, 1])
+                if px != -1.0 and py != -1.0:
+                    pin_adj[b].append((px, py, w))
+        
+        n = len(positions)
+        for _iter in range(5):
+            improved = False
+            for i in movable:
+                x, y, w, h = positions[i]
+                wx, wy, ww = 0.0, 0.0, 0.0
+                for other, weight in adj[i]:
+                    if 0 <= other < n and positions[other] is not None:
+                        ox, oy, ow, oh = positions[other]
+                        wx += weight * (ox + 0.5 * ow)
+                        wy += weight * (oy + 0.5 * oh)
+                        ww += weight
+                for px, py, weight in pin_adj[i]:
+                    wx += weight * px
+                    wy += weight * py
+                    ww += weight
+                if ww <= 0:
+                    continue
+                target_x = wx / ww - 0.5 * w
+                target_y = wy / ww - 0.5 * h
+                
+                # Try moving toward target
+                for scale in (0.5, 0.25, 0.1):
+                    nx = x + scale * (target_x - x)
+                    ny = y + scale * (target_y - y)
+                    new_rect = (nx, ny, w, h)
+                    # Check overlap
+                    overlap = False
+                    for j in range(n):
+                        if j == i or positions[j] is None:
+                            continue
+                        xj, yj, wj, hj = positions[j]
+                        if min(nx + w, xj + wj) - max(nx, xj) > 1e-6 and \
+                           min(ny + h, yj + hj) - max(ny, yj) > 1e-6:
+                            overlap = True
+                            break
+                    if not overlap:
+                        positions[i] = new_rect
+                        improved = True
+                        break
+            if not improved:
+                break
 
     def _order_blocks(self, blocks, area_targets, b2b_connectivity, p2b_connectivity):
         """Order blocks by weighted connectivity centroid (geometry-aware).
