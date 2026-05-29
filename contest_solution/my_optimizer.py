@@ -155,8 +155,10 @@ class MyOptimizer(FloorplanOptimizer):
     def _build_portfolio(self, block_count):
         """Build a fast, diverse portfolio."""
         configs = []
-        # Default shelf with SA (the baseline path — fast, proven)
-        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': False})
+        # Default shelf with SA for n>=100
+        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': block_count < 100})
+        # Analytical path (QP + contour pack, no SA)
+        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical', 'no_sa': True})
         return configs
 
     def _solve_one(self, cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
@@ -3833,6 +3835,61 @@ class MyOptimizer(FloorplanOptimizer):
 
         cx = conjugate_gradient(diag, off_diag, bx, block_count)
         cy = conjugate_gradient(diag, off_diag, by, block_count)
+
+        # Iterative density-spreading (SimPL-style): detect overlaps,
+        # add pseudo-nets pulling overlapping blocks apart, re-solve CG.
+        # Weight increases each iteration so QP gradually respects spreading.
+        SPREAD_BASE = 2.0
+        for spread_iter in range(4):
+            # Detect overlapping pairs (check if blocks would overlap at current centers)
+            overlaps = []
+            for i in range(block_count):
+                if i in fixed:
+                    continue
+                wi, hi = dims[i]
+                for j in range(i + 1, block_count):
+                    if j in fixed:
+                        continue
+                    wj, hj = dims[j]
+                    dx = abs(cx[i] - cx[j])
+                    dy = abs(cy[i] - cy[j])
+                    min_x = (wi + wj) * 0.5
+                    min_y = (hi + hj) * 0.5
+                    if dx < min_x and dy < min_y:
+                        overlaps.append((i, j, dx, dy, min_x, min_y))
+
+            if not overlaps:
+                break
+
+            # Add spreading pseudo-nets with increasing weight
+            spread_w = SPREAD_BASE * (spread_iter + 1)
+            new_diag = list(diag)
+            new_bx = list(bx)
+            new_by = list(by)
+
+            for i, j, dx, dy, min_x, min_y in overlaps:
+                # Direction to push apart
+                if dx > 1e-6:
+                    dir_x = (cx[i] - cx[j]) / dx
+                else:
+                    dir_x = 1.0 if i < j else -1.0
+                if dy > 1e-6:
+                    dir_y = (cy[i] - cy[j]) / dy
+                else:
+                    dir_y = 1.0 if i < j else -1.0
+
+                push_x = (min_x - dx) * 0.5 + 0.5
+                push_y = (min_y - dy) * 0.5 + 0.5
+
+                new_diag[i] += spread_w
+                new_diag[j] += spread_w
+                new_bx[i] += spread_w * (cx[i] + dir_x * push_x)
+                new_bx[j] += spread_w * (cx[j] - dir_x * push_x)
+                new_by[i] += spread_w * (cy[i] + dir_y * push_y)
+                new_by[j] += spread_w * (cy[j] - dir_y * push_y)
+
+            cx = conjugate_gradient(new_diag, off_diag, new_bx, block_count)
+            cy = conjugate_gradient(new_diag, off_diag, new_by, block_count)
 
         return {i: (cx[i], cy[i]) for i in range(block_count)}
 
