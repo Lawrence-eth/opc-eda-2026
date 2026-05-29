@@ -18,8 +18,9 @@
 | **Sprint 3** (analytical_v6) | 2.5211 | −0.03% | 100/100 | 70.2s / 3.5s | Aggressive analytical refinement |
 | **Sprint 3** (contour_v1) | **2.4690** | **−2.1%** | 100/100 | 66.9s / 3.2s | **Contour-based packer with analytical ordering** |
 | Sprint 3 (contour_v5) | 2.4690 | 0% | 100/100 | 65.0s / 3.2s | SA relocation moves, increased SA budget (no effect) |
+| Sprint 3 (quadratic_v1) | **2.4658** | **−0.13%** | 100/100 | 69.0s / 3.2s | **Quadratic placement via conjugate gradient** |
 
-**Total improvement:** 2.6326 → 2.4690 = **−6.2%**
+**Total improvement:** 2.6326 → 2.4658 = **−6.3%**
 
 ---
 
@@ -143,7 +144,7 @@ MyOptimizer(FloorplanOptimizer)
 
 ## What's Next — Remaining Levers (Status: Exhausted for Incremental Approach)
 
-### What Was Tried (All Failed to Improve Beyond 2.4690)
+### What Was Tried (All Failed to Improve Beyond 2.4658)
 
 | Approach | Result | Why It Failed |
 |----------|--------|---------------|
@@ -151,6 +152,8 @@ MyOptimizer(FloorplanOptimizer)
 | 200 relaxation sweeps | 2.4700 (same) | Already converged at 50 sweeps |
 | SA relocation moves | 2.4690 (same) | Moves rejected — creates overlaps or increases cost |
 | SA time budget increase (3s → 5s) | 2.4690 (same) | SA moves too limited to exploit more time |
+| **Quadratic placement (CG)** | **2.4658** | **−0.13%. Marginal improvement. 17 improved, 23 worsened.** |
+| Quadratic + centroid relaxation hybrid | 2.4722 (worse) | CG solution disrupted by relaxation |
 
 ### What Would Actually Break Past 2.47
 

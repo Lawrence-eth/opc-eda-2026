@@ -23,6 +23,37 @@ from iccad2026_evaluate import FloorplanOptimizer, calculate_bbox_area, calculat
 Rect = Tuple[float, float, float, float]
 
 
+def _worker_solve(args):
+    """Module-level worker for ProcessPoolExecutor. Returns (cfg_idx, positions, true_cost)."""
+    cfg_idx, cfg, block_count, area_targets_np, b2b_edges, p2b_edges, pins_pos_np, \
+        constraints_np, target_positions_np, hpwl_baseline, area_baseline = args
+
+    import torch as _torch
+    opt = MyOptimizer(verbose=False)
+    opt._hpwl_baseline = hpwl_baseline
+    opt._area_baseline = area_baseline
+    opt._baselines_by_n = {}
+
+    area_targets = _torch.tensor(area_targets_np, dtype=_torch.float32)
+    constraints = _torch.tensor(constraints_np, dtype=_torch.float32)
+    pins_pos = _torch.tensor(pins_pos_np, dtype=_torch.float32)
+    target_positions = _torch.tensor(target_positions_np, dtype=_torch.float32) if target_positions_np is not None else None
+    b2b_conn = _torch.tensor(b2b_edges, dtype=_torch.float32) if b2b_edges else _torch.zeros((0, 3))
+    p2b_conn = _torch.tensor(p2b_edges, dtype=_torch.float32) if p2b_edges else _torch.zeros((0, 3))
+
+    try:
+        positions = opt._solve_one(
+            cfg, block_count, area_targets, b2b_conn, p2b_conn,
+            pins_pos, constraints, target_positions, b2b_edges, p2b_edges
+        )
+        if positions:
+            tc = opt._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            return (cfg_idx, positions, tc)
+    except Exception:
+        pass
+    return (cfg_idx, None, float("inf"))
+
+
 class MyOptimizer(FloorplanOptimizer):
     def __init__(self, verbose: bool = False):
         super().__init__(verbose)
@@ -64,49 +95,97 @@ class MyOptimizer(FloorplanOptimizer):
         b2b_edges = self._b2b_edges(b2b_connectivity)
         p2b_edges = self._p2b_edges(p2b_connectivity)
 
-        # --- Shelf path (existing) ---
-        variants = self._layout_variants(block_count)
+        # Build portfolio of configs
+        configs = self._build_portfolio(block_count)
+
+        # Run portfolio: try each config, keep best by true contest cost
+        best_positions = None
+        best_true_cost = float("inf")
+
+        # For large cases with many configs, use parallel execution
+        if block_count >= 80 and len(configs) > 4:
+            try:
+                import concurrent.futures
+                import os
+                # Prepare worker args: convert tensors to numpy for pickling
+                area_np = area_targets.detach().cpu().numpy().tolist()
+                cons_np = constraints.detach().cpu().numpy().tolist() if constraints is not None else None
+                pins_np = pins_pos.detach().cpu().numpy().tolist() if pins_pos is not None else None
+                tp_np = target_positions.detach().cpu().numpy().tolist() if target_positions is not None else None
+
+                worker_args = []
+                for idx, cfg in enumerate(configs):
+                    worker_args.append((
+                        idx, cfg, block_count, area_np, b2b_edges, p2b_edges,
+                        pins_np, cons_np, tp_np, self._hpwl_baseline, self._area_baseline
+                    ))
+
+                pool_size = min(len(configs), os.cpu_count() or 8, 32)
+                with concurrent.futures.ProcessPoolExecutor(max_workers=pool_size) as executor:
+                    for cfg_idx, positions, tc in executor.map(_worker_solve, worker_args):
+                        if positions and tc < best_true_cost:
+                            best_true_cost = tc
+                            best_positions = positions
+                if best_positions is not None:
+                    return best_positions
+            except Exception as e:
+                # Fallback to serial if parallel fails
+                pass
+
+        # Serial fallback (or small cases)
+        if best_positions is None:
+            for cfg in configs:
+                try:
+                    positions = self._solve_one(
+                        cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                        pins_pos, constraints, target_positions, b2b_edges, p2b_edges
+                    )
+                    if positions:
+                        tc = self._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+                        if tc < best_true_cost:
+                            best_true_cost = tc
+                            best_positions = positions
+                except Exception:
+                    pass
+
+        return best_positions if best_positions is not None else []
+
+    def _build_portfolio(self, block_count):
+        """Build a diverse portfolio of configs for multi-start."""
+        configs = []
+        # Existing tuned variants (shelf path)
+        for rf, sc, lc in self._layout_variants(block_count):
+            configs.append({'row_factor': rf, 'small_cluster': sc, 'large_cluster': lc, 'path': 'shelf'})
+        # Analytical path with default params
+        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical'})
+        # Diversified shelf variants (vary row_factor) — fewer for runtime
+        for rf in [0.80, 1.00, 1.10]:
+            configs.append({'row_factor': rf, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf'})
+        # Diversified analytical variants
+        for rf in [0.80, 1.00]:
+            configs.append({'row_factor': rf, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical'})
+        return configs
+
+    def _solve_one(self, cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                   pins_pos, constraints, target_positions, b2b_edges, p2b_edges):
+        """Run one config and return positions."""
         original = (self._row_factor, self._small_cluster_factor, self._large_cluster_factor)
-        shelf_best = None
-        shelf_cost = float("inf")
         try:
-            for row_factor, small_cluster, large_cluster in variants:
-                self._row_factor = row_factor
-                self._small_cluster_factor = small_cluster
-                self._large_cluster_factor = large_cluster
-                positions = self._construct_layout(
+            self._row_factor = cfg['row_factor']
+            self._small_cluster_factor = cfg['small_cluster']
+            self._large_cluster_factor = cfg['large_cluster']
+            if cfg['path'] == 'analytical':
+                return self._analytical_construct_layout(
                     block_count, area_targets, b2b_connectivity, p2b_connectivity,
                     pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
-                cost = self._selection_cost(
-                    positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            else:
+                return self._construct_layout(
+                    block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                    pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
-                if cost < shelf_cost:
-                    shelf_cost = cost
-                    shelf_best = positions
         finally:
             self._row_factor, self._small_cluster_factor, self._large_cluster_factor = original
-
-        # --- Analytical path (new: global placement -> legalize -> compact -> refine) ---
-        analytical_best = None
-        analytical_cost = float("inf")
-        try:
-            analytical_positions = self._analytical_construct_layout(
-                block_count, area_targets, b2b_connectivity, p2b_connectivity,
-                pins_pos, constraints, target_positions, b2b_edges, p2b_edges
-            )
-            if analytical_positions:
-                analytical_cost = self._selection_cost(
-                    analytical_positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
-                )
-                analytical_best = analytical_positions
-        except Exception:
-            pass  # fall back to shelf if analytical fails
-
-        # --- Guardrail: keep whichever is better ---
-        if analytical_best is not None and analytical_cost < shelf_cost - 1e-6:
-            return analytical_best
-        return shelf_best if shelf_best is not None else []
 
     def _construct_layout(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
                           p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
@@ -248,7 +327,7 @@ class MyOptimizer(FloorplanOptimizer):
 
         if block_count >= 50 and len(movable) >= 2:
             # Bounded SA budget: cap at 3s to prevent runtime bombs on 80-99 band.
-            max_sa_time = min(5.0, max(2.0, block_count * 0.03))
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_post_optimization(
                 positions, block_count, set(movable), preplaced, boundary,
                 dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
@@ -1994,6 +2073,64 @@ class MyOptimizer(FloorplanOptimizer):
         area_scale = max(math.sqrt(max(target_area, 1.0)), 1.0)
         return hpwl + 0.08 * bbox_area + soft * area_scale * 180.0
 
+    def _n_soft(self, constraints, block_count):
+        """Compute N_soft normalization constant (max possible soft violations)."""
+        if constraints is None or constraints.dim() <= 1 or constraints.shape[1] < 1:
+            return 0
+        n = min(block_count, len(constraints))
+        ncols = constraints.shape[1]
+        s = 0
+        if ncols > 4:
+            s += int((constraints[:n, 4] != 0).sum().item())
+        if ncols > 2:
+            mib = constraints[:n, 2]
+            max_g = int(mib.max().item()) if mib.numel() else 0
+            for g in range(1, max_g + 1):
+                s += max(0, int((mib == g).sum().item()) - 1)
+        if ncols > 3:
+            cl = constraints[:n, 3]
+            max_g = int(cl.max().item()) if cl.numel() else 0
+            for g in range(1, max_g + 1):
+                s += max(0, int((cl == g).sum().item()) - 1)
+        return s
+
+    def _is_feasible(self, positions, constraints, area_targets):
+        """Check hard constraints: no overlaps, area tolerance ±1%, fixed/preplaced dims."""
+        n = len(positions)
+        for i in range(n):
+            x1, y1, w1, h1 = positions[i]
+            for j in range(i + 1, n):
+                x2, y2, w2, h2 = positions[j]
+                if (min(x1 + w1, x2 + w2) - max(x1, x2) > 1e-6 and
+                        min(y1 + h1, y2 + h2) - max(y1, y2) > 1e-6):
+                    return False
+        ncols = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+        for i in range(n):
+            if ncols > 0 and constraints[i, 0] != 0:
+                continue
+            if ncols > 1 and constraints[i, 1] != 0:
+                continue
+            t = float(area_targets[i]) if i < len(area_targets) else 0.0
+            if t <= 0:
+                continue
+            w, h = positions[i][2], positions[i][3]
+            if abs(w * h - t) / t > 0.01 + 1e-9:
+                return False
+        return True
+
+    def _true_contest_cost(self, positions, constraints, area_targets, b2b, p2b, pins_pos):
+        """Compute the exact contest cost for final selection (not proxy)."""
+        if self._hpwl_baseline is None or self._area_baseline is None:
+            return self._selection_cost(positions, constraints, area_targets, b2b, p2b, pins_pos)
+        if not self._is_feasible(positions, constraints, area_targets):
+            return 10.0
+        hpwl = calculate_hpwl_b2b(positions, b2b) + calculate_hpwl_p2b(positions, p2b, pins_pos)
+        bbox = calculate_bbox_area(positions)
+        hg = max(0.0, (hpwl - self._hpwl_baseline) / max(self._hpwl_baseline, 1e-6))
+        ag = max(0.0, (bbox - self._area_baseline) / max(self._area_baseline, 1e-6))
+        v = self._soft_violation_count(positions, constraints) / max(self._n_soft(constraints, len(positions)), 1)
+        return (1.0 + 0.5 * (hg + ag)) * math.exp(2.0 * v)
+
     def _soft_violation_count(self, positions, constraints):
         if constraints is None or constraints.dim() <= 1 or len(constraints) < len(positions):
             return 0
@@ -2782,7 +2919,7 @@ class MyOptimizer(FloorplanOptimizer):
 
         # SA post-optimization with analytical centers for relocation moves
         if block_count >= 50 and len(movable) >= 2:
-            max_sa_time = min(5.0, max(2.0, block_count * 0.03))
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_centers = centers  # pass analytical centers to SA for relocation
             try:
                 self._sa_post_optimization(
