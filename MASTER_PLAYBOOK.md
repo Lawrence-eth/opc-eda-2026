@@ -8,6 +8,29 @@
 ---
 ---
 
+# PART 0 — CURRENT STATE & CRITICAL PATH (updated 2026-05-29, after Sprint 6 round 1)
+
+**HEAD = sprint5_v9-equivalent: local 2.7182, 0.18s avg, 100/100. This is the best committed solution and is hard to beat because it sits at the runtime floor.** Sprint 6 round 1 tested P0, P1.A, P1.B — all reverted. The reverts were CORRECT and the evidence has converged on one root cause. Read this before navigating Part III.
+
+### What Sprint 6 round 1 proved (3 experiments, 1 conclusion)
+1. **P0 fast portfolio (construction-only members, persistent pool): reverted.** Persistent pool worked, but quality only reached **2.670** vs v9's 2.718 (a mere 1.8% gain) at 2.3× the runtime (0.41s). Runtime-adjusted, **v9 dominates at every median up to ~5s** (verified via `score_real.py`). **Correction to an earlier planning claim:** portfolio_v1's 2.40 quality came from its *per-member SA*, NOT from member diversity. **Diversity alone is not a quality lever.** Do not pursue construction-only portfolios for quality.
+2. **P1.A shape-aware packing: reverted — 15/100 feasible.** Giving soft blocks non-square aspect ratios makes the **shelf packer produce overlaps** (its fixed-row-height model can't absorb wider/shorter blocks). The shape lever (the biggest area opportunity, II.2) is real but **the shelf packer physically cannot exploit it.**
+3. **P1.B correctness-first polish (full-recompute greedy): reverted.** Regression-proof and feasible (good — the discipline works), but **full true-cost recompute per move is too slow** (+0.16s for ~nil gain) and the moves are still weak.
+
+### The converged conclusion → THE CRITICAL PATH
+**The shelf packer is the quality ceiling, proven three independent ways** (can't do shapes; diversity around it doesn't help; polishing its output is too slow for the gain). Patching it is exhausted. **The next move is not optional and not cheap: replace the packer.**
+
+➡️ **CRITICAL PATH = build a skyline/tetris packer with integrated shape (aspect-ratio) selection** — see the new **Part IV.PACKER** spec below. This is the substrate that (a) unlocks the 52%→~96% utilization win (the single biggest quality lever), (b) is feasible *by construction* (skyline never overlaps), and (c) is fast (O(n log n)). It is a lighter, lower-risk first step than full topological SA (P2) and likely captures most of the area win. Everything else (incremental polish P1.B, topological SA P2) layers on top of it.
+
+### Revised navigation (overrides Part III until the packer lands)
+You are at **STATE: PACKER**. Do Part IV.PACKER. Gate: prototype must hit **>0.70 utilization on cases 99/97/95 standalone** before integration; integrated result must beat v9 runtime-adjusted at median∈{1,2,3}s, 100/100. On pass → resume Part III at STATE 2 (P2) with the new packer as substrate. Do NOT spend more runtime to win (v9 is at the floor); win on QUALITY at v9-level runtime (~0.2–0.4s).
+
+### Standing correction to strategy
+Quality comes from **a better packer + a fast optimizer**, not from portfolio breadth and not from spending more wall-clock. Target: match v9's runtime (~0.2–0.4s, at floor) while cutting hpwl_gap/area_gap. Stop re-testing portfolio-diversity and shape-on-shelf (both are now dead-ends, II.6).
+
+---
+---
+
 # PART I — INVARIANTS (these never change; everything is judged against them)
 
 ### I.1 Mission
@@ -83,7 +106,7 @@ _analytical_legalize     :3632
 ```
 
 ### II.6 Consolidated DEAD-ENDS (do NOT retry; from all sprints)
-BFS ordering; multi-start SA as built; force-directed refinement under hard overlap-reject; centroid sorting; equal-area/overlap-reject position swaps; compaction-to-origin; **analytical x-ordering without cluster super-blocks** (41–58 soft viols); **linear QP without spreading**; QP+relaxation hybrid; real-cost in the *tuned* variant loop; 200 relaxation sweeps; **per-case process-pool creation** (self-inflicted overhead); **portfolio of heavy-SA members** (runtime blowup); **density-spread QP fed only into the losing analytical path**; **incremental-HPWL local search built incrementally-first** (broke, 83 worsened — must be correctness-first); **aspect-ratio fitting bolted onto the weak SA** (no effect — but see II.2: aspect IS a top lever when done in a real packer); **sacrificing quality for sub-floor speed**.
+BFS ordering; multi-start SA as built; force-directed refinement under hard overlap-reject; centroid sorting; equal-area/overlap-reject position swaps; compaction-to-origin; **analytical x-ordering without cluster super-blocks** (41–58 soft viols); **linear QP without spreading**; QP+relaxation hybrid; real-cost in the *tuned* variant loop; 200 relaxation sweeps; **per-case process-pool creation** (self-inflicted overhead); **portfolio of heavy-SA members** (runtime blowup); **density-spread QP fed only into the losing analytical path**; **incremental-HPWL local search built incrementally-first** (broke, 83 worsened — must be correctness-first); **aspect-ratio fitting bolted onto the weak SA** (no effect — but see II.2: aspect IS a top lever when done in a real packer); **sacrificing quality for sub-floor speed**. **[Sprint 6] construction-only portfolio for quality** (diversity ≠ quality; only 2.67 vs 2.72); **non-square shapes on the shelf packer** (15/100 feasible — shelf row model can't absorb them; needs the Part IV.PACKER skyline packer); **full-recompute polish at scale** (too slow per move — must use incremental cost from a verified-correct base).
 
 ---
 ---
@@ -157,6 +180,29 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 1. **Correctness first (regression-proof):** greedy hill-climb on a copy of the best layout; propose move → apply → **recompute FULL exact `_true_contest_cost`** → accept iff strictly lower, else revert. Monotone ⇒ cannot regress. After every accept, **assert hard feasibility** (overlap/area/preplaced). Validate true-cost improvement + feasibility on cases 99,97,95 before wiring in (best-of gated).
 2. **Repair-not-reject moves** (preserve hard constraints): (a) relocate block toward connectivity centroid / into a gap, ripple-push the few overlappers along min-displacement axis; (b) unequal swap + local re-legalize; (c) row/slab inward shift then re-touch boundary; (d) aspect reshape (P1.A); (e) cluster rigid-move toward centroid.
 3. **Only then add incremental cost** (per-net HPWL via incident edges using adjacency near :3200; bbox via tracked extremes; soft via per-cluster components / per-MIB shape sets) — **with a debug assert `incremental≈full` every N moves.** Greedy sweeps → short SA tail (exact incremental cost, true `exp(2·V_rel)`, not frozen). Run a few parallel chains on the pool; keep best.
+
+## IV.PACKER — Skyline/tetris packer with shape selection  *(CRITICAL PATH; build this next)*
+
+**Why:** the shelf packer is the proven ceiling (Part 0). A skyline packer is feasible-by-construction, fast (O(n log n)), and is the only substrate that can exploit the shape lever (II.2: golden = 96% util via aspect ≤3:1; we are at 52%).
+
+**Core data structure — skyline (a.k.a. contour/Bottom-Left-Fill):**
+- Maintain the upper contour of placed blocks as a list of horizontal segments `(x_start, x_end, height)`.
+- To place a block of footprint (w,h): scan candidate x-positions (segment left edges and preplaced-obstacle edges); for each, the landing y = max contour height over [x, x+w]; choose the (x) that minimizes a placement score (primary: resulting max-contour-height / wasted area beneath; tie-break: proximity to the block's connectivity-centroid x for HPWL). Update the contour. This **never overlaps** (y is always above the contour).
+- Preplaced blocks: initialize the contour to include them as fixed obstacles (raise the contour over their footprint to their top); movable blocks then pack around them automatically. This is how obstacles are handled cleanly — no special cases.
+
+**Shape selection (the lever):** when placing a soft block, do NOT use a fixed (w,h). Enumerate a small set of aspect ratios r∈{1.0,1.3,1.6,2.0,2.5,3.0} (and their transposes), each giving (w,h)=(√(area·r), √(area/r)) renormalized so `|w·h−target|/target ≤ 0.01`. Pick the (r, orientation) that best fills the current contour notch — e.g. width matching a valley, or the shape that minimizes contour-height increase. This is "strip packing with resizable items." MIB group: pick ONE shared shape for all members. Boundary blocks: bias shape/placement so the block can touch its required edge.
+
+**Ordering:** try several orders as cheap portfolio members (we have the pool): (a) decreasing area (classic BLF), (b) decreasing max-side, (c) connectivity-centroid sweep with clusters as super-blocks (super-blocks mandatory — bare analytical x-order is a dead-end). Pack clusters as contiguous macro-blocks (reuse `_cluster_local_pack`).
+
+**Aspect ratio is free re HPWL:** changing (w,h) does not move a block's center, so it has zero HPWL cost — it is a pure area/boundary lever. You may even exceed 3:1 (evaluator doesn't check aspect; backlog item 2) — test it.
+
+**De-risked build & validation (avoid the try→revert trap):**
+1. Build the packer as a STANDALONE function. **First milestone: on cases 99, 97, 95, measure raw utilization directly** (Σarea/bbox). Gate: **>0.70** (vs current ~0.52) before any integration. If <0.70, iterate the placement score / shape set in isolation — do NOT touch `solve()` yet.
+2. Assert feasibility (no overlap, areas within ±1%, preplaced untouched) inside the packer.
+3. Only after the standalone util gate passes: add it as a portfolio path (`'path':'skyline'`) selected by `_true_contest_cost`; it can only help (best-of gated).
+4. Then layer the P1.B incremental polish on its output, and use it as the P2 seed.
+
+**Acceptance:** beats v9 runtime-adjusted at median∈{1,2,3}s, 100/100, at ~v9 runtime (≤~0.4s). Expect the area_gap to be the first big mover. Tag `s6_packer`.
 
 ## IV.P2 — Topological-representation SA  *(STATE 2; structural HPWL+area fix, high ceiling)*
 

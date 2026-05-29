@@ -347,8 +347,6 @@ class MyOptimizer(FloorplanOptimizer):
             if i in used:
                 continue
             w, h = dims[i]
-            # P1.A: shape-aware packing — use near-square for now
-            # (wider shapes break feasibility with shelf packer)
             units.append({'ids': [i], 'w': w, 'h': h, 'local': {i: (0.0, 0.0, w, h)},
                           'key': self._unit_sort_key([i], area_targets, degrees)})
         units.sort(key=lambda u: u['key'])
