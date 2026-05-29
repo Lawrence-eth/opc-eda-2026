@@ -35,8 +35,8 @@ def _worker_solve(args):
     opt._baselines_by_n = {}
 
     area_targets = _torch.tensor(area_targets_np, dtype=_torch.float32)
-    constraints = _torch.tensor(constraints_np, dtype=_torch.float32)
-    pins_pos = _torch.tensor(pins_pos_np, dtype=_torch.float32)
+    constraints = _torch.tensor(constraints_np, dtype=_torch.float32) if constraints_np is not None else None
+    pins_pos = _torch.tensor(pins_pos_np, dtype=_torch.float32) if pins_pos_np is not None else None
     target_positions = _torch.tensor(target_positions_np, dtype=_torch.float32) if target_positions_np is not None else None
     b2b_conn = _torch.tensor(b2b_edges, dtype=_torch.float32) if b2b_edges else _torch.zeros((0, 3))
     p2b_conn = _torch.tensor(p2b_edges, dtype=_torch.float32) if p2b_edges else _torch.zeros((0, 3))
@@ -52,6 +52,20 @@ def _worker_solve(args):
     except Exception:
         pass
     return (cfg_idx, None, float("inf"))
+
+
+# P0.1: Persistent pool — created once, reused across all 100 cases
+_POOL = None
+_POOL_SIZE = None
+
+def _get_pool():
+    global _POOL, _POOL_SIZE
+    if _POOL is None:
+        import os
+        _POOL_SIZE = min(os.cpu_count() or 8, 32)
+        import concurrent.futures
+        _POOL = concurrent.futures.ProcessPoolExecutor(max_workers=_POOL_SIZE)
+    return _POOL
 
 
 class MyOptimizer(FloorplanOptimizer):
@@ -99,18 +113,13 @@ class MyOptimizer(FloorplanOptimizer):
         b2b_edges = self._b2b_edges(b2b_connectivity)
         p2b_edges = self._p2b_edges(p2b_connectivity)
 
-        # Hard per-case time budget
-        time_budget = min(1.5, 0.4 + block_count * 0.01)
-
-        # Stage 1: fast constructors (NO SA) — parallel when many configs
+        # P0.2: Real portfolio — construction-only members (no SA), parallel via persistent pool
         configs = self._build_portfolio(block_count)
         best_positions = None
         best_true_cost = float("inf")
 
-        if block_count >= 50 and len(configs) > 2:
+        if block_count >= 21 and len(configs) > 1:
             try:
-                import concurrent.futures
-                import os
                 area_np = area_targets.detach().cpu().numpy().tolist()
                 cons_np = constraints.detach().cpu().numpy().tolist() if constraints is not None else None
                 pins_np = pins_pos.detach().cpu().numpy().tolist() if pins_pos is not None else None
@@ -123,42 +132,62 @@ class MyOptimizer(FloorplanOptimizer):
                         pins_np, cons_np, tp_np, self._hpwl_baseline, self._area_baseline
                     ))
 
-                pool_size = min(len(configs), os.cpu_count() or 8, 32)
-                with concurrent.futures.ProcessPoolExecutor(max_workers=pool_size) as executor:
-                    for cfg_idx, positions, tc in executor.map(_worker_solve, worker_args):
-                        if positions and tc < best_true_cost:
-                            best_true_cost = tc
-                            best_positions = positions
+                pool = _get_pool()
+                for cfg_idx, positions, tc in pool.map(_worker_solve, worker_args):
+                    if positions and tc < best_true_cost:
+                        best_true_cost = tc
+                        best_positions = positions
             except Exception:
-                pass  # fall through to serial
+                # Serial fallback
+                for cfg in configs:
+                    try:
+                        positions = self._solve_one(
+                            cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                            pins_pos, constraints, target_positions, b2b_edges, p2b_edges
+                        )
+                        if positions:
+                            tc = self._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+                            if tc < best_true_cost:
+                                best_true_cost = tc
+                                best_positions = positions
+                    except Exception:
+                        pass
 
-        # Serial execution (for small portfolios or when parallel fails)
-        if best_positions is None:
-            for cfg in configs:
-                try:
-                    positions = self._solve_one(
-                        cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
-                        pins_pos, constraints, target_positions, b2b_edges, p2b_edges
-                    )
-                    if positions:
-                        tc = self._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
-                        if tc < best_true_cost:
-                            best_true_cost = tc
-                            best_positions = positions
-                except Exception:
-                    pass
-
-        # Stage 2: no additional polish (fast local search reverted — hurt quality)
+        # P0.3: One shared polish — SA on the winner only, hard time-budgeted
+        elapsed = _time.time() - _start
+        remaining = max(0.0, min(1.5, 0.4 + block_count * 0.01) - elapsed)
+        if best_positions is not None and remaining > 0.2 and block_count >= 50:
+            try:
+                movable = set()
+                preplaced = set()
+                boundary = {}
+                if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+                    for i in range(block_count):
+                        if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
+                            preplaced.add(i)
+                        else:
+                            movable.add(i)
+                            if constraints.shape[1] > 4:
+                                boundary[i] = int(constraints[i, 4].item())
+                dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
+                self._sa_post_optimization(
+                    best_positions, block_count, movable, preplaced, boundary,
+                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                    max_time=min(remaining, 0.5)
+                )
+            except Exception:
+                pass
 
         return best_positions if best_positions is not None else []
 
     def _build_portfolio(self, block_count):
-        """Build a fast, diverse portfolio."""
+        """P0.2: Real portfolio — construction-only + shelf-with-SA."""
         configs = []
-        # Default shelf with SA for n>=100
-        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': block_count < 100})
-        # Analytical path (QP + contour pack, no SA)
-        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical', 'no_sa': True})
+        # Shelf variants: diverse row_factor values (construction-only, fast)
+        for rf in [0.70, 0.90, 1.00, 1.20]:
+            configs.append({'row_factor': rf, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': True})
+        # Shelf with SA (the proven quality path)
+        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': False})
         return configs
 
     def _solve_one(self, cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
@@ -253,7 +282,8 @@ class MyOptimizer(FloorplanOptimizer):
             b2b_edges, p2b_edges, pins_pos, constraints
         )
 
-        if block_count >= 100:
+        # Refinement passes (skip in construction-only mode for speed)
+        if block_count >= 100 and not getattr(self, '_no_sa', False):
             self._refine_group_translations(
                 block_count, positions, constraints, area_targets,
                 b2b_edges, p2b_edges, pins_pos
@@ -290,7 +320,7 @@ class MyOptimizer(FloorplanOptimizer):
                 block_count, positions, constraints, area_targets,
                 b2b_edges, p2b_edges, pins_pos
             )
-        if block_count < 100:
+        if block_count < 100 and not getattr(self, '_no_sa', False):
             # Extended to all block counts >= 50 (previously skipped for < 100).
             # These cases have unused runtime budget and can benefit from refinement.
             self._refine_group_translations(
