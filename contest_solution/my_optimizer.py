@@ -85,7 +85,14 @@ class MyOptimizer(FloorplanOptimizer):
             b2b_edges = self._b2b_edges(b2b_edges)
         if not isinstance(p2b_edges, list):
             p2b_edges = self._p2b_edges(p2b_edges)
+
         dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
+        
+        # Force-directed centroid seeding: compute (x,y) targets from connectivity.
+        # This directly attacks HPWL which is the dominant quality issue.
+        centroid_targets = self._force_directed_centroids(
+            block_count, dims, b2b_edges, p2b_edges, pins_pos, constraints
+        )
         positions: List[Rect | None] = [None] * block_count
         preplaced = set()
         if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
@@ -107,6 +114,10 @@ class MyOptimizer(FloorplanOptimizer):
             boundary_units, boundary_cluster_ids = [], set()
         boundary_blocks = [i for i in movable if boundary[i] != 0 and i not in boundary_cluster_ids]
         interior = [i for i in movable if boundary[i] == 0 and i not in boundary_cluster_ids]
+
+        # Sort interior blocks by centroid proximity for better HPWL
+        if centroid_targets and len(interior) > 1:
+            interior.sort(key=lambda i: (centroid_targets[i][0] + centroid_targets[i][1], i))
 
         placed_rects = [p for p in positions if p is not None]
         if placed_rects:
@@ -143,84 +154,41 @@ class MyOptimizer(FloorplanOptimizer):
                 block_count, positions, constraints, area_targets,
                 b2b_edges, p2b_edges, pins_pos
             )
-            if 116 <= block_count <= 120:
-                self._refine_free_block_shifts(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-                if block_count >= 120:
-                    self._refine_top_boundary_compaction(
-                        positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
-                    )
-                if 110 <= block_count <= 120:
-                    self._refine_boundary_edge_inward_compactions(
-                        positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
-                    )
-                self._refine_boundary_line_shifts_118(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_equal_shape_swaps(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_boundary_adjacent_wire_swaps(
-                    block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_boundary_line_shifts_118(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-            elif 110 <= block_count <= 115:
-                self._refine_free_block_shifts(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_boundary_edge_inward_compactions(
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            if block_count >= 120:
+                self._refine_top_boundary_compaction(
                     positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
                 )
-                self._refine_boundary_line_shifts_118(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_equal_shape_swaps(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_line_shifts_118(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            if block_count >= 116:
                 self._refine_boundary_adjacent_wire_swaps(
                     block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
                 )
-                self._refine_boundary_line_shifts_118(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-            elif 100 <= block_count <= 109:
-                self._refine_free_block_shifts(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_boundary_edge_inward_compactions(
-                    positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_boundary_line_shifts_118(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_equal_shape_swaps(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_boundary_adjacent_wire_swaps(
-                    block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
-                )
-                self._refine_boundary_line_shifts_118(
-                    block_count, positions, constraints, area_targets,
-                    b2b_edges, p2b_edges, pins_pos
-                )
-
+            self._refine_boundary_line_shifts_118(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            # Second round of free block shifts for further improvement
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
         if block_count < 100:
-            # Extended to 80-99 band (previously skipped, but these cases
-            # have cost 5-9 and unused runtime budget).
+            # Extended to all block counts >= 50 (previously skipped for < 100).
+            # These cases have unused runtime budget and can benefit from refinement.
             self._refine_group_translations(
                 block_count, positions, constraints, area_targets,
                 b2b_edges, p2b_edges, pins_pos
@@ -239,6 +207,16 @@ class MyOptimizer(FloorplanOptimizer):
             self._refine_boundary_adjacent_wire_swaps(
                 block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
             )
+            # Second pass for further improvement on larger cases
+            if block_count >= 80:
+                self._refine_free_block_shifts(
+                    block_count, positions, constraints, area_targets,
+                    b2b_edges, p2b_edges, pins_pos
+                )
+                self._refine_boundary_line_shifts_118(
+                    block_count, positions, constraints, area_targets,
+                    b2b_edges, p2b_edges, pins_pos
+                )
 
         if self._has_overlap([p for p in positions if p is not None]):
             ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
@@ -2064,20 +2042,104 @@ class MyOptimizer(FloorplanOptimizer):
                     union(i, j)
         return len({find(i) for i in group})
 
+    def _force_directed_centroids(self, block_count, dims, b2b_edges, p2b_edges, pins_pos, constraints):
+        """Compute force-directed centroid targets for each block.
+
+        Uses weighted barycentric model: each block's target is the weighted
+        average of its neighbors' positions (from connectivity). Pins act as
+        fixed anchors. Iterates a few rounds to propagate.
+        """
+        import random as _rng
+        _rng.seed(42)
+        
+        # Initial positions: random spread
+        total_area = sum(dims[i][0] * dims[i][1] for i in range(block_count))
+        spread = math.sqrt(max(total_area, 1.0)) * 1.2
+        cx = {_rng.uniform(0, spread) for i in range(block_count)}  # noqa: set comprehension wrong
+        # Use dict
+        cx = {i: _rng.uniform(0, spread) for i in range(block_count)}
+        cy = {i: _rng.uniform(0, spread) for i in range(block_count)}
+        
+        # Build adjacency
+        adj = {i: [] for i in range(block_count)}
+        for a, b, w in b2b_edges:
+            if 0 <= a < block_count and 0 <= b < block_count:
+                adj[a].append((b, w))
+                adj[b].append((a, w))
+        pin_adj = {i: [] for i in range(block_count)}
+        for pin, b, w in p2b_edges:
+            if 0 <= b < block_count and 0 <= pin < len(pins_pos):
+                px = float(pins_pos[pin, 0])
+                py = float(pins_pos[pin, 1])
+                if px != -1.0 and py != -1.0:
+                    pin_adj[b].append((px, py, w))
+        
+        # Force-directed iterations (Jacobi-style)
+        ncols = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+        locked = set()
+        for i in range(block_count):
+            if ncols > 1 and constraints[i, 1] != 0:
+                locked.add(i)
+        
+        for _iter in range(20):
+            new_cx = dict(cx)
+            new_cy = dict(cy)
+            for i in range(block_count):
+                if i in locked:
+                    continue
+                wx, wy, ww = 0.0, 0.0, 0.0
+                for other, w in adj[i]:
+                    wx += w * cx[other]
+                    wy += w * cy[other]
+                    ww += w
+                for px, py, w in pin_adj[i]:
+                    wx += w * px
+                    wy += w * py
+                    ww += w
+                if ww > 0:
+                    new_cx[i] = wx / ww
+                    new_cy[i] = wy / ww
+            cx, cy = new_cx, new_cy
+        
+        return {i: (cx[i], cy[i]) for i in range(block_count)}
+
     def _order_blocks(self, blocks, area_targets, b2b_connectivity, p2b_connectivity):
-        degree = {i: 0.0 for i in blocks}; s = set(blocks)
+        """Order blocks by weighted connectivity centroid (geometry-aware).
+
+        Falls back to degree-then-area when connectivity is sparse.
+        Centroid seeding places connected blocks near each other in the
+        shelf layout, directly reducing HPWL.
+        """
+        s = set(blocks)
+        # Compute weighted centroid per block from connectivity
+        centroids = {}
+        weights = {}
         if b2b_connectivity is not None:
             for e in b2b_connectivity:
                 if len(e) >= 3 and e[0] != -1:
                     a, b, w = int(e[0]), int(e[1]), abs(float(e[2]))
-                    if a in s: degree[a] += w
-                    if b in s: degree[b] += w
+                    if a in s:
+                        centroids[a] = centroids.get(a, 0.0) + w * b
+                        weights[a] = weights.get(a, 0.0) + w
+                    if b in s:
+                        centroids[b] = centroids.get(b, 0.0) + w * a
+                        weights[b] = weights.get(b, 0.0) + w
         if p2b_connectivity is not None:
             for e in p2b_connectivity:
                 if len(e) >= 3 and e[0] != -1:
                     b, w = int(e[1]), abs(float(e[2]))
-                    if b in s: degree[b] += w
-        return sorted(blocks, key=lambda i: (-degree.get(i, 0.0), -float(area_targets[i]), i))
+                    if b in s:
+                        weights[b] = weights.get(b, 0.0) + w
+
+        def sort_key(i):
+            w = weights.get(i, 0.0)
+            if w > 0:
+                # Centroid-based: connected to lower-indexed blocks first
+                return (0, centroids.get(i, 0.0) / w, -float(area_targets[i]), i)
+            # Disconnected: sort by area (largest first)
+            return (1, 0.0, -float(area_targets[i]), i)
+
+        return sorted(blocks, key=sort_key)
 
     def _boundary_code(self, constraints, i):
         if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 4:
