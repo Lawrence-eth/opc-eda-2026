@@ -3,6 +3,47 @@
 **Author:** planning agent (Opus 4.8). **Supersedes** `NEXT_PLAN.md`, `SPRINT5_PLAN.md`, `SPRINT6_PLAN.md` (kept for history).
 **Audience:** executing agent running 24/7 with unlimited compute/tokens. **This document is designed so you do NOT need a new plan every hour** — it encodes the decision logic. Navigate it yourself via Part III. Only stop for a re-plan when an **Escalation Trigger (Part VI)** fires.
 
+---
+---
+
+# ⏰ OVERNIGHT AUTONOMOUS RUN — ACTIVE (set 2026-05-29; ~7+ hours, operator asleep)
+
+**Keep making real progress; don't halt prematurely — but the goal is PROGRESS, not motion.** The operator is away ~7 hours. Work the ranked queue below top-to-bottom; when you finish one valuable item, start the next. Do NOT stop to "await instructions" while positive-EV work remains. **Equally: do NOT manufacture busywork** — no trivial parameter nudges, no re-testing dead-ends, no experiments without a hypothesis, just to look busy.
+
+### Overnight rules (override normal behavior for this window)
+0. **VALUE GUARD (most important).** Every experiment must have a **one-line hypothesis logged BEFORE running** it ("expect Δscore from X because Y"). If you cannot state a plausible mechanism by which it improves the runtime-adjusted score (or is necessary groundwork/diagnostic for something that will), **do not run it.** Forbidden as busywork: re-running anything in II.6 dead-ends, tweaking greedy packers (Part 0 UPDATE 2), trivial constant nudges, or re-confirming already-known results. **Quality of work > quantity of commits.**
+1. **No premature halting / no asking — but graceful pause beats busywork.** If you hit a normal **Escalation Trigger (Part VI)**, do NOT stop: log it under `## OVERNIGHT BLOCKERS` and move to the next queue item / Standing Backlog (Part V). **Only if you genuinely exhaust ALL positive-EV work** (entire queue + backlog + P2 groundwork all done or blocked) is it correct to **stop and write a clear `## OVERNIGHT — POSITIVE-EV WORK EXHAUSTED` note** rather than invent meaningless jobs. That graceful pause is acceptable; churning is not.
+2. **Always-committed, monotone progress.** Every change is **best-of gated against `sprint5_v9`** via `_true_contest_cost`, so HEAD can never regress. After every experiment: commit (code if kept, or revert code + commit the log entry if not). The repo must be feasible & committed at all times.
+3. **Keep + revert rule (no deliberation):** keep a change iff runtime-adjusted total (`score_real.py`, median 1–3s) strictly improves AND feasibility = 100/100. Else `git checkout -- contest_solution/my_optimizer.py` and move on. **Do NOT revert a change merely for being slower than 0.18s** — slower-but-at-floor (≤~0.5s) with better quality is the goal (I.3).
+4. **Time-box dead avenues:** if a single sub-step shows no path to improvement after ~45 min, log it and advance. Do not loop on greedy packers (Part 0 UPDATE 2).
+5. **Running report:** maintain a `## OVERNIGHT PROGRESS` section at the TOP of `PLAN_EXECUTION_LOG.md`, one line per step: `<time> <step> — <result> — kept/reverted`. This is the operator's morning summary.
+6. **Never leave cores idle:** the persistent pool / parallel chains should be running during long evals; if waiting, start the next independent step.
+7. **Re-ground each cycle (anti-drift — protects quality over a long session).** At the START of every new experiment, re-read **Part 0**, **II.6 dead-ends**, and the **`## OVERNIGHT PROGRESS`** log before acting, so context compaction can't make you repeat a dead-end or lose a nuance. Correctness before speed (verify a move is feasible & monotone before optimizing it). If two consecutive experiments both regress or you notice you're unsure why HEAD is what it is, **pause and re-read the log** rather than pressing on — a confused cycle is worse than a missed one.
+8. **Quality-first guarantee:** HEAD is best-of gated, so it can only improve or stay equal — a bad experiment costs compute, never the result. Prefer one careful, hypothesis-driven, correctly-validated experiment over three rushed ones.
+
+### Overnight ORDERED QUEUE (do top-to-bottom; each item is atomic & committable)
+> Primary thrust = build **IV.ENGINE** incrementally (each move added & gated separately, so progress is safe & monotone). Then tune, then fallbacks. This is >7h of work; you will not run out.
+
+- **Q0 (≤45 min, hard cap): shape lever validity check.** In `_skyline_pack` (~3592) replace the naive `score = th` with **fit-to-gap** (pick the aspect whose width best matches the current skyline-valley width / target row width; fall back to golden-prior aspect ≈1.45). Re-measure standalone util on cases 99/97/95. Log the numbers. **Regardless of result, advance to Q1** (the same fit-to-gap logic is reused by the ENGINE reshape move). Do not integrate the packer.
+- **Q1: ENGINE Step 1 — verify correctness baseline.** Confirm `_correctness_first_polish` (~3654) is monotone + feasible on 99/97/95 (full-recompute greedy). Fix if not. Commit.
+- **Q2: ENGINE Step 2 — incremental cost** + `assert incremental≈full` debug every N moves; benchmark moves/s (target ≥10⁴/s @ n=120). Commit.
+- **Q3: ENGINE Step 3a — relocate-to-centroid move** (HPWL lever, ripple-repair overlaps). Full eval + `score_real.py`. Keep/revert per rule. Commit + log.
+- **Q4: ENGINE Step 3b — row/slab inward compaction move** (AREA lever; re-touch boundary blocks after). Full eval. Keep/revert. Commit + log.
+- **Q5: ENGINE Step 3c — soft-block reshape-to-fill move** (SHAPE lever, ±1% area, fit-to-gap from Q0, MIB group together; applied to feasible layout so it can't break feasibility). Full eval. Keep/revert. Commit + log.
+- **Q6: ENGINE Step 3d — unequal swap + local re-legalize, and cluster rigid-move-to-centroid.** Full eval. Keep/revert. Commit + log.
+- **Q7: ENGINE Step 4 — SA tail** (exact incremental cost, true `exp(2·vrel)`, geometric cooling) to escape minima after greedy descent. Tune temp/cooling on cases 99/95. Full eval. Keep/revert. Commit + log.
+- **Q8: ENGINE Step 5 — K parallel chains** (different seeds/move-weights) on the persistent pool within the free budget (~0.3–0.5s); keep best by `_true_contest_cost`. Full eval. Commit + log.
+- **Q9: budget/chain sweep** — find K and time-budget giving best runtime-adjusted at median∈{1,2,3}s; commit best as `s6_engine`.
+- **Q10: move-weight tuning via held-out folds** (split the 100; tune on train folds, select on held-out — never the full 100). Commit best generalizing weights.
+- **Q11+ (Standing Backlog, Part V):** boundary-ring constructor; connectivity-aware packing order with cluster super-blocks; per-net hub weighting; MIB shared-shape selection; extended golden mining (cluster topology / ring structure). Each gated & committed.
+- **If you reach here with time left:** begin **IV.P2 groundwork** (numba skeleton for a B*-tree/sequence-pair packer + obstacle-handling prototype on case 99, proving exact feasibility) — research track, do NOT wire into `solve()` yet. Keep going; do not stop.
+
+### Morning handoff (when operator returns)
+Leave: HEAD committed & 100/100; the `## OVERNIGHT PROGRESS` log filled; the best `s6_*` result tagged; `score_real.py` table for the new best vs sprint5_v9 at all medians; and any `## OVERNIGHT BLOCKERS` noted for re-planning.
+
+---
+---
+
 > How to use this file: Read Part I (invariants) and Part II (facts) once. Then operate the **decision tree in Part III** — it always tells you the single next action based on your latest result. Part IV gives the deep implementation spec for whatever track Part III sends you to. Part V is the backlog for idle compute. Part VI says when to come back to the planner. Part VII is the standing protocol.
 
 ---
@@ -27,6 +68,21 @@ You are at **STATE: PACKER**. Do Part IV.PACKER. Gate: prototype must hit **>0.7
 
 ### Standing correction to strategy
 Quality comes from **a better packer + a fast optimizer**, not from portfolio breadth and not from spending more wall-clock. Target: match v9's runtime (~0.2–0.4s, at floor) while cutting hpwl_gap/area_gap. Stop re-testing portfolio-diversity and shape-on-shelf (both are now dead-ends, II.6).
+
+---
+
+### UPDATE 2 (2026-05-29, after the skyline-packer round) — STOP TWEAKING GREEDY PACKERS
+
+**What happened:** the skyline packer was built but only reached util 0.46–0.59 (< the 0.70 gate) and was reverted. Two reasons it is NOT valid evidence against the shape lever:
+1. **The shape heuristic is naive.** `_skyline_pack` (line ~3592) scores shapes by `score = th` → it makes *every* block maximally wide (5:1). Golden uses a **mix** (median 1.45) chosen to **fit each contour gap**. "Make everything wide" is not shape-aware packing and packs badly.
+2. **Greedy packing is structurally capped** (~0.5–0.7 for mixed rectangles under boundary+cluster+obstacle constraints). It **cannot** reach golden's 0.96 by tuning. **Therefore: stop building/tuning greedy packers (shelf, skyline, BLF). That avenue is exhausted.** (`_skyline_*` code remains in the file but is un-wired; leave it or delete it — do not keep tweaking it.)
+
+**Meta-warning:** Sprints 4–6 made the committed *quality* WORSE (2.47→2.72), "winning" only on the low-median runtime bet. We are not closing the 2×-golden gap. The repeated pattern — build a light variant, see it isn't instantly faster than the 0.18s baseline, revert — must stop. **The win requires committing to ONE real optimization engine and giving it hours, not reverting v1 for being slow.** It is best-of gated, so it cannot regress; there is no reason to revert it.
+
+### REVISED CRITICAL PATH (supersedes IV.PACKER as the next action)
+Build the **strong repair-based optimizer** on top of the existing, working, regression-proof `_correctness_first_polish` (line ~3654). This is higher-probability-of-success than a from-scratch B*-tree and attacks hpwl + area + shape together. Spec = new **Part IV.ENGINE** below. Do this next; keep topological-SA (IV.P2) as the follow-on only if ENGINE plateaus.
+- **First (1–2h) validity check before the big build:** fix the shape heuristic to **fit-to-gap** (choose the aspect whose width matches the current skyline valley / remaining row width, not max width) and re-measure standalone util on 99/97/95. This finally tests the shape lever honestly. Whatever the result, then proceed to IV.ENGINE (the polish reshape-move uses the same fit-to-gap logic on an already-feasible layout, so it can't break feasibility).
+- **Do NOT** spend more than ~2h on the standalone packer check; the durable win is IV.ENGINE, not the constructive packer.
 
 ---
 ---
@@ -181,7 +237,25 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 2. **Repair-not-reject moves** (preserve hard constraints): (a) relocate block toward connectivity centroid / into a gap, ripple-push the few overlappers along min-displacement axis; (b) unequal swap + local re-legalize; (c) row/slab inward shift then re-touch boundary; (d) aspect reshape (P1.A); (e) cluster rigid-move toward centroid.
 3. **Only then add incremental cost** (per-net HPWL via incident edges using adjacency near :3200; bbox via tracked extremes; soft via per-cluster components / per-MIB shape sets) — **with a debug assert `incremental≈full` every N moves.** Greedy sweeps → short SA tail (exact incremental cost, true `exp(2·V_rel)`, not frozen). Run a few parallel chains on the pool; keep best.
 
-## IV.PACKER — Skyline/tetris packer with shape selection  *(CRITICAL PATH; build this next)*
+## IV.ENGINE — Strong repair-based optimizer (the committed heavyweight; build this next)  *(supersedes IV.PACKER)*
+
+**Premise:** every constructive packer (shelf/skyline/contour) is feasible-but-capped. The win is a strong *optimizer* that starts from any feasible layout (use the existing shelf-SA result as seed) and drives hpwl+area+soft down with **repair-based moves** under the **exact** contest cost. Build on `_correctness_first_polish` (line ~3654), which already works and is regression-proof. Do it in this strict order so it never breaks (the lesson from the broken Sprint-5 attempt):
+
+**Step 1 — Correctness baseline (already done; verify):** greedy hill-climb, FULL `_true_contest_cost` recompute per move, accept iff strictly lower, assert feasibility after each accept. Confirm monotone + feasible on cases 99/97/95.
+
+**Step 2 — Make it fast (incremental cost):** maintain running hpwl (per-incident-edge re-sum using adjacency already built at ~3672), bbox via tracked extremes, soft via per-cluster component counts + per-MIB shape sets + per-block boundary checks; recompute the exact `(1+0.5(hg+ag))·exp(2·vrel)` from these. **Keep a debug mode asserting `incremental ≈ full` every N moves** — this is the guardrail the earlier broken attempt lacked. Target ≥10⁴ moves/s for n=120.
+
+**Step 3 — Strong moves (each preserves hard constraints; relocate-and-REPAIR, never reject):**
+- **Relocate-to-centroid:** move block i toward its connectivity centroid; ripple-push the few overlappers along the min-displacement axis. (HPWL lever.)
+- **Row/slab inward compaction:** slide a row/column inward to shrink bbox, re-touch boundary blocks to the new extremes. (AREA lever.)
+- **Soft-block reshape-to-fill (±1% area):** retune (w,h) — fit-to-gap (match the local free-space width/height), to (i) fill a contour gap, (ii) let a boundary block reach its edge (kills a soft viol), (iii) abut a cluster mate. MIB group reshapes together. (SHAPE/AREA lever — this is how we exploit the golden aspect insight WITHOUT a new packer, on an already-feasible layout so feasibility can't break.)
+- **Unequal swap + local re-legalize; cluster rigid-move toward centroid.**
+
+**Step 4 — Use the free runtime budget + cores:** we are under the floor (v9 = 0.18s; floor allows ~0.3·median ≈ 0.3–0.6s). Run **K parallel chains** (different seeds/move-weights) on the persistent pool within that budget; keep best by `_true_contest_cost`. Greedy descent first, then short SA tail (exact incremental cost, true `exp(2·vrel)`) to escape minima.
+
+**Gate:** beats sprint5_v9 runtime-adjusted at median∈{1,2,3}s, 100/100, at ≤~0.5s/case. **Do NOT revert for being slower than 0.18s — slower-but-at-floor with better quality is the goal (I.3).** Tag `s6_engine`. Expect hpwl_gap AND area_gap to drop (first sub-1.2 area, then chase sub-0.7).
+
+## IV.PACKER — Skyline/tetris packer with shape selection  *(DEMOTED — greedy packing is capped; see Part 0 UPDATE 2; do not keep tuning)*
 
 **Why:** the shelf packer is the proven ceiling (Part 0). A skyline packer is feasible-by-construction, fast (O(n log n)), and is the only substrate that can exploit the shape lever (II.2: golden = 96% util via aspect ≤3:1; we are at 52%).
 
