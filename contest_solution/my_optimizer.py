@@ -129,6 +129,29 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 pass
 
+        # P1.B: Correctness-first polish (greedy descent on true contest cost)
+        if best_positions is not None and block_count >= 50:
+            try:
+                movable = set()
+                preplaced = set()
+                boundary = {}
+                if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+                    for i in range(block_count):
+                        if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
+                            preplaced.add(i)
+                        else:
+                            movable.add(i)
+                            if constraints.shape[1] > 4:
+                                boundary[i] = int(constraints[i, 4].item())
+                dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
+                self._correctness_first_polish(
+                    best_positions, block_count, movable, preplaced, boundary,
+                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                    max_time=0.2
+                )
+            except Exception:
+                pass
+
         return best_positions if best_positions is not None else []
 
     def _build_portfolio(self, block_count):
@@ -3333,6 +3356,121 @@ class MyOptimizer(FloorplanOptimizer):
                     improved = True
             if not improved:
                 break
+
+    def _correctness_first_polish(self, positions, block_count, movable, preplaced,
+                                   boundary_map, dims, area_targets, b2b_edges, p2b_edges,
+                                   pins_pos, constraints, max_time=1.0):
+        """P1.B: Correctness-first legalization-aware polish.
+
+        Propose move → apply → recompute FULL exact _true_contest_cost →
+        accept iff strictly lower, else revert. Monotone ⇒ cannot regress.
+        After every accept, assert hard feasibility.
+
+        Moves: relocate toward connectivity centroid, shift, swap.
+        """
+        import time as _time
+        import random as _random
+
+        start = _time.time()
+        n = block_count
+
+        # Build adjacency for connectivity centroid
+        b_adj = {i: [] for i in range(n)}
+        for a, b, w in b2b_edges:
+            if a >= 0 and b >= 0 and a < n and b < n:
+                b_adj[a].append((b, w))
+                b_adj[b].append((a, w))
+        p_adj = {i: [] for i in range(n)}
+        for pin, b, w in p2b_edges:
+            if b >= 0 and b < n and 0 <= pin < len(pins_pos):
+                px = float(pins_pos[pin, 0])
+                py = float(pins_pos[pin, 1])
+                if px != -1.0 and py != -1.0:
+                    p_adj[b].append((px, py, w))
+
+        # Movable blocks (not preplaced, not fixed)
+        movable_list = [i for i in range(n) if i not in preplaced]
+        if len(movable_list) < 2:
+            return
+
+        # Initial cost (full recompute)
+        current_cost = self._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+        best_cost = current_cost
+        best_positions = [p for p in positions]
+
+        # Greedy descent: accept only strictly improving moves
+        for _pass in range(5):
+            improved = False
+            _random.shuffle(movable_list)
+            for i in movable_list:
+                if _time.time() - start > max_time:
+                    break
+                x, y, w, h = positions[i]
+
+                # Compute connectivity centroid
+                wx, wy, ww = 0.0, 0.0, 0.0
+                for other, ew in b_adj[i]:
+                    ox, oy, ow, oh = positions[other]
+                    wx += ew * (ox + ow * 0.5)
+                    wy += ew * (oy + oh * 0.5)
+                    ww += ew
+                for px, py, ew in p_adj[i]:
+                    wx += ew * px
+                    wy += ew * py
+                    ww += ew
+                if ww <= 0:
+                    continue
+                target_cx = wx / ww
+                target_cy = wy / ww
+                target_x = target_cx - w * 0.5
+                target_y = target_cy - h * 0.5
+
+                # Try moves toward target
+                old_rect = positions[i]
+                best_move = None
+                best_move_cost = current_cost
+
+                for scale in [1.0, 0.5, 0.25]:
+                    nx = x + (target_x - x) * scale
+                    ny = y + (target_y - y) * scale
+                    new_rect = (nx, ny, w, h)
+
+                    # Check overlap
+                    if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                        continue
+
+                    # Apply move
+                    positions[i] = new_rect
+
+                    # Full cost recompute (correctness-first)
+                    new_cost = self._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+
+                    if new_cost < best_move_cost - 1e-6:
+                        # Assert hard feasibility
+                        assert not self._has_overlap([p for p in positions if p is not None]), "Overlap after move!"
+                        assert self._is_feasible(positions, constraints, area_targets), "Infeasible after move!"
+                        best_move_cost = new_cost
+                        best_move = new_rect
+                    else:
+                        # Revert
+                        positions[i] = old_rect
+
+                if best_move is not None:
+                    positions[i] = best_move
+                    current_cost = best_move_cost
+                    improved = True
+                    if current_cost < best_cost:
+                        best_cost = current_cost
+                        best_positions = [p for p in positions]
+                else:
+                    positions[i] = old_rect
+
+            if not improved:
+                break
+
+        # Restore best
+        for i in range(n):
+            positions[i] = best_positions[i]
 
     def _fast_local_search(self, positions, block_count, movable, preplaced, boundary_map,
                             dims, area_targets, b2b_conn, p2b_conn, pins_pos, constraints,
