@@ -2,7 +2,7 @@
 
 **Started:** Sprint 1 (pre-existing agent work)  
 **Latest update:** Sprint 3 (Opus 4.8 session)  
-**Current score:** 2.5211 (verified, internally consistent)  
+**Current score:** **2.4690** (verified, internally consistent)  
 **Target:** ≤ 1.5 (winning-tier)
 
 ---
@@ -15,26 +15,28 @@
 | **Sprint 1-2** (sprint2_v6) | 2.5443 | −3.4% | 100/100 | 60.5s / 3.3s | Tuple conversion, refine pass extension, SA bounding |
 | **Sprint 3** (analytical_v2) | 2.5289 | −0.6% | 100/100 | 53.0s / 2.4s | Analytical-target refinement pass |
 | **Sprint 3** (analytical_v5) | 2.5218 | −0.3% | 100/100 | 68.5s / 3.4s | Generalized swap passes to all counts |
-| **Sprint 3** (analytical_v6) | **2.5211** | −0.03% | 100/100 | 70.2s / 3.5s | Aggressive analytical refinement |
+| **Sprint 3** (analytical_v6) | 2.5211 | −0.03% | 100/100 | 70.2s / 3.5s | Aggressive analytical refinement |
+| **Sprint 3** (contour_v1) | **2.4690** | **−2.1%** | 100/100 | 66.9s / 3.2s | **Contour-based packer with analytical ordering** |
+| Sprint 3 (contour_v5) | 2.4690 | 0% | 100/100 | 65.0s / 3.2s | SA relocation moves, increased SA budget (no effect) |
 
-**Total improvement:** 2.6326 → 2.5211 = **−4.2%**
+**Total improvement:** 2.6326 → 2.4690 = **−6.2%**
 
 ---
 
-## Verified Score Decomposition (analytical_v6, exp(n/12) weighting)
+## Verified Score Decomposition (contour_v1, exp(n/12) weighting)
 
 | Band | Weight | Avg Cost | HPWL Gap | Area Gap | V_rel |
 |------|--------|----------|----------|----------|-------|
-| 21–40 | 0.1% | 2.74 | 1.14 | 0.98 | 0.142 |
-| 41–60 | 0.5% | 2.98 | 1.34 | 1.26 | 0.128 |
-| 61–80 | 2.9% | 2.81 | 1.32 | 1.27 | 0.100 |
-| 81–100 | 15.3% | 2.73 | 1.27 | 1.08 | 0.114 |
-| **101–115** | **47.0%** | **2.70** | **1.32** | **1.07** | **0.103** |
-| **116–120** | **34.1%** | **2.16** | **0.98** | **0.63** | **0.090** |
+| 21–40 | 0.1% | 2.66 | 1.08 | 0.92 | 0.142 |
+| 41–60 | 0.5% | 2.85 | 1.27 | 1.11 | 0.130 |
+| 61–80 | 2.9% | 2.79 | 1.29 | 1.24 | 0.103 |
+| 81–100 | 15.3% | 2.74 | 1.29 | 1.07 | 0.112 |
+| **101–115** | **47.0%** | **2.61** | **1.24** | **0.95** | **0.109** |
+| **116–120** | **34.1%** | **2.15** | **0.98** | **0.63** | **0.087** |
 
-**Weighted quality factor:** 2.0531 (81% of score)  
-**Weighted soft factor:** 1.2265 (19% of score)  
-**Dominant cost driver:** HPWL gap (~1.3 on 101-115 band, 47% of total weight)
+**Weighted quality factor:** 2.0052 (81% of score)  
+**Weighted soft factor:** 1.2301 (19% of score)  
+**Dominant cost driver:** HPWL gap (~1.24 on 101-115 band, 47% of total weight)
 
 ---
 
@@ -94,22 +96,22 @@
 | Aggressive analytical refinement (cluster members) | 2.5211 | ✅ Helped | 20 more cases improved, 0 worsened. |
 | Real contest cost in SA | 2.5211 | ≈ Neutral | SA moves too limited to exploit different cost landscape. |
 | SA temperature normalization | 2.5211 | ≈ Neutral | Normalized delta by current cost for real-cost SA. |
+| **Contour-based packer with analytical ordering** | **2.4690** | **✅ Helped** | **−2.1%. Same degree/area ordering as shelf (preserves grouping) but contour placement finds lowest y at analytical x. 80 improved, 6 worsened.** |
+| Unbounded contour packer (analytical x-ordering) | — | ❌ Failed | 41-58 soft violations. Analytical x-ordering breaks cluster grouping. |
 
 ---
 
-## Why the Algorithm Plateaued at ~2.52
+## Why the Algorithm Plateaued at ~2.47
 
-The shelf packer + local refinement has a **structural ceiling** that cannot be broken by more refinement passes:
+The contour packer + refinement has a **structural ceiling**:
 
-1. **Shelf packing ignores geometry.** Blocks are placed in rows by degree/area ordering. Connected blocks end up in different rows, creating high HPWL (~1.3 gap on 101-115 band).
+1. **Contour packer helps but can't fix analytical ordering.** The contour packer finds the lowest y at the analytical x-position, but uses degree/area ordering (not analytical ordering) to preserve grouping. This means connected blocks may still be placed far apart if they have different degrees.
 
-2. **Local refinement converges in 1-2 iterations.** `_refine_free_block_shifts` and `_refine_toward_analytical` move blocks toward centroids, but overlap constraints prevent significant movement. The blocks are "stuck" in the shelf structure.
+2. **Local refinement converges in 1-2 iterations.** `_refine_free_block_shifts` and `_refine_toward_analytical` move blocks toward centroids, but overlap constraints prevent significant movement.
 
-3. **Replacing the packer breaks soft constraints.** The shelf packer's degree-based ordering is essential for keeping cluster members adjacent (grouping constraint). Changing the ordering to analytical positions creates 25-36 soft violations.
+3. **SA moves are too limited.** Only swap (exchange positions of same-area blocks) and shift (move by 10% of size). No relocation (block → empty region), no row changes.
 
-4. **SA moves are too limited.** Only swap (exchange positions of same-area blocks) and shift (move by 10% of size). No relocation (block → empty region), no row changes.
-
-5. **The 101-115 band is the bottleneck.** 47% of the score, avg cost 2.70, avg HPWL gap 1.32. The 116-120 band is already at 2.16 and can't improve much more.
+4. **The 101-115 band is the bottleneck.** 47% of the score, avg cost 2.61, avg HPWL gap 1.24. The 116-120 band is already at 2.15 and can't improve much more.
 
 ---
 
@@ -139,47 +141,39 @@ MyOptimizer(FloorplanOptimizer)
 
 ---
 
-## What's Next — The Remaining Lever
+## What's Next — Remaining Levers (Status: Exhausted for Incremental Approach)
 
-### Replace Shelf Packer with Contour-Based Packer (Target: 2.52 → ~1.5-1.8)
+### What Was Tried (All Failed to Improve Beyond 2.4690)
 
-The analytical global placement produces wirelength-optimal positions, but the shelf packer can't use them without breaking grouping. The solution is a **contour-based packer** that:
+| Approach | Result | Why It Failed |
+|----------|--------|---------------|
+| Analytical ordering for non-cluster blocks | 2.4891 (worse) | Disrupts packer's row structure |
+| 200 relaxation sweeps | 2.4700 (same) | Already converged at 50 sweeps |
+| SA relocation moves | 2.4690 (same) | Moves rejected — creates overlaps or increases cost |
+| SA time budget increase (3s → 5s) | 2.4690 (same) | SA moves too limited to exploit more time |
 
-1. **Builds cluster macros first** (same as shelf packer, preserves grouping)
-2. **Sorts ALL units by analytical x-position** (not degree/area)
-3. **Places each unit using contour tracking**: find the lowest y where the unit fits without overlapping, closest to the analytical target
-4. **Handles boundary by pre-reserving edge space** before interior packing
+### What Would Actually Break Past 2.47
 
-This preserves grouping (cluster macros stay contiguous) while using analytical geometry for global ordering. The HPWL gap should drop from ~1.3 to ~0.5-0.7.
+The current approach (shelf/contour packer + refinement + SA) has hit a **structural ceiling**. To reach 1.5-1.8, you need a fundamentally different placement algorithm:
 
-### Implementation Strategy
+1. **Quadratic Placement** — Build the connectivity Laplacian, solve `Lx = b` per axis with conjugate gradient. This produces wirelength-optimal positions that respect the full graph structure (not just local centroids). Then legalize with the contour packer.
 
-```python
-def _contour_pack_with_analytics(self, interior, dims, constraints, area_targets,
-                                   b2b_edges, p2b_edges, centers, start_x, start_y, obstacles):
-    # 1. Build cluster macros (identical to _pack_interior_units)
-    # 2. Sort units by analytical x-position (using centers)
-    # 3. Contour-based placement:
-    #    - Maintain a skyline (list of (x_end, y_top) segments)
-    #    - For each unit, find lowest y where it fits
-    #    - Place at that y, update skyline
-    # 4. Return positions
-```
+2. **Sequence-Pair SA** — Replace the shelf packer with a sequence-pair representation. SA over sequence-pairs can explore a much larger solution space (any non-overlapping placement) while the cost function directly optimizes the contest objective.
 
-### Risk Mitigation
+3. **Force-Directed with Legalization** — Proper force-directed placement (not just centroid relaxation) that considers repulsion forces between blocks to avoid overlaps, then legalize.
 
-- **Guardrail already exists**: `solve()` runs both shelf and analytical paths, keeps the better one. The contour packer replaces the packer in the analytical path only.
-- **Fallback exists**: if the contour packer produces overlaps, the existing fallback shelf-packs from scratch.
-- **Test on single case first**: before full evaluation, test on case 80 (n=101) and case 99 (n=120).
+### Current Score Summary
 
-### Expected Impact
-
-| Metric | Current | Target | Driver |
-|--------|---------|--------|--------|
-| HPWL gap (101-115) | 1.32 | 0.5-0.7 | Contour pack preserves analytical geometry |
-| Area gap (101-115) | 1.07 | 0.6-0.8 | Compaction works better with contour layout |
-| Soft violations | ~0.10 | ≤0.10 | Cluster macros preserved |
-| **Total score** | **2.5211** | **~1.5-1.8** | Quality factor drops from 2.05 to ~1.45 |
+| Metric | Value |
+|--------|-------|
+| **Total Score** | **2.4690** |
+| Quality factor | 2.0052 |
+| Soft factor | 1.2301 |
+| HPWL gap (101-115) | 1.24 |
+| Area gap (101-115) | 0.95 |
+| 100/100 feasible | ✅ |
+| Runtime sum | 66.9s |
+| Max single case | 3.2s |
 
 ---
 

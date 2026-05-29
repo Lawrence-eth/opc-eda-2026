@@ -248,7 +248,7 @@ class MyOptimizer(FloorplanOptimizer):
 
         if block_count >= 50 and len(movable) >= 2:
             # Bounded SA budget: cap at 3s to prevent runtime bombs on 80-99 band.
-            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
+            max_sa_time = min(5.0, max(2.0, block_count * 0.03))
             self._sa_post_optimization(
                 positions, block_count, set(movable), preplaced, boundary,
                 dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
@@ -2503,7 +2503,7 @@ class MyOptimizer(FloorplanOptimizer):
                 if time.time() - start_time > max_time:
                     break
                 
-                move_type = random.choice(['swap', 'shift'])
+                move_type = random.choice(['swap', 'shift', 'relocate'])
                 
                 if move_type == 'swap' and len(movable_list) >= 2:
                     idx1, idx2 = random.sample(movable_list, 2)
@@ -2616,6 +2616,50 @@ class MyOptimizer(FloorplanOptimizer):
                             if current_cost < best_cost:
                                 best_cost = current_cost
                                 best_positions = {k: positions[k] for k in range(block_count)}
+
+                elif move_type == 'relocate' and hasattr(self, '_sa_centers') and self._sa_centers:
+                    # Relocate: move a block toward its analytical target position
+                    i = random.choice(movable_list)
+                    if i in boundary_map:
+                        continue
+                    x, y, w, h = positions[i]
+                    target_cx, target_cy = self._sa_centers[i]
+                    target_x = target_cx - w * 0.5
+                    target_y = target_cy - h * 0.5
+
+                    # Try relocating to analytical target
+                    new_rect = (target_x, target_y, w, h)
+                    overlap = False
+                    for k in range(block_count):
+                        if k == i:
+                            continue
+                        xk, yk, wk, hk = positions[k]
+                        if min(target_x + w, xk + wk) - max(target_x, xk) > 1e-6 and \
+                           min(target_y + h, yk + hk) - max(target_y, yk) > 1e-6:
+                            overlap = True
+                            break
+                    if overlap:
+                        continue
+
+                    positions[i] = new_rect
+                    new_pos_list = [positions[k] for k in range(block_count)]
+                    new_hpwl = calculate_hpwl_b2b(new_pos_list, b2b_conn) + calculate_hpwl_p2b(new_pos_list, p2b_conn, pins_pos)
+                    new_area = calculate_bbox_area(new_pos_list)
+                    if use_real:
+                        new_cost = (1.0 + 0.5 * (max(0, (new_hpwl - self._hpwl_baseline) / self._hpwl_baseline)
+                                                   + max(0, (new_area - self._area_baseline) / self._area_baseline))) * soft_factor
+                    else:
+                        new_cost = new_hpwl + 0.01 * new_area
+
+                    delta = new_cost - current_cost
+                    norm = max(abs(current_cost), 1e-6) if use_real else 1.0
+                    if delta < 0 or random.random() < math.exp(-delta / (max(temp, 1e-10) * norm)):
+                        current_cost = new_cost
+                        if current_cost < best_cost:
+                            best_cost = current_cost
+                            best_positions = {k: positions[k] for k in range(block_count)}
+                    else:
+                        positions[i] = (x, y, w, h)
             
             if time.time() - start_time > max_time:
                 break
@@ -2736,13 +2780,17 @@ class MyOptimizer(FloorplanOptimizer):
             for i, rect in self._shelf_pack(ordered, dims, safe_x, 0.0).items():
                 positions[i] = rect
 
-        # SA post-optimization
+        # SA post-optimization with analytical centers for relocation moves
         if block_count >= 50 and len(movable) >= 2:
-            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
-            self._sa_post_optimization(
-                positions, block_count, set(movable), preplaced, boundary,
-                dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
-                max_time=max_sa_time)
+            max_sa_time = min(5.0, max(2.0, block_count * 0.03))
+            self._sa_centers = centers  # pass analytical centers to SA for relocation
+            try:
+                self._sa_post_optimization(
+                    positions, block_count, set(movable), preplaced, boundary,
+                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                    max_time=max_sa_time)
+            finally:
+                self._sa_centers = None
 
         return [self._clean_tuple(p) for p in positions]
 
@@ -3017,17 +3065,19 @@ class MyOptimizer(FloorplanOptimizer):
     def _analytical_global_placement(self, block_count, dims, b2b_edges, p2b_edges,
                                      pins_pos, preplaced, target_positions, constraints,
                                      interior, boundary_blocks, boundary):
-        """Iterative weighted-centroid relaxation (Gauss-Seidel). Overlaps allowed."""
-        cx = [0.0] * block_count
-        cy = [0.0] * block_count
-        for i in range(block_count):
-            if i in preplaced and target_positions is not None and self._has_xywh(target_positions, i):
-                cx[i] = float(target_positions[i, 0]) + dims[i][0] * 0.5
-                cy[i] = float(target_positions[i, 1]) + dims[i][1] * 0.5
-            else:
-                cx[i] = dims[i][0] * 0.5
-                cy[i] = dims[i][1] * 0.5
+        """Quadratic placement via conjugate gradient.
 
+        Builds the weighted Laplacian from b2b + p2b connectivity, then solves
+        L * pos = b per axis using conjugate gradient. Fixed blocks (preplaced,
+        fixed-shape) are pinned to their exact positions via large penalty weights.
+        Boundary blocks get soft anchor forces toward their required edges.
+
+        This produces wirelength-optimal positions that respect the full graph
+        structure, not just local centroids.
+        """
+        import numpy as np
+
+        # Identify fixed blocks
         fixed = set()
         if constraints is not None and constraints.dim() > 1:
             ncols = constraints.shape[1]
@@ -3037,81 +3087,126 @@ class MyOptimizer(FloorplanOptimizer):
                 elif ncols > 0 and constraints[i, 0] != 0:
                     fixed.add(i)
 
-        movable = [i for i in range(block_count) if i not in fixed]
-        if len(movable) < 2:
-            return {i: (cx[i], cy[i]) for i in range(block_count)}
+        # Build Laplacian matrix L and RHS b for x and y axes
+        # L[i,i] = sum of weights incident to i + penalty for fixed blocks
+        # L[i,j] = -weight(i,j) for edge (i,j)
+        # b[i] = sum of (weight * neighbor_position) for fixed neighbors + pin positions
+        BIG_M = 1e6  # penalty for fixed blocks
 
-        movable_set = set(movable)
-        b_adj = {i: [] for i in movable}
-        for a, b, w in b2b_edges:
-            if a in movable_set:
-                b_adj[a].append((b, w))
-            if b in movable_set:
-                b_adj[b].append((a, w))
-        p_adj = {i: [] for i in movable}
-        for pin, b, w in p2b_edges:
-            if b in movable_set and 0 <= pin < len(pins_pos):
-                px = float(pins_pos[pin, 0])
-                py = float(pins_pos[pin, 1])
-                if px != -1.0 and py != -1.0:
-                    p_adj[b].append((px, py, w))
+        # Initialize diagonal and off-diagonal
+        diag = [0.0] * block_count
+        bx = [0.0] * block_count
+        by = [0.0] * block_count
 
-        # Boundary anchors: blocks that must touch a specific edge
-        boundary_anchors = {}
-        if boundary:
-            any_placed = any(i in preplaced for i in range(block_count))
-            if any_placed:
-                pp = [positions_i for i in preplaced if (positions_i := (
-                    float(target_positions[i, 0]), float(target_positions[i, 1]),
-                    dims[i][0], dims[i][1]))]
-                ref_x = sum(p[0] + p[2] * 0.5 for p in pp) / len(pp) if pp else 0
-                ref_y = sum(p[1] + p[3] * 0.5 for p in pp) / len(pp) if pp else 0
+        # Off-diagonal entries: list of (i, j, weight) for i < j
+        off_diag = []
+
+        # Process b2b edges
+        for a, b_idx, w in b2b_edges:
+            if a < 0 or b_idx < 0 or a >= block_count or b_idx >= block_count:
+                continue
+            w = abs(w)
+            diag[a] += w
+            diag[b_idx] += w
+            off_diag.append((min(a, b_idx), max(a, b_idx), -w))
+
+        # Process p2b edges
+        for pin_idx, b_idx, w in p2b_edges:
+            if pin_idx < 0 or b_idx < 0 or b_idx >= block_count or pin_idx >= len(pins_pos):
+                continue
+            w = abs(w)
+            px = float(pins_pos[pin_idx, 0])
+            py = float(pins_pos[pin_idx, 1])
+            if px == -1.0 or py == -1.0:
+                continue
+            diag[b_idx] += w
+            bx[b_idx] += w * px
+            by[b_idx] += w * py
+
+        # Pin fixed blocks to their positions
+        for i in fixed:
+            if i in preplaced and target_positions is not None and self._has_xywh(target_positions, i):
+                fx = float(target_positions[i, 0]) + dims[i][0] * 0.5
+                fy = float(target_positions[i, 1]) + dims[i][1] * 0.5
             else:
-                all_areas = [dims[i][0] * dims[i][1] for i in movable]
-                total_area = sum(all_areas)
+                fx = dims[i][0] * 0.5
+                fy = dims[i][1] * 0.5
+            diag[i] += BIG_M
+            bx[i] += BIG_M * fx
+            by[i] += BIG_M * fy
+
+        # Boundary anchor forces (soft, not hard)
+        if boundary:
+            # Compute reference position from fixed blocks
+            ref_x, ref_y = 0.0, 0.0
+            n_ref = 0
+            for i in fixed:
+                if i in preplaced and target_positions is not None and self._has_xywh(target_positions, i):
+                    ref_x += float(target_positions[i, 0]) + dims[i][0] * 0.5
+                    ref_y += float(target_positions[i, 1]) + dims[i][1] * 0.5
+                    n_ref += 1
+            if n_ref > 0:
+                ref_x /= n_ref
+                ref_y /= n_ref
+            else:
+                total_area = sum(dims[i][0] * dims[i][1] for i in range(block_count))
                 ref_x = math.sqrt(total_area) * 0.5
                 ref_y = math.sqrt(total_area) * 0.5
+
+            ANCHOR_W = 5.0  # weight for boundary anchors
             for i in boundary_blocks:
                 code = boundary.get(i, 0)
-                w, h = dims[i]
-                if code & 1:
-                    boundary_anchors[i] = (0.0, cy[i])
-                elif code & 2:
-                    boundary_anchors[i] = (ref_x * 2, cy[i])
-                elif code & 4:
-                    boundary_anchors[i] = (cx[i], ref_y * 2)
-                elif code & 8:
-                    boundary_anchors[i] = (cx[i], 0.0)
+                if code & 1:  # left
+                    diag[i] += ANCHOR_W
+                    bx[i] += ANCHOR_W * 0.0
+                elif code & 2:  # right
+                    diag[i] += ANCHOR_W
+                    bx[i] += ANCHOR_W * ref_x * 2
+                elif code & 4:  # top
+                    diag[i] += ANCHOR_W
+                    by[i] += ANCHOR_W * ref_y * 2
+                elif code & 8:  # bottom
+                    diag[i] += ANCHOR_W
+                    by[i] += ANCHOR_W * 0.0
 
-        DAMPING = 0.3
-        for _sweep in range(50):
-            max_move = 0.0
-            for i in movable:
-                wx, wy, ww = 0.0, 0.0, 0.0
-                for other, weight in b_adj[i]:
-                    wx += weight * cx[other]
-                    wy += weight * cy[other]
-                    ww += weight
-                for px, py, weight in p_adj[i]:
-                    wx += weight * px
-                    wy += weight * py
-                    ww += weight
-                if i in boundary_anchors:
-                    bx, by = boundary_anchors[i]
-                    wx += 5.0 * bx
-                    wy += 5.0 * by
-                    ww += 5.0
-                if ww <= 0:
-                    continue
-                new_cx = (1 - DAMPING) * cx[i] + DAMPING * (wx / ww)
-                new_cy = (1 - DAMPING) * cy[i] + DAMPING * (wy / ww)
-                dx = abs(new_cx - cx[i])
-                dy = abs(new_cy - cy[i])
-                max_move = max(max_move, dx, dy)
-                cx[i] = new_cx
-                cy[i] = new_cy
-            if max_move < 0.01:
-                break
+        # Solve L * x = bx and L * y = by using conjugate gradient
+        # L is stored as (diag, off_diag) in COO-like format
+        def matvec(v, diag, off_diag, n):
+            """Compute L * v."""
+            result = [diag[i] * v[i] for i in range(n)]
+            for i, j, w in off_diag:
+                result[i] += w * v[j]
+                result[j] += w * v[i]
+            return result
+
+        def conjugate_gradient(diag, off_diag, rhs, n, max_iter=200, tol=1e-6):
+            """Solve L * x = rhs using conjugate gradient."""
+            x = [0.0] * n
+            r = [rhs[i] - matvec(x, diag, off_diag, n)[i] for i in range(n)]
+            p = list(r)
+            rsold = sum(r[i] * r[i] for i in range(n))
+            if rsold < 1e-12:
+                return x
+            for _ in range(max_iter):
+                Ap = matvec(p, diag, off_diag, n)
+                pAp = sum(p[i] * Ap[i] for i in range(n))
+                if abs(pAp) < 1e-12:
+                    break
+                alpha = rsold / pAp
+                for i in range(n):
+                    x[i] += alpha * p[i]
+                    r[i] -= alpha * Ap[i]
+                rsnew = sum(r[i] * r[i] for i in range(n))
+                if math.sqrt(rsnew) < tol:
+                    break
+                beta = rsnew / rsold
+                for i in range(n):
+                    p[i] = r[i] + beta * p[i]
+                rsold = rsnew
+            return x
+
+        cx = conjugate_gradient(diag, off_diag, bx, block_count)
+        cy = conjugate_gradient(diag, off_diag, by, block_count)
 
         return {i: (cx[i], cy[i]) for i in range(block_count)}
 
