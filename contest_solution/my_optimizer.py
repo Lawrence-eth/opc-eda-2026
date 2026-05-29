@@ -217,7 +217,6 @@ class MyOptimizer(FloorplanOptimizer):
 
         if block_count >= 50 and len(movable) >= 2:
             # Bounded SA budget: cap at 3s to prevent runtime bombs on 80-99 band.
-            # Original: min(8, max(2, n*0.05)) gave 3-6s per case.
             max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_post_optimization(
                 positions, block_count, set(movable), preplaced, boundary,
@@ -2302,42 +2301,19 @@ class MyOptimizer(FloorplanOptimizer):
         return new - old
 
     def _order_blocks(self, blocks, area_targets, b2b_connectivity, p2b_connectivity):
-        """Order blocks by weighted connectivity centroid (geometry-aware).
-
-        Falls back to degree-then-area when connectivity is sparse.
-        Centroid seeding places connected blocks near each other in the
-        shelf layout, directly reducing HPWL.
-        """
-        s = set(blocks)
-        # Compute weighted centroid per block from connectivity
-        centroids = {}
-        weights = {}
+        degree = {i: 0.0 for i in blocks}; s = set(blocks)
         if b2b_connectivity is not None:
             for e in b2b_connectivity:
                 if len(e) >= 3 and e[0] != -1:
                     a, b, w = int(e[0]), int(e[1]), abs(float(e[2]))
-                    if a in s:
-                        centroids[a] = centroids.get(a, 0.0) + w * b
-                        weights[a] = weights.get(a, 0.0) + w
-                    if b in s:
-                        centroids[b] = centroids.get(b, 0.0) + w * a
-                        weights[b] = weights.get(b, 0.0) + w
+                    if a in s: degree[a] += w
+                    if b in s: degree[b] += w
         if p2b_connectivity is not None:
             for e in p2b_connectivity:
                 if len(e) >= 3 and e[0] != -1:
                     b, w = int(e[1]), abs(float(e[2]))
-                    if b in s:
-                        weights[b] = weights.get(b, 0.0) + w
-
-        def sort_key(i):
-            w = weights.get(i, 0.0)
-            if w > 0:
-                # Centroid-based: connected to lower-indexed blocks first
-                return (0, centroids.get(i, 0.0) / w, -float(area_targets[i]), i)
-            # Disconnected: sort by area (largest first)
-            return (1, 0.0, -float(area_targets[i]), i)
-
-        return sorted(blocks, key=sort_key)
+                    if b in s: degree[b] += w
+        return sorted(blocks, key=lambda i: (-degree.get(i, 0.0), -float(area_targets[i]), i))
 
     def _boundary_code(self, constraints, i):
         if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 4:
