@@ -116,7 +116,7 @@ class MyOptimizer(FloorplanOptimizer):
             start_x = 0.0
             start_y = 0.0
         interior_obstacles = None
-        if (block_count in (109, 111, 113, 114, 115) or block_count >= 116) and placed_rects:
+        if block_count >= 80 and placed_rects:
             start_x = min(p[0] for p in placed_rects)
             interior_obstacles = placed_rects
 
@@ -219,6 +219,12 @@ class MyOptimizer(FloorplanOptimizer):
                 )
 
         if block_count < 100:
+            # Extended to 80-99 band (previously skipped, but these cases
+            # have cost 5-9 and unused runtime budget).
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
             self._refine_free_block_shifts(
                 block_count, positions, constraints, area_targets,
                 b2b_edges, p2b_edges, pins_pos
@@ -241,7 +247,9 @@ class MyOptimizer(FloorplanOptimizer):
                 positions[i] = rect
 
         if block_count >= 50 and len(movable) >= 2:
-            max_sa_time = min(8.0, max(2.0, block_count * 0.05))
+            # Bounded SA budget: cap at 3s to prevent runtime bombs on 80-99 band.
+            # Original: min(8, max(2, n*0.05)) gave 3-6s per case.
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_post_optimization(
                 positions, block_count, set(movable), preplaced, boundary,
                 dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
@@ -2104,6 +2112,69 @@ class MyOptimizer(FloorplanOptimizer):
     def _clean_tuple(self, p):
         x, y, w, h = p
         return (float(x), float(y), float(w), float(h))
+
+    def _compact_both_axes(self, positions, constraints):
+        """Compact placement toward origin by shifting blocks on both axes.
+        Skips fixed-shape and preplaced blocks (hard constraints)."""
+        if any(p is None for p in positions):
+            return
+        n = len(positions)
+        ncols = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+        
+        # Identify locked blocks (fixed-shape or preplaced)
+        locked = set()
+        for i in range(n):
+            if ncols > 0 and constraints[i, 0] != 0:
+                locked.add(i)
+            if ncols > 1 and constraints[i, 1] != 0:
+                locked.add(i)
+        
+        # X-axis compaction: sort by x, try to shift each block left
+        for _pass in range(3):
+            improved = False
+            order = sorted(range(n), key=lambda i: positions[i][0])
+            for i in order:
+                if i in locked:
+                    continue
+                x, y, w, h = positions[i]
+                if x <= 1e-6:
+                    continue
+                new_x = 0.0
+                for j in range(n):
+                    if j == i:
+                        continue
+                    xj, yj, wj, hj = positions[j]
+                    if min(y + h, yj + hj) - max(y, yj) > 1e-6:
+                        if xj + wj <= x + 1e-6:
+                            new_x = max(new_x, xj + wj)
+                if new_x < x - 1e-6:
+                    positions[i] = (new_x, y, w, h)
+                    improved = True
+            if not improved:
+                break
+        # Y-axis compaction: sort by y, try to shift each block down
+        for _pass in range(3):
+            improved = False
+            order = sorted(range(n), key=lambda i: positions[i][1])
+            for i in order:
+                if i in locked:
+                    continue
+                x, y, w, h = positions[i]
+                if y <= 1e-6:
+                    continue
+                new_y = 0.0
+                for j in range(n):
+                    if j == i:
+                        continue
+                    xj, yj, wj, hj = positions[j]
+                    if min(x + w, xj + wj) - max(x, xj) > 1e-6:
+                        if yj + hj <= y + 1e-6:
+                            new_y = max(new_y, yj + hj)
+                if new_y < y - 1e-6:
+                    positions[i] = (x, new_y, w, h)
+                    improved = True
+            if not improved:
+                break
 
     def _cost(self, positions, b2b_conn, p2b_conn, pins_pos) -> float:
         return calculate_hpwl_b2b(positions, b2b_conn) + calculate_hpwl_p2b(positions, p2b_conn, pins_pos) + 0.01 * calculate_bbox_area(positions)
