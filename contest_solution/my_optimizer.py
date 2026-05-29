@@ -33,12 +33,11 @@ class MyOptimizer(FloorplanOptimizer):
     def solve(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
               p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
               target_positions: torch.Tensor = None) -> List[Rect]:
-        if block_count >= 100:
-            b2b_edges = self._b2b_edges(b2b_connectivity)
-            p2b_edges = self._p2b_edges(p2b_connectivity)
-        else:
-            b2b_edges = b2b_connectivity
-            p2b_edges = p2b_connectivity
+        # Convert connectivity to lightweight tuples for ALL block counts.
+        # Previously only done for >= 100, causing ~100x slowdown on 80-99 band
+        # where every refine pass iterated torch tensors with float() per element.
+        b2b_edges = self._b2b_edges(b2b_connectivity)
+        p2b_edges = self._p2b_edges(p2b_connectivity)
 
         variants = self._layout_variants(block_count)
         if len(variants) == 1:
@@ -81,6 +80,11 @@ class MyOptimizer(FloorplanOptimizer):
     def _construct_layout(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
                           p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
                           target_positions: torch.Tensor, b2b_edges, p2b_edges) -> List[Rect]:
+        # Always ensure we have tuple versions for fast iteration
+        if not isinstance(b2b_edges, list):
+            b2b_edges = self._b2b_edges(b2b_edges)
+        if not isinstance(p2b_edges, list):
+            p2b_edges = self._p2b_edges(p2b_edges)
         dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
         positions: List[Rect | None] = [None] * block_count
         preplaced = set()
