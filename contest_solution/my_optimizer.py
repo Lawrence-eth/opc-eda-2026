@@ -3589,7 +3589,7 @@ class MyOptimizer(FloorplanOptimizer):
                             th = area / tw
                             if abs(tw * th - area) / max(area, 1e-9) > 0.01:
                                 continue
-                            score = th + tw  # minimize total extent (prefer near-square)
+                            score = th  # minimize height (prefer wider shapes for row filling)
                             if score < best_score:
                                 best_score = score
                                 uw, uh = tw, th
