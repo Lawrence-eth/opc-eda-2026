@@ -18,9 +18,12 @@
 | **Sprint 3** (analytical_v6) | 2.5211 | −0.03% | 100/100 | 70.2s / 3.5s | Aggressive analytical refinement |
 | **Sprint 3** (contour_v1) | **2.4690** | **−2.1%** | 100/100 | 66.9s / 3.2s | **Contour-based packer with analytical ordering** |
 | Sprint 3 (contour_v5) | 2.4690 | 0% | 100/100 | 65.0s / 3.2s | SA relocation moves, increased SA budget (no effect) |
-| Sprint 3 (quadratic_v1) | **2.4658** | **−0.13%** | 100/100 | 69.0s / 3.2s | **Quadratic placement via conjugate gradient** |
+| Sprint 3 (quadratic_v1) | 2.4658 | −0.13% | 100/100 | 69.0s / 3.2s | Quadratic placement via conjugate gradient |
+| **Sprint 4** (portfolio_v1) | 2.3977 | **−2.8%** | 100/100 | 313.8s / 14.7s | **Parallel multi-start portfolio** |
+| Sprint 4 (portfolio_v4) | 2.4030 | +0.2% | 100/100 | 231.4s / 10.2s | Abacus-style legalization in portfolio |
+| Sprint 4 (portfolio_v5) | **2.4029** | −0.004% | 100/100 | 243s / 10.2s | Aspect-ratio dead-space fitting (no effect) |
 
-**Total improvement:** 2.6326 → 2.4658 = **−6.3%**
+**Total improvement:** 2.6326 → 2.4029 = **−8.7%**
 
 ---
 
