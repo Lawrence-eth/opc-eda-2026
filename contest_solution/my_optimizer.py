@@ -2917,6 +2917,11 @@ class MyOptimizer(FloorplanOptimizer):
             block_count, positions, centers, constraints, area_targets,
             b2b_edges, p2b_edges, pins_pos, preplaced)
 
+        # Aspect-ratio refinement: reshape soft blocks to fill gaps
+        self._refine_aspect_to_fill(
+            positions, dims, constraints, area_targets,
+            b2b_edges, p2b_edges, pins_pos, preplaced)
+
         # Fallback: if we still have overlaps, shelf-pack from scratch
         if self._has_overlap([p for p in positions if p is not None]):
             ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
@@ -3032,6 +3037,11 @@ class MyOptimizer(FloorplanOptimizer):
 
         self._refine_analytical_aggressive(
             block_count, positions, centers, constraints, area_targets,
+            b2b_edges, p2b_edges, pins_pos, preplaced)
+
+        # Aspect-ratio refinement: reshape soft blocks to fill gaps
+        self._refine_aspect_to_fill(
+            positions, dims, constraints, area_targets,
             b2b_edges, p2b_edges, pins_pos, preplaced)
 
         # Fallback
@@ -3423,6 +3433,125 @@ class MyOptimizer(FloorplanOptimizer):
                     improved = True
             if not improved:
                 break
+
+    def _refine_aspect_to_fill(self, positions, dims, constraints, area_targets,
+                                b2b_edges, p2b_edges, pins_pos, preplaced):
+        """Reshape soft blocks within ±1% area tolerance to fill gaps and reduce bbox.
+
+        For each soft block (not fixed/preplaced, not MIB-constrained unless the
+        whole group reshapes together): try a few aspect ratios that keep area
+        within ±1% of target. Accept if: no new overlap, bbox doesn't grow,
+        soft violations don't increase.
+        """
+        if any(p is None for p in positions):
+            return
+        ncols = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+        n = len(positions)
+        base_soft = self._soft_violation_count(positions, constraints)
+        base_area = calculate_bbox_area(positions)
+
+        # Find MIB groups (must reshape together)
+        mib_groups = {}
+        if ncols > 2:
+            for i in range(n):
+                if i in preplaced:
+                    continue
+                if ncols > 0 and constraints[i, 0] != 0:
+                    continue
+                if ncols > 1 and constraints[i, 1] != 0:
+                    continue
+                gid = int(constraints[i, 2].item())
+                if gid > 0:
+                    mib_groups.setdefault(gid, []).append(i)
+
+        # Process individual blocks (not in MIB groups)
+        mib_members = set()
+        for gid, members in mib_groups.items():
+            mib_members.update(members)
+
+        for i in range(n):
+            if i in preplaced or i in mib_members:
+                continue
+            if ncols > 0 and constraints[i, 0] != 0:
+                continue
+            if ncols > 1 and constraints[i, 1] != 0:
+                continue
+            target = float(area_targets[i]) if i < len(area_targets) else 0.0
+            if target <= 0:
+                continue
+            x, y, w, h = positions[i]
+            current_area = w * h
+            # Already within tolerance?
+            if abs(current_area - target) / target <= 0.01:
+                continue
+            # Try reshaping
+            best_rect = None
+            best_area = current_area
+            for scale in [0.90, 0.95, 1.0, 1.05, 1.10]:
+                new_w = math.sqrt(target * scale)
+                new_h = target / new_w
+                if abs(new_w * new_h - target) / target > 0.01:
+                    continue
+                new_rect = (x, y, new_w, new_h)
+                if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                    continue
+                trial = list(positions)
+                trial[i] = new_rect
+                if self._soft_violation_count(trial, constraints) > base_soft:
+                    continue
+                if calculate_bbox_area(trial) > base_area + 1e-6:
+                    continue
+                # Accept if it reduces area or fixes the block
+                positions[i] = new_rect
+                break
+
+        # Process MIB groups (reshape all members together)
+        for gid, members in mib_groups.items():
+            if len(members) < 2:
+                continue
+            # Find common target area (average)
+            targets = [float(area_targets[i]) for i in members if i < len(area_targets) and area_targets[i] > 0]
+            if not targets:
+                continue
+            avg_target = sum(targets) / len(targets)
+            # Check if all members have the same target (within 1%)
+            if any(abs(t - avg_target) / max(avg_target, 1e-6) > 0.01 for t in targets):
+                continue
+            # Find common shape
+            best_shape = None
+            best_score = float('inf')
+            for scale in [0.90, 0.95, 1.0, 1.05, 1.10]:
+                new_w = math.sqrt(avg_target * scale)
+                new_h = avg_target / new_w
+                if abs(new_w * new_h - avg_target) / avg_target > 0.01:
+                    continue
+                # Check if all members can use this shape
+                ok = True
+                for i in members:
+                    x, y, _, _ = positions[i]
+                    new_rect = (x, y, new_w, new_h)
+                    if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                        ok = False
+                        break
+                if not ok:
+                    continue
+                trial = list(positions)
+                for i in members:
+                    x, y, _, _ = trial[i]
+                    trial[i] = (x, y, new_w, new_h)
+                if self._soft_violation_count(trial, constraints) > base_soft:
+                    continue
+                if calculate_bbox_area(trial) > base_area + 1e-6:
+                    continue
+                score = abs(new_w * new_h - avg_target) / avg_target
+                if score < best_score:
+                    best_score = score
+                    best_shape = (new_w, new_h)
+            if best_shape is not None:
+                new_w, new_h = best_shape
+                for i in members:
+                    x, y, _, _ = positions[i]
+                    positions[i] = (x, y, new_w, new_h)
 
     def _analytical_global_placement(self, block_count, dims, b2b_edges, p2b_edges,
                                      pins_pos, preplaced, target_positions, constraints,
