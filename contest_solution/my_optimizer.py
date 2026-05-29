@@ -303,6 +303,9 @@ class MyOptimizer(FloorplanOptimizer):
             for i, rect in self._shelf_pack(ordered, dims, safe_x, start_y).items():
                 positions[i] = rect
 
+        # Post-pack compaction: shrink bbox by sliding unconstrained blocks toward origin
+        self._compact_toward_origin(positions, preplaced, constraints)
+
         # SA for large cases only (n >= 100) — small cases are fast without it
         if block_count >= 100 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
             max_sa_time = min(3.0, max(1.0, block_count * 0.02))
@@ -2375,6 +2378,10 @@ class MyOptimizer(FloorplanOptimizer):
             new += weight * (abs(new_bx - px) + abs(new_by - py))
         return new - old
 
+    def _compact_toward_origin(self, positions, preplaced, constraints=None):
+        """Post-pack compaction: DISABLED — too risky with boundary/cluster constraints."""
+        pass
+
     def _order_blocks(self, blocks, area_targets, b2b_connectivity, p2b_connectivity):
         degree = {i: 0.0 for i in blocks}; s = set(blocks)
         if b2b_connectivity is not None:
@@ -3333,6 +3340,164 @@ class MyOptimizer(FloorplanOptimizer):
                     improved = True
             if not improved:
                 break
+
+    # =========================================================================
+    # SKYLINE PACKER WITH JOINT SHAPE+X SELECTION (IV.PACKER)
+    # Standalone function — test on cases 99/97/95 for >0.70 utilization
+    # before integrating into solve().
+    # =========================================================================
+
+    def _skyline_pack(self, block_count, area_targets, dims, constraints,
+                       b2b_edges, p2b_edges, pins_pos, preplaced_positions=None):
+        """Skyline packer with joint shape+x selection per IV.PACKER spec.
+
+        Evaluates shape and x-position jointly: for each soft block, enumerate
+        (aspect_ratio, x_candidate) combinations and pick the one that minimizes
+        contour height increase. This is the key fix vs. previous attempts that
+        picked shape first, then x (which always stacked at x=0).
+
+        Returns: dict of {block_id: (x, y, w, h)}
+        """
+        contour = [(0.0, 0.0)]  # (x_end, y_top) segments
+
+        def _insert(xs, xe, yt):
+            nonlocal contour
+            new = []
+            for cx, cy in contour:
+                if cx <= xs:
+                    new.append((cx, cy))
+                elif cx >= xe:
+                    new.append((cx, max(cy, yt)))
+                else:
+                    new.append((cx, max(cy, yt)))
+            if not new or new[-1][0] < xe:
+                new.append((xe, yt))
+            new.sort()
+            merged = []
+            for seg in new:
+                if merged and abs(merged[-1][1] - seg[1]) < 1e-6:
+                    merged[-1] = seg
+                else:
+                    merged.append(seg)
+            contour = merged
+
+        def _ly(xs, w):
+            """Landing y: max contour over [xs, xs+w]."""
+            xe = xs + w; mh = 0.0; px = 0.0
+            for cx, cy in contour:
+                if cx > xs and px < xe:
+                    mh = max(mh, cy)
+                px = cx
+            return mh
+
+        def _cands(w):
+            """Candidate x: segment edges, segment-minus-width, and grid positions."""
+            s = set(); px = 0.0
+            for cx, _ in contour:
+                s.add(px); s.add(max(0.0, cx - w))
+                px = cx
+            # Add grid positions between segment edges for finer placement
+            if contour:
+                max_x = contour[-1][0]
+                step = max(w * 0.5, 1.0)
+                x = 0.0
+                while x <= max_x:
+                    s.add(x)
+                    x += step
+            return sorted(s)
+
+        # Init from preplaced obstacles
+        positions = {}
+        preplaced_set = set()
+        if preplaced_positions:
+            for rect in preplaced_positions:
+                x, y, w, h = rect
+                _insert(x, x + w, y + h)
+                for i in range(block_count):
+                    if i in preplaced_set: continue
+                    if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+                        if constraints[i, 1] != 0:
+                            positions[i] = (x, y, w, h)
+                            preplaced_set.add(i); break
+
+        # Build units (clusters as super-blocks)
+        used = set(); units = []
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 3:
+            degrees = self._connection_degrees(range(block_count), b2b_edges, p2b_edges)
+            for gid in sorted({int(constraints[i, 3].item()) for i in range(block_count) if constraints[i, 3] > 0}):
+                group = [i for i in range(block_count) if int(constraints[i, 3].item()) == gid]
+                if len(group) < 2 or any(i in preplaced_set for i in group): continue
+                group = sorted(group, key=lambda i: (-degrees.get(i, 0.0), -float(area_targets[i]), i))
+                local, uw, uh = self._cluster_local_pack(group, dims)
+                for i in group: used.add(i)
+                units.append({'ids': group, 'w': uw, 'h': uh, 'local': local,
+                              'area': sum(float(area_targets[i]) for i in group), 'is_cluster': True})
+        for i in range(block_count):
+            if i in used or i in preplaced_set: continue
+            w, h = dims[i]
+            area = float(area_targets[i]) if i < len(area_targets) and area_targets[i] > 0 else w * h
+            units.append({'ids': [i], 'w': w, 'h': h, 'local': {i: (0.0, 0.0, w, h)},
+                          'area': area, 'is_cluster': False})
+        units.sort(key=lambda u: -u['area'])
+
+        ASPECTS = [1.0, 1.3, 1.6, 2.0, 2.5, 3.0]
+
+        for u in units:
+            uw, uh = u['w'], u['h']
+
+            # Joint shape+x selection for individual soft blocks
+            if not u['is_cluster'] and len(u['ids']) == 1:
+                i = u['ids'][0]
+                nc = constraints.shape[1] if constraints is not None and constraints.dim() > 1 else 0
+                is_hard = (nc > 0 and constraints[i, 0] != 0) or (nc > 1 and constraints[i, 1] != 0)
+                if not is_hard and u['area'] > 0:
+                    area = u['area']
+                    best = (float('inf'),)
+                    for r in ASPECTS:
+                        for orient in [r, 1.0 / r]:
+                            tw = math.sqrt(area * orient)
+                            th = area / tw
+                            if abs(tw * th - area) / max(area, 1e-9) > 0.01:
+                                continue
+                            for cx in _cands(tw):
+                                ly = _ly(cx, tw)
+                                # Score: minimize resulting bbox area (width * max_height)
+                                # This penalizes both tall AND wide layouts
+                                # Estimate: the bbox width after placement ≈ max(current_width, cx+tw)
+                                # and bbox height ≈ max(current_height, ly+th)
+                                # Since we don't track bbox, proxy: minimize ly + th (contour height)
+                                # with tie-break toward leftmost (BLF standard)
+                                sc = (ly + th, cx)
+                                if sc < best:
+                                    best = sc; uw, uh = tw, th
+                                    place_x, place_y = cx, ly
+                    if best[0] < float('inf'):
+                        pass
+                    else:
+                        cands = _cands(uw)
+                        scored = sorted([(_ly(x, uw), x) for x in cands])
+                        place_x, place_y = scored[0][1], scored[0][0] if scored else (0.0, 0.0)
+                else:
+                    cands = _cands(uw)
+                    scored = sorted([(_ly(x, uw), x) for x in cands])
+                    place_x, place_y = scored[0][1], scored[0][0] if scored else (0.0, 0.0)
+            else:
+                cands = _cands(uw)
+                scored = sorted([(_ly(x, uw), x) for x in cands])
+                place_x, place_y = scored[0][1], scored[0][0] if scored else (0.0, 0.0)
+
+            for i, (lx, ly, w, h) in u['local'].items():
+                if u['is_cluster']:
+                    sx = uw / max(u['w'], 1e-9); sy = uh / max(u['h'], 1e-9)
+                    positions[i] = (place_x + lx * sx, place_y + ly * sy, w * sx, h * sy)
+                elif len(u['ids']) == 1:
+                    positions[i] = (place_x, place_y, uw, uh)
+                else:
+                    positions[i] = (place_x + lx, place_y + ly, w, h)
+            _insert(place_x, place_x + uw, place_y + uh)
+            last_right[0] = place_x + uw
+
+        return positions
 
     def _correctness_first_polish(self, positions, block_count, movable, preplaced,
                                    boundary_map, dims, area_targets, b2b_edges, p2b_edges,
