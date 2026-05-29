@@ -64,10 +64,14 @@ class MyOptimizer(FloorplanOptimizer):
         self._hpwl_baseline = None
         self._area_baseline = None
         self._baselines_by_n = None
+        self._no_sa = False
 
     def solve(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
               p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
               target_positions: torch.Tensor = None) -> List[Rect]:
+        import time as _time
+        _start = _time.time()
+
         # Load baselines for real contest cost (once, lazy)
         if self._baselines_by_n is None:
             import json as _json
@@ -95,19 +99,18 @@ class MyOptimizer(FloorplanOptimizer):
         b2b_edges = self._b2b_edges(b2b_connectivity)
         p2b_edges = self._p2b_edges(p2b_connectivity)
 
-        # Build portfolio of configs
-        configs = self._build_portfolio(block_count)
+        # Hard per-case time budget
+        time_budget = min(1.5, 0.4 + block_count * 0.01)
 
-        # Run portfolio: try each config, keep best by true contest cost
+        # Stage 1: fast constructors (NO SA) — parallel when many configs
+        configs = self._build_portfolio(block_count)
         best_positions = None
         best_true_cost = float("inf")
 
-        # For large cases with many configs, use parallel execution
-        if block_count >= 80 and len(configs) > 4:
+        if block_count >= 50 and len(configs) > 2:
             try:
                 import concurrent.futures
                 import os
-                # Prepare worker args: convert tensors to numpy for pickling
                 area_np = area_targets.detach().cpu().numpy().tolist()
                 cons_np = constraints.detach().cpu().numpy().tolist() if constraints is not None else None
                 pins_np = pins_pos.detach().cpu().numpy().tolist() if pins_pos is not None else None
@@ -126,13 +129,10 @@ class MyOptimizer(FloorplanOptimizer):
                         if positions and tc < best_true_cost:
                             best_true_cost = tc
                             best_positions = positions
-                if best_positions is not None:
-                    return best_positions
-            except Exception as e:
-                # Fallback to serial if parallel fails
-                pass
+            except Exception:
+                pass  # fall through to serial
 
-        # Serial fallback (or small cases)
+        # Serial execution (for small portfolios or when parallel fails)
         if best_positions is None:
             for cfg in configs:
                 try:
@@ -148,24 +148,43 @@ class MyOptimizer(FloorplanOptimizer):
                 except Exception:
                     pass
 
+        # Stage 2: polish the winner with bounded SA
+        elapsed = _time.time() - _start
+        remaining = max(0.1, time_budget - elapsed)
+        if best_positions is not None and remaining > 0.2 and block_count >= 50:
+            # Run one bounded SA on the best stage-1 result
+            try:
+                movable = set()
+                preplaced = set()
+                boundary = {}
+                if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+                    for i in range(block_count):
+                        if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
+                            preplaced.add(i)
+                        else:
+                            movable.add(i)
+                            if constraints.shape[1] > 4:
+                                boundary[i] = int(constraints[i, 4].item())
+                dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
+                self._sa_post_optimization(
+                    best_positions, block_count, movable, preplaced, boundary,
+                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                    max_time=min(remaining, 1.0)
+                )
+            except Exception:
+                pass
+
         return best_positions if best_positions is not None else []
 
     def _build_portfolio(self, block_count):
-        """Build a diverse portfolio of configs for multi-start."""
+        """Build a fast, diverse portfolio."""
         configs = []
-        # Existing tuned variants (shelf path)
-        for rf, sc, lc in self._layout_variants(block_count):
-            configs.append({'row_factor': rf, 'small_cluster': sc, 'large_cluster': lc, 'path': 'shelf'})
-        # Analytical path with default params
-        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical'})
-        # Abacus path (analytical ordering + min-displacement legalizer)
-        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'abacus'})
-        # Diversified shelf variants (vary row_factor) — fewer for runtime
-        for rf in [0.80, 1.00, 1.10]:
-            configs.append({'row_factor': rf, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf'})
-        # Diversified analytical variants
-        for rf in [0.80, 1.00]:
-            configs.append({'row_factor': rf, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical'})
+        # Default shelf with SA (the baseline path — fast, proven)
+        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': False})
+        # Analytical path without SA (fast, for diversity)
+        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical', 'no_sa': True})
+        # Abacus path without SA (fast, for diversity)
+        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'abacus', 'no_sa': True})
         return configs
 
     def _solve_one(self, cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
@@ -176,23 +195,26 @@ class MyOptimizer(FloorplanOptimizer):
             self._row_factor = cfg['row_factor']
             self._small_cluster_factor = cfg['small_cluster']
             self._large_cluster_factor = cfg['large_cluster']
+            self._no_sa = cfg.get('no_sa', False)
             if cfg['path'] == 'analytical':
-                return self._analytical_construct_layout(
+                positions = self._analytical_construct_layout(
                     block_count, area_targets, b2b_connectivity, p2b_connectivity,
                     pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
             elif cfg['path'] == 'abacus':
-                return self._abacus_construct_layout(
+                positions = self._abacus_construct_layout(
                     block_count, area_targets, b2b_connectivity, p2b_connectivity,
                     pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
             else:
-                return self._construct_layout(
+                positions = self._construct_layout(
                     block_count, area_targets, b2b_connectivity, p2b_connectivity,
                     pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
+            return positions
         finally:
             self._row_factor, self._small_cluster_factor, self._large_cluster_factor = original
+            self._no_sa = False
 
     def _construct_layout(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
                           p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
@@ -332,7 +354,7 @@ class MyOptimizer(FloorplanOptimizer):
             for i, rect in self._shelf_pack(ordered, dims, safe_x, start_y).items():
                 positions[i] = rect
 
-        if block_count >= 50 and len(movable) >= 2:
+        if block_count >= 50 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
             # Bounded SA budget: cap at 3s to prevent runtime bombs on 80-99 band.
             max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_post_optimization(
@@ -2858,7 +2880,7 @@ class MyOptimizer(FloorplanOptimizer):
                 positions[i] = rect
 
         # SA post-optimization with analytical centers for relocation moves
-        if block_count >= 50 and len(movable) >= 2:
+        if block_count >= 50 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
             max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_centers = centers  # pass analytical centers to SA for relocation
             try:
@@ -2980,7 +3002,7 @@ class MyOptimizer(FloorplanOptimizer):
                 positions[i] = rect
 
         # SA
-        if block_count >= 50 and len(movable) >= 2:
+        if block_count >= 50 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
             max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_centers = centers
             try:
