@@ -83,9 +83,6 @@ class MyOptimizer(FloorplanOptimizer):
     def solve(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
               p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
               target_positions: torch.Tensor = None) -> List[Rect]:
-        import time as _time
-        _start = _time.time()
-
         # Load baselines for real contest cost (once, lazy)
         if self._baselines_by_n is None:
             import json as _json
@@ -113,82 +110,30 @@ class MyOptimizer(FloorplanOptimizer):
         b2b_edges = self._b2b_edges(b2b_connectivity)
         p2b_edges = self._p2b_edges(p2b_connectivity)
 
-        # P0.2: Real portfolio — construction-only members (no SA), parallel via persistent pool
+        # Shelf path with SA for n>=100 (proven approach from sprint5_v9)
         configs = self._build_portfolio(block_count)
         best_positions = None
-        best_true_cost = float("inf")
+        best_cost = float("inf")
 
-        if block_count >= 21 and len(configs) > 1:
+        for cfg in configs:
             try:
-                area_np = area_targets.detach().cpu().numpy().tolist()
-                cons_np = constraints.detach().cpu().numpy().tolist() if constraints is not None else None
-                pins_np = pins_pos.detach().cpu().numpy().tolist() if pins_pos is not None else None
-                tp_np = target_positions.detach().cpu().numpy().tolist() if target_positions is not None else None
-
-                worker_args = []
-                for idx, cfg in enumerate(configs):
-                    worker_args.append((
-                        idx, cfg, block_count, area_np, b2b_edges, p2b_edges,
-                        pins_np, cons_np, tp_np, self._hpwl_baseline, self._area_baseline
-                    ))
-
-                pool = _get_pool()
-                for cfg_idx, positions, tc in pool.map(_worker_solve, worker_args):
-                    if positions and tc < best_true_cost:
-                        best_true_cost = tc
-                        best_positions = positions
-            except Exception:
-                # Serial fallback
-                for cfg in configs:
-                    try:
-                        positions = self._solve_one(
-                            cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
-                            pins_pos, constraints, target_positions, b2b_edges, p2b_edges
-                        )
-                        if positions:
-                            tc = self._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
-                            if tc < best_true_cost:
-                                best_true_cost = tc
-                                best_positions = positions
-                    except Exception:
-                        pass
-
-        # P0.3: One shared polish — SA on the winner only, hard time-budgeted
-        elapsed = _time.time() - _start
-        remaining = max(0.0, min(1.5, 0.4 + block_count * 0.01) - elapsed)
-        if best_positions is not None and remaining > 0.2 and block_count >= 50:
-            try:
-                movable = set()
-                preplaced = set()
-                boundary = {}
-                if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
-                    for i in range(block_count):
-                        if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
-                            preplaced.add(i)
-                        else:
-                            movable.add(i)
-                            if constraints.shape[1] > 4:
-                                boundary[i] = int(constraints[i, 4].item())
-                dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
-                self._sa_post_optimization(
-                    best_positions, block_count, movable, preplaced, boundary,
-                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
-                    max_time=min(remaining, 0.5)
+                positions = self._construct_layout(
+                    block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                    pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
+                if positions:
+                    cost = self._selection_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+                    if cost < best_cost:
+                        best_cost = cost
+                        best_positions = positions
             except Exception:
                 pass
 
         return best_positions if best_positions is not None else []
 
     def _build_portfolio(self, block_count):
-        """P0.2: Real portfolio — construction-only + shelf-with-SA."""
-        configs = []
-        # Shelf variants: diverse row_factor values (construction-only, fast)
-        for rf in [0.70, 0.90, 1.00, 1.20]:
-            configs.append({'row_factor': rf, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': True})
-        # Shelf with SA (the proven quality path)
-        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': False})
-        return configs
+        """Build shelf path config. SA for n>=100 only."""
+        return [{'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf'}]
 
     def _solve_one(self, cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
                    pins_pos, constraints, target_positions, b2b_edges, p2b_edges):
@@ -1920,6 +1865,7 @@ class MyOptimizer(FloorplanOptimizer):
         return min(max(target, lo), hi)
 
     def _choose_dimensions(self, block_count, area_targets, constraints, target_positions):
+        """Choose block dimensions. Soft blocks use near-square shapes."""
         dims = []
         hard = set()
         for i in range(block_count):
