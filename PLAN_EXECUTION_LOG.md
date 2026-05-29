@@ -30,6 +30,33 @@
 
 ---
 
+## Sprint 5 Results
+
+| Result | Local Score | Runtime (avg) | Median=1.0s | Median=2.0s | Notes |
+|--------|-------------|---------------|-------------|-------------|-------|
+| quadratic_v1 (baseline) | 2.4658 | 0.69s | 2.652 | 2.160 | Single shelf + SA |
+| portfolio_v7 (Sprint 4) | 2.4167 | 2.78s | 4.090 | 3.322 | Portfolio — runtime regression |
+| **sprint5_v9** | **2.7182** | **0.18s** | **2.135** | **1.932** | **SA for n>=100 only — WINS at median≤2.0s** |
+
+**Key finding:** The portfolio (Sprint 4) was a leaderboard regression — worse at every median due to runtime blowup. The pure shelf with SA only for n>=100 is the best approach: 3.8× faster, wins at median≤2.0s.
+
+**Runtime-adjusted comparison (sprint5_v9 vs baseline):**
+- median=0.3s: 3.002 vs 3.804 (−0.802)
+- median=0.5s: 2.583 vs 2.634 (−0.680)
+- median=1.0s: 2.135 vs 2.652 (−0.517)
+- median=2.0s: 1.932 vs 2.160 (−0.228)
+- median=3.0s: 1.903 vs 1.941 (−0.038)
+- median=5.0s: 1.903 vs 1.795 (+0.108)
+
+**Dead ends from Sprint 5:**
+- Fast local search with incremental HPWL (broken — 83 worsened, 15 improved)
+- Portfolio with 3+ configs (overhead outweighs quality gain)
+- SA for all cases (too slow for small cases)
+- Iterative QP + spreading (no improvement)
+- Aspect-ratio refinement (no effect)
+
+---
+
 ## Verified Score Decomposition (contour_v1, exp(n/12) weighting)
 
 | Band | Weight | Avg Cost | HPWL Gap | Area Gap | V_rel |
