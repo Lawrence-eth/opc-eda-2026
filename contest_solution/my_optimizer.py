@@ -109,27 +109,6 @@ class MyOptimizer(FloorplanOptimizer):
         boundary_blocks = [i for i in movable if boundary[i] != 0 and i not in boundary_cluster_ids]
         interior = [i for i in movable if boundary[i] == 0 and i not in boundary_cluster_ids]
 
-        # Sort interior blocks by connectivity centroid for better HPWL.
-        # Connected blocks end up in adjacent rows/positions.
-        if len(interior) > 1:
-            # Compute weighted centroid index for each block
-            centroid_idx = {}
-            for i in interior:
-                wx, ww = 0.0, 0.0
-                for a, b, w in b2b_edges:
-                    if a == i:
-                        wx += w * b
-                        ww += w
-                    elif b == i:
-                        wx += w * a
-                        ww += w
-                for pin, b, w in p2b_edges:
-                    if b == i:
-                        wx += w * (len(positions) + pin)  # pins get high indices
-                        ww += w
-                centroid_idx[i] = wx / ww if ww > 0 else float(i)
-            interior.sort(key=lambda i: centroid_idx.get(i, float(i)))
-
         placed_rects = [p for p in positions if p is not None]
         if placed_rects:
             start_x = max(p[0] + p[2] for p in placed_rects) + 1.0
@@ -2195,6 +2174,132 @@ class MyOptimizer(FloorplanOptimizer):
                         break
             if not improved:
                 break
+
+    def _refine_position_swaps(self, block_count, positions, constraints, area_targets,
+                               b2b_connectivity, p2b_connectivity, pins_pos) -> None:
+        """Try swapping positions of any two non-locked blocks to reduce HPWL.
+
+        Unlike _refine_equal_shape_swaps which swaps positions of same-shape
+        blocks, this swaps positions of any two blocks (dimensions stay with
+        the block, only position changes).
+        """
+        if any(p is None for p in positions):
+            return
+        if constraints is None or constraints.dim() <= 1:
+            return
+
+        ncols = constraints.shape[1]
+        movable = []
+        for i in range(block_count):
+            if ncols > 0 and constraints[i, 0] != 0:
+                continue
+            if ncols > 1 and constraints[i, 1] != 0:
+                continue
+            if ncols > 3 and constraints[i, 3] != 0:
+                continue
+            movable.append(i)
+        if len(movable) < 2:
+            return
+
+        # Build adjacency for fast wirelength computation
+        movable_set = set(movable)
+        b_adj = {i: [] for i in movable}
+        for edge_idx, (a, b, w) in enumerate(b2b_connectivity):
+            if a in movable_set:
+                b_adj[a].append((edge_idx, a, b, w))
+            if b in movable_set:
+                b_adj[b].append((edge_idx, a, b, w))
+        p_adj = {i: [] for i in movable}
+        for edge_idx, (pin, b, w) in enumerate(p2b_connectivity):
+            if b in movable_set and 0 <= pin < len(pins_pos):
+                px = float(pins_pos[pin, 0])
+                py = float(pins_pos[pin, 1])
+                if px != -1.0 and py != -1.0:
+                    p_adj[b].append((edge_idx, pin, b, w, px, py))
+
+        base_soft = self._soft_violation_count(positions, constraints)
+        base_area = calculate_bbox_area(positions)
+
+        for _pass in range(3):
+            best = None
+            for idx_i, i in enumerate(movable):
+                for j in movable[idx_i + 1:]:
+                    xi, yi, wi, hi = positions[i]
+                    xj, yj, wj, hj = positions[j]
+                    # Swap positions (keep dimensions)
+                    new_i = (xj, yj, wi, hi)
+                    new_j = (xi, yi, wj, hj)
+                    # Check overlaps
+                    overlap = False
+                    for k in range(block_count):
+                        if k == i or k == j:
+                            continue
+                        xk, yk, wk, hk = positions[k]
+                        if min(xj + wi, xk + wk) - max(xj, xk) > 1e-6 and \
+                           min(yj + hi, yk + hk) - max(yj, yk) > 1e-6:
+                            overlap = True
+                            break
+                        if min(xi + wj, xk + wk) - max(xi, xk) > 1e-6 and \
+                           min(yi + hj, yk + hk) - max(yi, yk) > 1e-6:
+                            overlap = True
+                            break
+                    if overlap:
+                        continue
+                    # Compute wirelength delta
+                    delta = self._swap_position_delta(
+                        i, j, positions, b_adj, p_adj, pins_pos
+                    )
+                    if delta < -1e-6 and (best is None or delta < best[0]):
+                        best = (delta, i, j, new_i, new_j)
+            if best is None:
+                break
+            _delta, i, j, new_i, new_j = best
+            positions[i] = new_i
+            positions[j] = new_j
+
+    def _swap_position_delta(self, i, j, positions, b_adj, p_adj, pins_pos):
+        """Compute wirelength delta for swapping positions of blocks i and j."""
+        xi, yi, wi, hi = positions[i]
+        xj, yj, wj, hj = positions[j]
+        new_i = (xj, yj, wi, hi)
+        new_j = (xi, yi, wj, hj)
+
+        def center(rect):
+            x, y, w, h = rect
+            return x + 0.5 * w, y + 0.5 * h
+
+        def rect_for(block):
+            if block == i:
+                return new_i
+            if block == j:
+                return new_j
+            return positions[block]
+
+        old = 0.0
+        new = 0.0
+        seen = set()
+        ids = {i, j}
+        for edge_idx, a, b, weight in b_adj.get(i, []) + b_adj.get(j, []):
+            if edge_idx in seen or a < 0 or b < 0:
+                continue
+            seen.add(edge_idx)
+            old_ax, old_ay = center(positions[a])
+            old_bx, old_by = center(positions[b])
+            old += weight * (abs(old_ax - old_bx) + abs(old_ay - old_by))
+            new_ax, new_ay = center(rect_for(a))
+            new_bx, new_by = center(rect_for(b))
+            new += weight * (abs(new_ax - new_bx) + abs(new_ay - new_by))
+
+        seen.clear()
+        for edge_idx, pin, block, weight, px, py in p_adj.get(i, []) + p_adj.get(j, []):
+            if edge_idx in seen or block < 0:
+                continue
+            seen.add(edge_idx)
+            old_bx, old_by = center(positions[block])
+            old += weight * (abs(old_bx - px) + abs(old_by - py))
+            new_bx, new_by = center(rect_for(block))
+            new += weight * (abs(new_bx - px) + abs(new_by - py))
+        return new - old
 
     def _order_blocks(self, blocks, area_targets, b2b_connectivity, p2b_connectivity):
         """Order blocks by weighted connectivity centroid (geometry-aware).
