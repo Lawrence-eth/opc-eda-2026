@@ -110,7 +110,7 @@ class MyOptimizer(FloorplanOptimizer):
         b2b_edges = self._b2b_edges(b2b_connectivity)
         p2b_edges = self._p2b_edges(p2b_connectivity)
 
-        # Shelf path with SA for n>=100 (proven approach from sprint5_v9)
+        # Shelf path (proven approach from sprint5_v9)
         configs = self._build_portfolio(block_count)
         best_positions = None
         best_cost = float("inf")
@@ -316,6 +316,123 @@ class MyOptimizer(FloorplanOptimizer):
             )
 
         return [self._clean_tuple(p) for p in positions]  # type: ignore[arg-type]
+
+    def _skyline_construct_layout(self, block_count: int, area_targets: torch.Tensor,
+                                   b2b_connectivity: torch.Tensor, p2b_connectivity: torch.Tensor,
+                                   pins_pos: torch.Tensor, constraints: torch.Tensor,
+                                   target_positions: torch.Tensor, b2b_edges, p2b_edges) -> List[Rect]:
+        """Skyline-based layout: contour packer with shape selection + boundary + refinement + SA.
+
+        Uses the skyline packer for interior blocks instead of the shelf packer.
+        The skyline packer uses bbox-area minimization scoring with shape selection.
+        """
+        if not isinstance(b2b_edges, list):
+            b2b_edges = self._b2b_edges(b2b_edges)
+        if not isinstance(p2b_edges, list):
+            p2b_edges = self._p2b_edges(p2b_edges)
+
+        dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
+        positions: List[Rect | None] = [None] * block_count
+        preplaced = set()
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+            for i in range(block_count):
+                if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
+                    positions[i] = tuple(float(target_positions[i, k]) for k in range(4))
+                    preplaced.add(i)
+
+        movable = [i for i in range(block_count) if i not in preplaced]
+        boundary = {i: self._boundary_code(constraints, i) for i in movable}
+        if block_count < 119:
+            boundary_units, boundary_cluster_ids = self._make_boundary_cluster_units(
+                movable, boundary, dims, constraints, area_targets, b2b_edges, p2b_edges
+            )
+        else:
+            boundary_units, boundary_cluster_ids = [], set()
+        boundary_blocks = [i for i in movable if boundary[i] != 0 and i not in boundary_cluster_ids]
+        interior = [i for i in movable if boundary[i] == 0 and i not in boundary_cluster_ids]
+
+        # Build preplaced_positions for skyline packer
+        preplaced_positions = []
+        for i in preplaced:
+            preplaced_positions.append(positions[i])
+
+        # Use skyline packer for interior blocks
+        skyline_positions = self._skyline_pack(
+            block_count, area_targets, dims, constraints,
+            b2b_edges, p2b_edges, pins_pos, preplaced_positions
+        )
+        for i in interior:
+            if i in skyline_positions:
+                positions[i] = skyline_positions[i]
+
+        content = [p for p in positions if p is not None]
+        if not content:
+            content = [(0.0, 0.0, 1.0, 1.0)]
+
+        self._place_boundary_items(
+            boundary_blocks, boundary_units, boundary, dims, positions, content,
+            b2b_edges, p2b_edges, pins_pos, constraints
+        )
+
+        # Refinement passes
+        if block_count >= 100:
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets,
+                b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_line_shifts_118(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+        if block_count < 100:
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos
+            )
+
+        # Fallback: if overlaps, shelf-pack from scratch
+        if self._has_overlap([p for p in positions if p is not None]):
+            ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
+            safe_x = max((p[0] + p[2] for k, p in enumerate(positions) if p is not None and k in preplaced), default=0.0) + 1.0
+            for i, rect in self._shelf_pack(ordered, dims, safe_x, 0.0).items():
+                positions[i] = rect
+
+        # SA for large cases
+        if block_count >= 100 and len(movable) >= 2:
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
+            self._sa_post_optimization(
+                positions, block_count, set(movable), preplaced, boundary,
+                dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                max_time=max_sa_time
+            )
+
+        return [self._clean_tuple(p) for p in positions]
 
     def _layout_variants(self, block_count):
         """Count-agnostic layout variants (de-overfitted from per-count tuning)."""
