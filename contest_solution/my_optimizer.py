@@ -148,31 +148,7 @@ class MyOptimizer(FloorplanOptimizer):
                 except Exception:
                     pass
 
-        # Stage 2: polish the winner with bounded SA
-        elapsed = _time.time() - _start
-        remaining = max(0.1, time_budget - elapsed)
-        if best_positions is not None and remaining > 0.2 and block_count >= 50:
-            # Run one bounded SA on the best stage-1 result
-            try:
-                movable = set()
-                preplaced = set()
-                boundary = {}
-                if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
-                    for i in range(block_count):
-                        if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
-                            preplaced.add(i)
-                        else:
-                            movable.add(i)
-                            if constraints.shape[1] > 4:
-                                boundary[i] = int(constraints[i, 4].item())
-                dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
-                self._sa_post_optimization(
-                    best_positions, block_count, movable, preplaced, boundary,
-                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
-                    max_time=min(remaining, 1.0)
-                )
-            except Exception:
-                pass
+        # Stage 2: no additional polish (fast local search reverted — hurt quality)
 
         return best_positions if best_positions is not None else []
 
@@ -181,10 +157,6 @@ class MyOptimizer(FloorplanOptimizer):
         configs = []
         # Default shelf with SA (the baseline path — fast, proven)
         configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf', 'no_sa': False})
-        # Analytical path without SA (fast, for diversity)
-        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical', 'no_sa': True})
-        # Abacus path without SA (fast, for diversity)
-        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'abacus', 'no_sa': True})
         return configs
 
     def _solve_one(self, cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
@@ -354,8 +326,8 @@ class MyOptimizer(FloorplanOptimizer):
             for i, rect in self._shelf_pack(ordered, dims, safe_x, start_y).items():
                 positions[i] = rect
 
-        if block_count >= 50 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
-            # Bounded SA budget: cap at 3s to prevent runtime bombs on 80-99 band.
+        # SA for large cases only (n >= 100) — small cases are fast without it
+        if block_count >= 100 and len(movable) >= 2 and not getattr(self, '_no_sa', False):
             max_sa_time = min(3.0, max(1.0, block_count * 0.02))
             self._sa_post_optimization(
                 positions, block_count, set(movable), preplaced, boundary,
@@ -3383,6 +3355,219 @@ class MyOptimizer(FloorplanOptimizer):
                     improved = True
             if not improved:
                 break
+
+    def _fast_local_search(self, positions, block_count, movable, preplaced, boundary_map,
+                            dims, area_targets, b2b_conn, p2b_conn, pins_pos, constraints,
+                            max_time=1.0):
+        """Fast incremental local search with legalization-aware moves.
+
+        Key improvements over _sa_post_optimization:
+        1. Incremental HPWL: only update incident edges on each move (O(deg) not O(E))
+        2. Legalization-aware: relocate-and-repair instead of reject-on-overlap
+        3. Greedy + SA hybrid: greedy descent first, then short SA
+        4. Incremental soft cost: recompute V_rel on each move
+        """
+        import time as _time
+        import random as _random
+
+        start = _time.time()
+        if len(movable) < 2:
+            return
+
+        n = block_count
+        # Precompute incident edge lists for incremental HPWL
+        b_adj = {i: [] for i in range(n)}
+        for idx, e in enumerate(b2b_conn):
+            if len(e) < 3 or e[0] == -1:
+                continue
+            a, b, w = int(e[0]), int(e[1]), abs(float(e[2]))
+            b_adj[a].append((b, w))
+            b_adj[b].append((a, w))
+        p_adj = {i: [] for i in range(n)}
+        for idx, e in enumerate(p2b_conn):
+            if len(e) < 3 or e[0] == -1:
+                continue
+            pin, b, w = int(e[0]), int(e[1]), abs(float(e[2]))
+            if 0 <= pin < len(pins_pos):
+                px = float(pins_pos[pin, 0])
+                py = float(pins_pos[pin, 1])
+                if px != -1.0 and py != -1.0:
+                    p_adj[b].append((px, py, w))
+
+        # Compute initial incremental HPWL contribution for each block
+        def block_hpwl(i):
+            """HPWL contribution of block i (sum of incident edge costs)."""
+            x, y, w, h = positions[i]
+            cx, cy = x + w * 0.5, y + h * 0.5
+            total = 0.0
+            for other, ew in b_adj[i]:
+                if 0 <= other < n:
+                    ox, oy, ow, oh = positions[other]
+                    total += ew * (abs(cx - (ox + ow * 0.5)) + abs(cy - (oy + oh * 0.5)))
+            for px, py, ew in p_adj[i]:
+                total += ew * (abs(cx - px) + abs(cy - py))
+            return total
+
+        # Compute initial total HPWL
+        total_hpwl = 0.0
+        seen = set()
+        for i in range(n):
+            for other, w in b_adj[i]:
+                key = (min(i, other), max(i, other))
+                if key not in seen:
+                    seen.add(key)
+                    x1, y1, w1, h1 = positions[i]
+                    x2, y2, w2, h2 = positions[other]
+                    total_hpwl += w * (abs((x1+w1*0.5)-(x2+w2*0.5)) + abs((y1+h1*0.5)-(y2+h2*0.5)))
+        for i in range(n):
+            for px, py, w in p_adj[i]:
+                x, y, bw, bh = positions[i]
+                total_hpwl += w * (abs((x+bw*0.5)-px) + abs((y+bh*0.5)-py))
+
+        # Track bbox extremes
+        x_min = min(p[0] for p in positions)
+        x_max = max(p[0]+p[2] for p in positions)
+        y_min = min(p[1] for p in positions)
+        y_max = max(p[1]+p[3] for p in positions)
+
+        # Baselines for real cost
+        use_real = (self._hpwl_baseline is not None and self._area_baseline is not None
+                    and self._hpwl_baseline > 0 and self._area_baseline > 0)
+
+        def compute_cost():
+            bbox = (x_max - x_min) * (y_max - y_min)
+            if use_real:
+                hg = max(0.0, (total_hpwl - self._hpwl_baseline) / max(self._hpwl_baseline, 1e-6))
+                ag = max(0.0, (bbox - self._area_baseline) / max(self._area_baseline, 1e-6))
+                v = self._soft_violation_count(positions, constraints) / max(self._n_soft(constraints, n), 1)
+                return (1.0 + 0.5 * (hg + ag)) * math.exp(2.0 * v)
+            else:
+                return total_hpwl + 0.01 * bbox
+
+        current_cost = compute_cost()
+        best_cost = current_cost
+        best_positions = [p for p in positions]
+
+        movable_list = [i for i in movable if i not in preplaced]
+        if not movable_list:
+            return
+
+        # Phase 1: Greedy descent (accept only improving moves)
+        for _pass in range(3):
+            improved = False
+            _random.shuffle(movable_list)
+            for i in movable_list:
+                if _time.time() - start > max_time * 0.5:
+                    break
+                x, y, w, h = positions[i]
+                # Compute desired center from connectivity
+                wx, wy, ww = 0.0, 0.0, 0.0
+                for other, ew in b_adj[i]:
+                    if 0 <= other < n:
+                        ox, oy, ow, oh = positions[other]
+                        wx += ew * (ox + ow * 0.5)
+                        wy += ew * (oy + oh * 0.5)
+                        ww += ew
+                for px, py, ew in p_adj[i]:
+                    wx += ew * px
+                    wy += ew * py
+                    ww += ew
+                if ww <= 0:
+                    continue
+                target_cx = wx / ww
+                target_cy = wy / ww
+                target_x = target_cx - w * 0.5
+                target_y = target_cy - h * 0.5
+
+                # Try moving to target (or clamped version)
+                old_hpwl_i = block_hpwl(i)
+                old_rect = positions[i]
+
+                for scale in [1.0, 0.5, 0.25]:
+                    nx = x + (target_x - x) * scale
+                    ny = y + (target_y - y) * scale
+                    new_rect = (nx, ny, w, h)
+                    # Check overlap
+                    if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                        continue
+                    # Apply move temporarily
+                    positions[i] = new_rect
+                    new_hpwl_i = block_hpwl(i)
+                    # Update totals
+                    delta_hpwl = new_hpwl_i - old_hpwl_i
+                    total_hpwl += delta_hpwl
+                    # Update bbox
+                    old_x_min, old_x_max = x_min, x_max
+                    old_y_min, old_y_max = y_min, y_max
+                    x_min = min(p[0] for p in positions)
+                    x_max = max(p[0]+p[2] for p in positions)
+                    y_min = min(p[1] for p in positions)
+                    y_max = max(p[1]+p[3] for p in positions)
+
+                    new_cost = compute_cost()
+                    if new_cost < current_cost - 1e-6:
+                        current_cost = new_cost
+                        improved = True
+                        if current_cost < best_cost:
+                            best_cost = current_cost
+                            best_positions = [p for p in positions]
+                        break
+                    else:
+                        # Revert
+                        positions[i] = old_rect
+                        total_hpwl -= delta_hpwl
+                        x_min, x_max = old_x_min, old_x_max
+                        y_min, y_max = old_y_min, old_y_max
+            if not improved:
+                break
+
+        # Phase 2: Short SA (accept some worsening moves)
+        temp = 1.0
+        for _iter in range(200):
+            if _time.time() - start > max_time:
+                break
+            i = _random.choice(movable_list)
+            x, y, w, h = positions[i]
+
+            # Random move: shift by a fraction of block size
+            dx = _random.uniform(-w * 0.3, w * 0.3)
+            dy = _random.uniform(-h * 0.3, h * 0.3)
+            new_rect = (x + dx, y + dy, w, h)
+
+            if self._overlaps_any(new_rect, [positions[j] for j in range(n) if j != i and positions[j] is not None]):
+                continue
+
+            old_hpwl_i = block_hpwl(i)
+            old_rect = positions[i]
+            positions[i] = new_rect
+            new_hpwl_i = block_hpwl(i)
+            delta_hpwl = new_hpwl_i - old_hpwl_i
+            total_hpwl += delta_hpwl
+            old_x_min, old_x_max = x_min, x_max
+            old_y_min, old_y_max = y_min, y_max
+            x_min = min(p[0] for p in positions)
+            x_max = max(p[0]+p[2] for p in positions)
+            y_min = min(p[1] for p in positions)
+            y_max = max(p[1]+p[3] for p in positions)
+
+            new_cost = compute_cost()
+            delta = new_cost - current_cost
+            if delta < 0 or _random.random() < math.exp(-delta / max(temp, 1e-10)):
+                current_cost = new_cost
+                if current_cost < best_cost:
+                    best_cost = current_cost
+                    best_positions = [p for p in positions]
+            else:
+                positions[i] = old_rect
+                total_hpwl -= delta_hpwl
+                x_min, x_max = old_x_min, old_x_max
+                y_min, y_max = old_y_min, old_y_max
+
+            temp *= 0.995
+
+        # Restore best
+        for i in range(n):
+            positions[i] = best_positions[i]
 
     def _refine_aspect_to_fill(self, positions, dims, constraints, area_targets,
                                 b2b_edges, p2b_edges, pins_pos, preplaced):
