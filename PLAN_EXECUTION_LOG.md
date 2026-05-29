@@ -21,9 +21,12 @@
 | Sprint 3 (quadratic_v1) | 2.4658 | −0.13% | 100/100 | 69.0s / 3.2s | Quadratic placement via conjugate gradient |
 | **Sprint 4** (portfolio_v1) | 2.3977 | **−2.8%** | 100/100 | 313.8s / 14.7s | **Parallel multi-start portfolio** |
 | Sprint 4 (portfolio_v4) | 2.4030 | +0.2% | 100/100 | 231.4s / 10.2s | Abacus-style legalization in portfolio |
-| Sprint 4 (portfolio_v5) | **2.4029** | −0.004% | 100/100 | 243s / 10.2s | Aspect-ratio dead-space fitting (no effect) |
+| Sprint 4 (portfolio_v5) | 2.4029 | −0.004% | 100/100 | 243s / 10.2s | Aspect-ratio dead-space fitting (no effect) |
+| Sprint 4 (portfolio_v7) | **2.4167** | +0.6% | 100/100 | 278s / 10.2s | **De-overfitted per-count tuning (§7)** |
 
-**Total improvement:** 2.6326 → 2.4029 = **−8.7%**
+**Total improvement (from original):** 2.6326 → 2.4167 = **−8.2%** (validation)
+**Best validation score:** 2.4029 (portfolio_v5, with per-count tuning)
+**De-overfitted score:** 2.4167 (portfolio_v7, should transfer better to hidden test)
 
 ---
 
