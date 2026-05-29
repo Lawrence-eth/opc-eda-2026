@@ -158,6 +158,8 @@ class MyOptimizer(FloorplanOptimizer):
             configs.append({'row_factor': rf, 'small_cluster': sc, 'large_cluster': lc, 'path': 'shelf'})
         # Analytical path with default params
         configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'analytical'})
+        # Abacus path (analytical ordering + min-displacement legalizer)
+        configs.append({'row_factor': 0.90, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'abacus'})
         # Diversified shelf variants (vary row_factor) — fewer for runtime
         for rf in [0.80, 1.00, 1.10]:
             configs.append({'row_factor': rf, 'small_cluster': 1.50, 'large_cluster': 1.34, 'path': 'shelf'})
@@ -176,6 +178,11 @@ class MyOptimizer(FloorplanOptimizer):
             self._large_cluster_factor = cfg['large_cluster']
             if cfg['path'] == 'analytical':
                 return self._analytical_construct_layout(
+                    block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                    pins_pos, constraints, target_positions, b2b_edges, p2b_edges
+                )
+            elif cfg['path'] == 'abacus':
+                return self._abacus_construct_layout(
                     block_count, area_targets, b2b_connectivity, p2b_connectivity,
                     pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
@@ -2930,6 +2937,224 @@ class MyOptimizer(FloorplanOptimizer):
                 self._sa_centers = None
 
         return [self._clean_tuple(p) for p in positions]
+
+    def _abacus_construct_layout(self, block_count, area_targets, b2b_connectivity,
+                                 p2b_connectivity, pins_pos, constraints,
+                                 target_positions, b2b_edges, p2b_edges):
+        """Abacus-style legalization: QP positions -> cluster-aware row legalizer -> refine.
+
+        Key insight: sort units by analytical position (not degree/area), then
+        place by minimum displacement from QP target. Clusters are treated as
+        super-blocks to preserve grouping.
+        """
+        if not isinstance(b2b_edges, list):
+            b2b_edges = self._b2b_edges(b2b_edges)
+        if not isinstance(p2b_edges, list):
+            p2b_edges = self._p2b_edges(p2b_edges)
+
+        dims = self._choose_dimensions(block_count, area_targets, constraints, target_positions)
+        positions: List[Rect | None] = [None] * block_count
+        preplaced = set()
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 1:
+            for i in range(block_count):
+                if constraints[i, 1] != 0 and self._has_xywh(target_positions, i):
+                    positions[i] = tuple(float(target_positions[i, k]) for k in range(4))
+                    preplaced.add(i)
+
+        movable = [i for i in range(block_count) if i not in preplaced]
+        boundary = {i: self._boundary_code(constraints, i) for i in movable}
+        boundary_units, boundary_cluster_ids = ([], set())
+        if block_count < 119:
+            boundary_units, boundary_cluster_ids = self._make_boundary_cluster_units(
+                movable, boundary, dims, constraints, area_targets, b2b_edges, p2b_edges)
+        boundary_blocks = [i for i in movable if boundary[i] != 0 and i not in boundary_cluster_ids]
+        interior = [i for i in movable if boundary[i] == 0 and i not in boundary_cluster_ids]
+
+        # Step 1: QP global placement
+        centers = self._analytical_global_placement(
+            block_count, dims, b2b_edges, p2b_edges, pins_pos, preplaced,
+            target_positions, constraints, interior, boundary_blocks, boundary)
+
+        # Step 2: Abacus-style legalization with analytical ordering
+        placed_rects = [p for p in positions if p is not None]
+        start_x = max(p[0] + p[2] for p in placed_rects) + 1.0 if placed_rects else 0.0
+        start_y = min(p[1] for p in placed_rects) if placed_rects else 0.0
+        interior_obstacles = None
+        if block_count >= 80 and placed_rects:
+            start_x = min(p[0] for p in placed_rects)
+            interior_obstacles = placed_rects
+
+        for i, rect in self._abacus_pack_interior(
+            interior, dims, constraints, area_targets, b2b_edges,
+            p2b_edges, centers, start_x, start_y, interior_obstacles
+        ).items():
+            positions[i] = rect
+
+        # Step 3: Place boundary items
+        content = [p for p in positions if p is not None]
+        if not content:
+            content = [(0.0, 0.0, 1.0, 1.0)]
+        self._place_boundary_items(
+            boundary_blocks, boundary_units, boundary, dims, positions, content,
+            b2b_edges, p2b_edges, pins_pos, constraints)
+
+        # Step 4: Refinement passes
+        self._refine_toward_analytical(
+            block_count, positions, centers, constraints, area_targets,
+            b2b_edges, p2b_edges, pins_pos, preplaced)
+
+        if block_count >= 100:
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_line_shifts_118(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos)
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+        if block_count < 100:
+            self._refine_group_translations(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_free_block_shifts(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_edge_inward_compactions(
+                positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_equal_shape_swaps(
+                block_count, positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            self._refine_boundary_adjacent_wire_swaps(
+                block_count, positions, constraints, b2b_edges, p2b_edges, pins_pos)
+
+        self._refine_analytical_aggressive(
+            block_count, positions, centers, constraints, area_targets,
+            b2b_edges, p2b_edges, pins_pos, preplaced)
+
+        # Fallback
+        if self._has_overlap([p for p in positions if p is not None]):
+            ordered = self._order_blocks(movable, area_targets, b2b_edges, p2b_edges)
+            safe_x = max((p[0] + p[2] for k, p in enumerate(positions) if p is not None and k in preplaced), default=0.0) + 1.0
+            for i, rect in self._shelf_pack(ordered, dims, safe_x, 0.0).items():
+                positions[i] = rect
+
+        # SA
+        if block_count >= 50 and len(movable) >= 2:
+            max_sa_time = min(3.0, max(1.0, block_count * 0.02))
+            self._sa_centers = centers
+            try:
+                self._sa_post_optimization(
+                    positions, block_count, set(movable), preplaced, boundary,
+                    dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                    max_time=max_sa_time)
+            finally:
+                self._sa_centers = None
+
+        return [self._clean_tuple(p) for p in positions]
+
+    def _abacus_pack_interior(self, interior, dims, constraints, area_targets,
+                               b2b_connectivity, p2b_connectivity, centers,
+                               start_x, start_y, obstacles=None) -> Dict[int, Rect]:
+        """Abacus-style packer: sort by analytical x, place by minimum displacement
+        within bounded row width.
+
+        Key difference from _contour_pack_with_analytics: sorts units by
+        analytical x-position (not degree/area), places at the position
+        closest to the analytical target that doesn't overlap, but within
+        a bounded row width to keep the layout compact.
+        """
+        if not interior:
+            return {}
+        used = set()
+        units = []
+        degrees = self._connection_degrees(interior, b2b_connectivity, p2b_connectivity)
+
+        # Build cluster macros (preserves grouping)
+        if constraints is not None and constraints.dim() > 1 and constraints.shape[1] > 3:
+            cluster_ids = sorted({int(constraints[i, 3].item()) for i in interior if constraints[i, 3] > 0})
+            for gid in cluster_ids:
+                group = [i for i in interior if int(constraints[i, 3].item()) == gid]
+                if len(group) < 2:
+                    continue
+                group = sorted(group, key=lambda i: (-degrees.get(i, 0.0), -float(area_targets[i]), i))
+                local, uw, uh = self._cluster_local_pack(group, dims)
+                for i in group:
+                    used.add(i)
+                avg_cx = sum(centers[i][0] for i in group) / len(group)
+                avg_cy = sum(centers[i][1] for i in group) / len(group)
+                units.append({'ids': group, 'w': uw, 'h': uh, 'local': local,
+                              'key': (avg_cx, avg_cy, min(group))})
+
+        for i in interior:
+            if i in used:
+                continue
+            w, h = dims[i]
+            cx = centers[i][0]
+            cy = centers[i][1]
+            units.append({'ids': [i], 'w': w, 'h': h, 'local': {i: (0.0, 0.0, w, h)},
+                          'key': (cx, cy, i)})
+
+        # Sort by analytical x-position (the core difference)
+        units.sort(key=lambda u: u['key'])
+
+        # Bounded row width (same as shelf packer)
+        total_area = sum(u['w'] * u['h'] for u in units)
+        max_w = max(u['w'] for u in units)
+        row_width = max(math.sqrt(max(total_area, 1.0)) * self._row_factor, max_w)
+
+        # Place by minimum displacement from QP target, within row bounds
+        placed_rects = list(obstacles or [])
+        out: Dict[int, Rect] = {}
+        row_x = start_x  # tracks current row's right edge
+
+        for u in units:
+            uw, uh = u['w'], u['h']
+            # Target position from QP centers
+            if u['ids']:
+                target_x = sum(centers[i][0] for i in u['ids']) / len(u['ids']) - uw * 0.5
+                target_y = sum(centers[i][1] for i in u['ids']) / len(u['ids']) - uh * 0.5
+            else:
+                target_x = row_x
+                target_y = start_y
+
+            # Clamp target to row bounds
+            target_x = max(start_x, min(target_x, start_x + row_width - uw))
+
+            # Find the position closest to target that doesn't overlap
+            best_x = target_x
+            best_y = target_y
+            best_dist = float('inf')
+
+            # Generate candidate positions: target, row edges, edges of placed blocks
+            candidates = [target_x, row_x]
+            for ox, oy, ow, oh in placed_rects:
+                candidates.append(ox + ow)
+                candidates.append(ox - uw)
+            candidates = sorted(set(max(start_x, min(c, start_x + row_width - uw)) for c in candidates))
+
+            for cand_x in candidates:
+                # Find lowest y at this x that doesn't overlap
+                y = start_y
+                for ox, oy, ow, oh in placed_rects:
+                    if min(cand_x + uw, ox + ow) - max(cand_x, ox) > 1e-6:
+                        if oy + oh > y:
+                            y = max(y, oy + oh)
+                dist = abs(cand_x - target_x) + abs(y - target_y)
+                if dist < best_dist:
+                    best_dist = dist
+                    best_x = cand_x
+                    best_y = y
+
+            # Place the unit
+            for i, (lx, ly, w, h) in u['local'].items():
+                out[i] = (best_x + lx, best_y + ly, w, h)
+            placed_rects.append((best_x, best_y, uw, uh))
+            row_x = best_x + uw
+
+        return out
 
     def _contour_pack_with_analytics(self, interior, dims, constraints, area_targets,
                                       b2b_connectivity, p2b_connectivity, centers,
