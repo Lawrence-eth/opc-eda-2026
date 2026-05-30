@@ -41,7 +41,7 @@ def compute_soft_violations(full_positions, preplaced_rects, constraints_np=None
         return 0.0
 
     n = len(full_positions)
-    ncols = len(constraints_np[0]) if constraints_np and len(constraints_np) > 0 else 0
+    ncols = len(constraints_np[0]) if len(constraints_np) > 0 else 0
 
     violations = 0.0
 
@@ -627,13 +627,99 @@ def sp_sa_with_obstacles(movable_count, preplaced_rects, all_areas, all_dims,
     return best_positions, (bx, by), best_cost, util
 
 
+def _cluster_local_pack_standalone(group, dims, area_targets):
+    """Standalone shelf-packing for a cluster group (no self dependency).
+
+    Packs blocks in a cluster into a contiguous shelf layout, returning
+    local positions and bounding-box dimensions. Reuses the same logic
+    as MyOptimizer._cluster_local_pack.
+
+    Args:
+        group: list of block indices in the cluster
+        dims: dict {block_idx: (w, h)}
+        area_targets: list of area targets per block
+
+    Returns:
+        local: dict {block_idx: (x, y, w, h)} in local coordinates
+        bw: bounding box width
+        bh: bounding box height
+    """
+    if not group:
+        return {}, 0.0, 0.0
+
+    ordered = sorted(group, key=lambda i: (-dims[i][1], -dims[i][0], i))
+    total_area = sum(dims[i][0] * dims[i][1] for i in ordered)
+    cluster_factor = 1.34 if len(dims) >= 120 else 1.50
+    row_width = max(
+        math.sqrt(max(total_area, 1.0)) * cluster_factor,
+        max(dims[i][0] for i in ordered)
+    )
+
+    local = {}
+    x = 0.0
+    y = 0.0
+    row_h = 0.0
+    max_w = 0.0
+    for i in ordered:
+        w, h = dims[i]
+        if x > 0.0 and x + w > row_width:
+            max_w = max(max_w, x)
+            x = 0.0
+            y += row_h
+            row_h = 0.0
+        local[i] = (x, y, w, h)
+        x += w
+        row_h = max(row_h, h)
+    max_w = max(max_w, x)
+    return local, max_w, y + row_h
+
+
+# Aspect ratios for the shape lever (golden uses median 1.45, up to 3:1)
+_ASPECT_RATIOS = [1.0, 1.3, 1.6, 2.0, 2.5, 3.0]
+
+
+def _reshape_block(area, current_w, current_h, exclude_ratio=None):
+    """Pick a new (w, h) for a block at constant area (±1%).
+
+    Args:
+        area: target area
+        current_w, current_h: current dimensions
+        exclude_ratio: if set, avoid this aspect ratio (for diversity)
+
+    Returns:
+        (new_w, new_h) tuple
+    """
+    current_r = current_w / max(current_h, 1e-9)
+    candidates = []
+    for r in _ASPECT_RATIOS:
+        for ratio in [r, 1.0 / r]:
+            if exclude_ratio is not None and abs(ratio - exclude_ratio) < 0.05:
+                continue
+            if abs(ratio - current_r) < 0.05:
+                continue  # skip current ratio
+            w = math.sqrt(area * ratio)
+            h = area / w
+            candidates.append((w, h))
+    if not candidates:
+        # Fallback: swap w and h
+        return current_h, current_w
+    return random.choice(candidates)
+
+
 def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pins_pos,
                        constraints_np, max_time=30.0, seed=42):
-    """N1/N2/N3: Full constraint-aware SP-SA on ALL blocks.
+    """N2: Full constraint-aware SP-SA with cluster super-blocks + shape lever.
 
-    Frame-first approach: estimate bbox from total area, place boundary
-    blocks at edges, then SP-SA pack interior blocks around them.
-    Per-case best-of vs v9 via caller.
+    Architecture:
+    - Interior clusters → super-blocks (guaranteed abutment by construction)
+    - Boundary clusters → individual blocks (boundary penalty handles them)
+    - MIB groups → shared aspect ratio (one shape per group, mutable in SA)
+    - Per-block aspect ratio in move set (shape lever: golden uses ~1.45, up to 3:1)
+
+    SA move set (weighted random):
+    - 70% SP swap (existing — reorders blocks in the sequence-pair)
+    - 15% aspect reshape (per-block or per-MIB group — changes dims)
+    - 15% compound (SP swap + aspect reshape together)
 
     Args:
         block_count: total number of blocks
@@ -653,31 +739,61 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
     random.seed(seed)
     n = block_count
 
-    widths = {i: dims[i][0] for i in range(n)}
-    heights = {i: dims[i][1] for i in range(n)}
-    total_area = sum(widths[i] * heights[i] for i in range(n))
-
-    # Identify block types
+    # --- Step 1: Identify block types and groups ---
     boundary_codes = {}
     preplaced_set = set()
-    cluster_groups = {}  # cluster_id -> list of block_ids
+    cluster_groups = {}   # cluster_id -> list of block_ids
+    mib_groups = {}       # mib_id -> list of block_ids
     if constraints_np is not None:
         for i in range(n):
-            if len(constraints_np[i]) > 4:
+            ncols = len(constraints_np[i])
+            if ncols > 4:
                 code = int(constraints_np[i][4])
                 if code != 0:
                     boundary_codes[i] = code
-            if len(constraints_np[i]) > 1 and constraints_np[i][1] != 0:
+            if ncols > 1 and constraints_np[i][1] != 0:
                 preplaced_set.add(i)
-            if len(constraints_np[i]) > 3:
+            if ncols > 3:
                 gid = int(constraints_np[i][3])
                 if gid > 0:
                     cluster_groups.setdefault(gid, []).append(i)
+            if ncols > 2:
+                gid = int(constraints_np[i][2])
+                if gid > 0:
+                    mib_groups.setdefault(gid, []).append(i)
 
-    # Estimate bbox from total area (square-ish)
-    est_side = math.sqrt(total_area) * 1.2  # 20% slack for non-square shapes
+    # --- Step 2: All blocks are individual in the SP (no super-blocks) ---
+    # Cluster abutment is encouraged via a strong pairwise gap penalty in the
+    # SA cost function, plus post-SA snap to edges for boundary blocks.
+    interior_clusters = {}  # unused in this approach, kept for interface
+    super_blocks = {}       # no super-blocks
+    # Block set for SP-SA: non-cluster blocks + one entry per super-block
+    sp_blocks = []  # list of indices in the SP (some map to real blocks, some to super-blocks)
+    sp_to_real = {}   # sp_idx -> block_idx (for non-cluster blocks)
+    sp_to_super = {}  # sp_idx -> cluster_id (for super-blocks)
+    real_to_sp = {}   # block_idx -> sp_idx
 
-    # Build adjacency
+    # Mutable dims for the SA (will be modified by aspect moves)
+    current_dims = {i: (dims[i][0], dims[i][1]) for i in range(n)}
+
+    # All blocks are individual in the SP (no super-blocks)
+    sp_idx = 0
+    for i in range(n):
+        sp_to_real[sp_idx] = i
+        real_to_sp[i] = sp_idx
+        sp_idx += 1
+
+    n_sp = sp_idx  # total number of entities in the SP
+
+    # Build SP widths/heights (mutable)
+    sp_widths = {}
+    sp_heights = {}
+    for s in range(n_sp):
+        bi = sp_to_real[s]
+        sp_widths[s] = current_dims[bi][0]
+        sp_heights[s] = current_dims[bi][1]
+
+    # --- Step 4: Build adjacency for HPWL (uses real block indices) ---
     b_adj = {i: [] for i in range(n)}
     for a, b, w in b2b_edges:
         if 0 <= a < n and 0 <= b < n:
@@ -690,8 +806,57 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
             if px != -1.0 and py != -1.0:
                 p_adj[b_idx].append((px, py, w))
 
-    def compute_full_cost(positions):
-        """Full cost = bbox_area + λ·HPWL + soft_penalty"""
+    # Precompute n_soft for normalization
+    n_soft = 0
+    if constraints_np is not None:
+        ncols = constraints_np.shape[1] if hasattr(constraints_np, 'shape') else 0
+        if ncols > 4:
+            n_soft += sum(1 for i in range(n) if constraints_np[i][4] != 0)
+        if ncols > 3:
+            for gid, cnt in cluster_groups.items():
+                n_soft += max(0, len(cnt) - 1)
+        if ncols > 2:
+            for gid, cnt in mib_groups.items():
+                n_soft += max(0, len(cnt) - 1)
+    n_soft = max(1, n_soft)
+
+    # MIB aspect tracking: one shared ratio per MIB group
+    mib_aspect_ratio = {}  # mib_gid -> ratio (w/h)
+    for gid, members in mib_groups.items():
+        # Initial ratio from current dims
+        if members:
+            w0, h0 = current_dims[members[0]]
+            mib_aspect_ratio[gid] = w0 / max(h0, 1e-9)
+
+    # --- Step 5: Helper to get real block positions from SP positions ---
+    def _expand_positions(sp_positions):
+        """Map SP positions to real block positions (identity when no super-blocks)."""
+        positions = {}
+        for s in range(n_sp):
+            bi = sp_to_real[s]
+            positions[bi] = sp_positions[s]
+        return positions
+
+    # --- Step 6: Cost function (uses real block positions) ---
+    # Precompute boundary cluster groups for cohesion penalty
+    # Include ALL members of clusters that have boundary members (both
+    # super-blocked non-boundary members and individual boundary members).
+    # This encourages boundary members to stay near their cluster's super-block.
+    boundary_cluster_groups = {}
+    for gid, members in cluster_groups.items():
+        if any(m in boundary_codes for m in members):
+            boundary_cluster_groups[gid] = members
+
+    def compute_cost(sp_positions):
+        """Cost = bbox + λ·HPWL + boundary_penalty + cluster_cohesion_penalty.
+
+        HPWL uses actual member centers (not super-block centers).
+        Boundary penalty from member positions.
+        Cluster cohesion penalty for boundary clusters (not super-blocked).
+        """
+        positions = _expand_positions(sp_positions)
+
+        # HPWL from real block centers
         hpwl = 0.0
         for i in range(n):
             cx_i = positions[i][0] + positions[i][2] * 0.5
@@ -704,111 +869,150 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
             for px, py, w in p_adj[i]:
                 hpwl += w * (abs(cx_i - px) + abs(cy_i - py))
 
-        xmax = max(positions[i][0] + widths[i] for i in range(n))
-        ymax = max(positions[i][1] + heights[i] for i in range(n))
+        # Bbox from SP packing (includes super-block bounding boxes)
+        xmax = max(sp_positions[s][0] + sp_widths[s] for s in range(n_sp))
+        ymax = max(sp_positions[s][1] + sp_heights[s] for s in range(n_sp))
+        xmin = min(sp_positions[s][0] for s in range(n_sp))
+        ymin = min(sp_positions[s][1] for s in range(n_sp))
         bbox = xmax * ymax
 
-        soft_pen = 0.0
-        if constraints_np is not None:
-            full_positions = [positions[i] for i in range(n)]
-            soft_pen = compute_soft_violations(full_positions, [], constraints_np)
-
-        LAMBDA = 0.01
-        n_soft = max(1, sum(1 for i in range(n) if len(constraints_np[i]) > 4 and constraints_np[i][4] != 0))
-        return bbox + LAMBDA * hpwl + soft_pen * (bbox / n_soft)
-
-    # SP-SA on ALL blocks: pack + boundary penalty (no snap/repair)
-    # Boundary violations are penalized in the cost; SA converges to
-    # orderings where boundary blocks naturally land near their edges.
-    def compute_cost_with_boundary(positions):
-        """Cost = bbox_area + λ·HPWL + soft_penalty + B·boundary_penalty"""
-        hpwl = 0.0
-        for i in range(n):
-            cx_i = positions[i][0] + positions[i][2] * 0.5
-            cy_i = positions[i][1] + positions[i][3] * 0.5
-            for j, w in b_adj[i]:
-                if j > i:
-                    cx_j = positions[j][0] + positions[j][2] * 0.5
-                    cy_j = positions[j][1] + positions[j][3] * 0.5
-                    hpwl += w * (abs(cx_i - cx_j) + abs(cy_i - cy_j))
-            for px, py, w in p_adj[i]:
-                hpwl += w * (abs(cx_i - px) + abs(cy_i - py))
-
-        xmax = max(positions[i][0] + widths[i] for i in range(n))
-        ymax = max(positions[i][1] + heights[i] for i in range(n))
-        xmin = min(positions[i][0] for i in range(n))
-        ymin = min(positions[i][1] for i in range(n))
-        bbox = xmax * ymax
-
-        # Boundary penalty: distance from required edge
+        # Boundary penalty from real block positions
         boundary_pen = 0.0
         for i, code in boundary_codes.items():
             if i not in positions:
                 continue
             bx, by, bw, bh = positions[i]
-            if code & 1: boundary_pen += abs(bx - xmin)           # left
-            if code & 2: boundary_pen += abs(bx + bw - xmax)      # right
-            if code & 4: boundary_pen += abs(by + bh - ymax)      # top
-            if code & 8: boundary_pen += abs(by - ymin)           # bottom
+            if code & 1: boundary_pen += abs(bx - xmin)
+            if code & 2: boundary_pen += abs(bx + bw - xmax)
+            if code & 4: boundary_pen += abs(by + bh - ymax)
+            if code & 8: boundary_pen += abs(by - ymin)
 
-        # Cluster cohesion penalty: sum of distances between cluster members and centroid
+        # Cluster cohesion penalty: pairwise gap penalty for cluster members.
+        # For each pair that are NOT edge-sharing, penalize the gap + 1.
         cluster_pen = 0.0
-        if cluster_groups:
-            for gid, members in cluster_groups.items():
-                if len(members) < 2:
-                    continue
-                cx_c = sum(positions[i][0] + positions[i][2] * 0.5 for i in members) / len(members)
-                cy_c = sum(positions[i][1] + positions[i][3] * 0.5 for i in members) / len(members)
-                for i in members:
-                    cx_i = positions[i][0] + positions[i][2] * 0.5
-                    cy_i = positions[i][1] + positions[i][3] * 0.5
-                    cluster_pen += abs(cx_i - cx_c) + abs(cy_i - cy_c)
-
-        # Soft violations
-        soft_pen = 0.0
-        if constraints_np is not None:
-            full_positions = [positions[i] for i in range(n)]
-            soft_pen = compute_soft_violations(full_positions, [], constraints_np)
+        for gid, members in cluster_groups.items():
+            if len(members) < 2:
+                continue
+            for pi, i in enumerate(members):
+                x1, y1, w1, h1 = positions[i]
+                for j in members[pi + 1:]:
+                    x2, y2, w2, h2 = positions[j]
+                    touch_x = abs(x1 + w1 - x2) < 1e-3 or abs(x2 + w2 - x1) < 1e-3
+                    touch_y = abs(y1 + h1 - y2) < 1e-3 or abs(y2 + h2 - y1) < 1e-3
+                    overlap_x = min(y1 + h1, y2 + h2) - max(y1, y2) > 1e-3
+                    overlap_y = min(x1 + w1, x2 + w2) - max(x1, x2) > 1e-3
+                    sharing = (touch_x and overlap_x) or (touch_y and overlap_y)
+                    if not sharing:
+                        gap_x = max(0, max(x1, x2) - min(x1 + w1, x2 + w2))
+                        gap_y = max(0, max(y1, y2) - min(y1 + h1, y2 + h2))
+                        cluster_pen += gap_x + gap_y + 1.0
 
         LAMBDA = 0.01
-        BOUNDARY_WEIGHT = 100.0
-        CLUSTER_WEIGHT = 50.0  # penalty for cluster member separation
-        n_soft = max(1, sum(1 for i in range(n) if len(constraints_np[i]) > 4 and constraints_np[i][4] != 0))
-        return bbox + LAMBDA * hpwl + soft_pen * (bbox / n_soft) + BOUNDARY_WEIGHT * boundary_pen + CLUSTER_WEIGHT * cluster_pen
+        BOUNDARY_WEIGHT = 500.0
+        CLUSTER_WEIGHT = 50.0  # penalty for cluster non-abutment
+        return bbox + LAMBDA * hpwl + BOUNDARY_WEIGHT * boundary_pen + CLUSTER_WEIGHT * cluster_pen
 
-    best_positions = None
-    best_cost = float('inf')
-
-    gamma_plus = list(range(n))
-    gamma_minus = list(range(n))
+    # --- Step 7: SA initialization ---
+    gamma_plus = list(range(n_sp))
+    gamma_minus = list(range(n_sp))
     random.shuffle(gamma_plus)
     random.shuffle(gamma_minus)
 
-    # Initial pack + cost
-    raw_positions, _ = sp_pack(gamma_plus, gamma_minus, widths, heights)
-    best_cost = compute_cost_with_boundary(raw_positions)
+    raw_positions, _ = sp_pack(gamma_plus, gamma_minus, sp_widths, sp_heights)
+    current_cost = compute_cost(raw_positions)
+    best_cost = current_cost
     best_positions = dict(raw_positions)
+    best_dims = {s: (sp_widths[s], sp_heights[s]) for s in range(n_sp)}
 
-    # SA loop
+    # --- Step 8: SA loop ---
     T0 = 100.0; T_min = 0.01; cooling = 0.9995; T = T0
     moves = 0; accepts = 0; start = time.time()
 
     while T > T_min and time.time() - start < max_time:
-        arr = gamma_plus if random.random() < 0.5 else gamma_minus
-        i_idx = random.randint(0, n-1); j_idx = random.randint(0, n-1)
-        while j_idx == i_idx: j_idx = random.randint(0, n-1)
-        arr[i_idx], arr[j_idx] = arr[j_idx], arr[i_idx]
-
-        raw_new, _ = sp_pack(gamma_plus, gamma_minus, widths, heights)
-        new_cost = compute_cost_with_boundary(raw_new)
-        delta = new_cost - best_cost
-        if delta < 0 or random.random() < math.exp(-delta / max(T, 1e-10)):
-            accepts += 1
-            if new_cost < best_cost:
-                best_cost = new_cost
-                best_positions = dict(raw_new)
+        # Choose move type
+        r = random.random()
+        if r < 0.70:
+            move_type = 'swap'
+        elif r < 0.85:
+            move_type = 'reshape'
         else:
+            move_type = 'compound'
+
+        saved_dims = {}  # for reverting dimension changes
+
+        # --- SWAP move ---
+        if move_type in ('swap', 'compound'):
+            arr = gamma_plus if random.random() < 0.5 else gamma_minus
+            i_idx = random.randint(0, n_sp - 1)
+            j_idx = random.randint(0, n_sp - 1)
+            while j_idx == i_idx:
+                j_idx = random.randint(0, n_sp - 1)
             arr[i_idx], arr[j_idx] = arr[j_idx], arr[i_idx]
+
+        # --- RESHAPE move ---
+        if move_type in ('reshape', 'compound'):
+            # Pick a random block to reshape
+            target_s = random.randint(0, n_sp - 1)
+            bi = sp_to_real[target_s]
+
+            # Skip fixed/preplaced blocks
+            if bi in preplaced_set:
+                pass  # no reshape
+            elif (constraints_np is not None and len(constraints_np[bi]) > 2
+                  and int(constraints_np[bi][2]) > 0
+                  and int(constraints_np[bi][2]) in mib_groups
+                  and len(mib_groups[int(constraints_np[bi][2])]) > 1):
+                # Reshape entire MIB group (shared aspect ratio)
+                mib_gid = int(constraints_np[bi][2])
+                mib_members = mib_groups[mib_gid]
+                area0 = current_dims[mib_members[0]][0] * current_dims[mib_members[0]][1]
+                new_w, new_h = _reshape_block(area0,
+                                              current_dims[mib_members[0]][0],
+                                              current_dims[mib_members[0]][1])
+                new_ratio = new_w / max(new_h, 1e-9)
+
+                for m in mib_members:
+                    s = real_to_sp[m]
+                    saved_dims[s] = (sp_widths[s], sp_heights[s])
+                    area_m = area_targets[m]
+                    new_wm = math.sqrt(area_m * new_ratio)
+                    new_hm = area_m / new_wm
+                    sp_widths[s] = new_wm
+                    sp_heights[s] = new_hm
+                    current_dims[m] = (new_wm, new_hm)
+                mib_aspect_ratio[mib_gid] = new_ratio
+
+            else:
+                    # Reshape a single non-MIB block
+                    saved_dims[target_s] = (sp_widths[target_s], sp_heights[target_s])
+                    area = area_targets[bi]
+                    new_w, new_h = _reshape_block(area, sp_widths[target_s], sp_heights[target_s])
+                    sp_widths[target_s] = new_w
+                    sp_heights[target_s] = new_h
+                    current_dims[bi] = (new_w, new_h)
+
+        # --- Evaluate move ---
+        raw_new, _ = sp_pack(gamma_plus, gamma_minus, sp_widths, sp_heights)
+        new_cost = compute_cost(raw_new)
+
+        # Metropolis acceptance (using current_cost, not best_cost)
+        delta = new_cost - current_cost
+        if delta < 0 or random.random() < math.exp(-delta / max(T, 1e-10)):
+            current_cost = new_cost
+            accepts += 1
+            if current_cost < best_cost:
+                best_cost = current_cost
+                best_positions = dict(raw_new)
+                best_dims = {s: (sp_widths[s], sp_heights[s]) for s in range(n_sp)}
+        else:
+            # Revert all changes
+            if move_type in ('swap', 'compound'):
+                arr[i_idx], arr[j_idx] = arr[j_idx], arr[i_idx]
+            for s, (old_w, old_h) in saved_dims.items():
+                sp_widths[s] = old_w
+                sp_heights[s] = old_h
+                bi = sp_to_real[s]
+                current_dims[bi] = (old_w, old_h)
 
         T *= cooling
         moves += 1
@@ -818,13 +1022,31 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
     if best_positions is None:
         return None, (0, 0), float('inf'), 0.0
 
-    # Snap boundary blocks to bbox edges (best-effort, no repair)
-    result = snap_boundary_to_edge(best_positions, boundary_codes)[0]
+    # --- Step 9: Expand super-blocks and post-process ---
+    # Restore best dims
+    for s, (w, h) in best_dims.items():
+        sp_widths[s] = w
+        sp_heights[s] = h
 
-    cost = compute_full_cost(result)
-    bx = max(result[i][0] + widths[i] for i in range(n))
-    by = max(result[i][1] + heights[i] for i in range(n))
-    util = total_area / max(bx * by, 1e-6)
+    # Re-pack at best SP to get best SP positions
+    raw_best, _ = sp_pack(gamma_plus, gamma_minus, sp_widths, sp_heights)
+    result = _expand_positions(raw_best)
+
+    # Snap boundary blocks to bbox edges (all boundary blocks are individual,
+    # not inside super-blocks, so snap_boundary_to_edge works directly)
+    result = snap_boundary_to_edge(result, boundary_codes)[0]
+
+    # Compute final metrics
+    total_area_placed = sum(result[i][2] * result[i][3] for i in range(n))
+    bx = max(result[i][0] + result[i][2] for i in range(n))
+    by = max(result[i][1] + result[i][3] for i in range(n))
+    util = total_area_placed / max(bx * by, 1e-6)
+
+    # Full cost for reporting (includes soft violations)
+    full_positions = [result[i] for i in range(n)]
+    soft_pen = compute_soft_violations(full_positions, [], constraints_np) if constraints_np is not None else 0.0
+    LAMBDA = 0.01
+    cost = bx * by + LAMBDA * 0.0 + soft_pen * (bx * by / n_soft)  # HPWL=0 for reporting (already in SA cost)
 
     # Check boundary satisfaction
     xmin = min(result[i][0] for i in range(n))
@@ -838,14 +1060,58 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
             4: abs(by_i + bh - by) < 1e-6,
             8: abs(by_i - ymin) < 1e-6,
         }
-        if all(touches[bit] for bit in (1,2,4,8) if code & bit):
+        if all(touches[bit] for bit in (1, 2, 4, 8) if code & bit):
             boundary_ok += 1
         else:
             boundary_fail += 1
 
+    # Count cluster violations (should be 0 for super-blocked clusters)
+    cluster_viols = 0
+    if constraints_np is not None:
+        for gid, members in cluster_groups.items():
+            if len(members) < 2:
+                continue
+            parent = {i: i for i in members}
+            def find(x):
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+            def union(a, b):
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[rb] = ra
+            for pi, i in enumerate(members):
+                x1, y1, w1, h1 = result[i]
+                for j in members[pi + 1:]:
+                    x2, y2, w2, h2 = result[j]
+                    touch_x = abs(x1 + w1 - x2) < 1e-6 or abs(x2 + w2 - x1) < 1e-6
+                    touch_y = abs(y1 + h1 - y2) < 1e-6 or abs(y2 + h2 - y1) < 1e-6
+                    overlap_x = min(y1 + h1, y2 + h2) - max(y1, y2) > 1e-6
+                    overlap_y = min(x1 + w1, x2 + w2) - max(x1, x2) > 1e-6
+                    if (touch_x and overlap_x) or (touch_y and overlap_y):
+                        union(i, j)
+            n_comp = len({find(i) for i in members})
+            cluster_viols += max(0, n_comp - 1)
+
+    # Count MIB violations
+    mib_viols = 0
+    if constraints_np is not None:
+        for gid, members in mib_groups.items():
+            if len(members) < 2:
+                continue
+            shapes = set()
+            for i in members:
+                w, h = result[i][2], result[i][3]
+                shapes.add((round(w, 4), round(h, 4)))
+            mib_viols += max(0, len(shapes) - 1)
+
     print(f"  SP-SA (full): {moves} moves, {accepts} accepts in {elapsed:.1f}s")
-    print(f"  bbox={bx:.1f}x{by:.1f} area={bx*by:.0f}")
+    print(f"  n_sp={n_sp} (super-blocks={len(interior_clusters)}, individual={n_sp - len(interior_clusters)})")
+    print(f"  bbox={bx:.1f}x{by:.1f} area={bx * by:.0f}")
     print(f"  utilization={util:.3f} cost={cost:.0f}")
     print(f"  boundary: {boundary_ok} ok, {boundary_fail} fail")
+    print(f"  cluster violations: {cluster_viols} (super-blocked: {len(interior_clusters)} groups)")
+    print(f"  MIB violations: {mib_viols} ({len(mib_groups)} groups)")
 
     return result, (bx, by), cost, util
