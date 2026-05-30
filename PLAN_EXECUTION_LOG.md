@@ -20,6 +20,21 @@
 
 ---
 
+## P2 MILESTONES (topological SA)
+
+| Milestone | Gate | Result | Verdict |
+|-----------|------|--------|---------|
+| M1: SP packer correctness | Valid non-overlapping on case 99 movable | 5/5 random SPs = 0 overlaps ✅ | PASS — committed |
+| **M2: SP-SA proof-of-concept** | **Util > 0.80 on case 99 movable** | **Util = 0.828** (7849 moves, 30s dev budget) | **PASS — method validated** |
+| M3: Fixed obstacles | Not started | — | Next |
+| M4: Soft constraints | Not started | — | |
+| M5: Speed + numba | Not started | — | |
+| M6: Integrate + gate | Not started | — | |
+
+**M2 decisive result:** SP-SA achieves 0.828 utilization on case 99 movable blocks (vs 0.59 greedy, vs 0.97 golden). The method works. Full build (M3→M6) is justified.
+
+---
+
 ## HEAD Result (verified, internally consistent)
 
 | Field | Value |
