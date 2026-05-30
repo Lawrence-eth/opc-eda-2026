@@ -6,7 +6,9 @@
 ---
 ---
 
-# ⏰ OVERNIGHT AUTONOMOUS RUN — ACTIVE (set 2026-05-29; ~7+ hours, operator asleep)
+# ⏰ OVERNIGHT AUTONOMOUS RUN — COMPLETE (round 1 done 2026-05-30; reusable protocol below)
+
+> **Round-1 outcome:** ran the Q0→Q11 queue; built the ENGINE infra (correct, fast); score essentially unchanged (~2.718) because **local repair-based search cannot escape the shelf local optimum** (Part 0 UPDATE 3). Disciplined, gated, no busywork — exactly right. **Conclusion = global plateau (E4): all light/medium methods are now exhausted. The committed next move is IV.P2 (topological SA), upgraded below into a de-risked milestone build.** To re-arm for a future overnight run, set this header back to ACTIVE and follow the rules/queue — but the QUEUE is now the IV.P2 milestones M1→M6, not Q0→Q11.
 
 **Keep making real progress; don't halt prematurely — but the goal is PROGRESS, not motion.** The operator is away ~7 hours. Work the ranked queue below top-to-bottom; when you finish one valuable item, start the next. Do NOT stop to "await instructions" while positive-EV work remains. **Equally: do NOT manufacture busywork** — no trivial parameter nudges, no re-testing dead-ends, no experiments without a hypothesis, just to look busy.
 
@@ -78,6 +80,14 @@ Quality comes from **a better packer + a fast optimizer**, not from portfolio br
 2. **Greedy packing is structurally capped** (~0.5–0.7 for mixed rectangles under boundary+cluster+obstacle constraints). It **cannot** reach golden's 0.96 by tuning. **Therefore: stop building/tuning greedy packers (shelf, skyline, BLF). That avenue is exhausted.** (`_skyline_*` code remains in the file but is un-wired; leave it or delete it — do not keep tweaking it.)
 
 **Meta-warning:** Sprints 4–6 made the committed *quality* WORSE (2.47→2.72), "winning" only on the low-median runtime bet. We are not closing the 2×-golden gap. The repeated pattern — build a light variant, see it isn't instantly faster than the 0.18s baseline, revert — must stop. **The win requires committing to ONE real optimization engine and giving it hours, not reverting v1 for being slow.** It is best-of gated, so it cannot regress; there is no reason to revert it.
+
+### UPDATE 3 (2026-05-30, after the overnight ENGINE run) — PLATEAU CONFIRMED → COMMIT TO TOPOLOGICAL SA
+
+**The overnight run closed the last light/medium avenue.** The ENGINE (incremental cost + correctness-first repair polish) was built correctly and is fast, but improved the score only microscopically because **local search cannot escape the shelf-packed local optimum**: blocks are too tightly packed for relocation moves, ripple-repair breaks feasibility, and there was **zero gain on the 116–120 band (34% of score)**. 
+
+**We have now exhaustively proven the ceiling** — none of these break ~2.7 / ~0.52 util: greedy packing (shelf/skyline ≤0.59 util), shape-on-greedy (capped + the lever is real but greedy can't use it), portfolio diversity (2.67), and local repair search (stuck in the shelf optimum). **This is Escalation Trigger E4 (global plateau).** Continuing any of the above is forbidden busywork.
+
+**THE decision: commit fully to IV.P2 — topological-representation SA (sequence-pair / B*-tree).** It is the only remaining lever and the academically-proven method for this exact problem (soft+hard modules, ≤ few-hundred blocks, min area+wirelength): **every state is already a tight, overlap-free packing**, so there is no shelf structure to be trapped in and no legalization step to destroy quality. Expect this to be a multi-day build; it will NOT beat v9 until substantially complete — **that is expected; do not revert partial progress** (see the anti-revert rule in the upgraded IV.P2). Reusable from the night: the incremental cost evaluator and soft-violation counters (use them as the SA objective).
 
 ### REVISED CRITICAL PATH (supersedes IV.PACKER as the next action)
 Build the **strong repair-based optimizer** on top of the existing, working, regression-proof `_correctness_first_polish` (line ~3654). This is higher-probability-of-success than a from-scratch B*-tree and attacks hpwl + area + shape together. Spec = new **Part IV.ENGINE** below. Do this next; keep topological-SA (IV.P2) as the follow-on only if ENGINE plateaus.
@@ -278,13 +288,24 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 
 **Acceptance:** beats v9 runtime-adjusted at median∈{1,2,3}s, 100/100, at ~v9 runtime (≤~0.4s). Expect the area_gap to be the first big mover. Tag `s6_packer`.
 
-## IV.P2 — Topological-representation SA  *(STATE 2; structural HPWL+area fix, high ceiling)*
+## IV.P2 — Topological-representation SA  *(THE COMMITTED PRIMARY; de-risked milestone build)*
 
-Every analytic/QP attempt has died at legalization; **topological SA has no legalization step (every state is a valid packing)** — the reason it's the gold standard for ≤ few-hundred blocks and the route to near-golden quality.
-- **Engine:** B*-tree (preferred — natural min-area + obstacle + shape-curve support) or sequence-pair; **packing/longest-path inner loop in numba `@njit` or C** (pure Python too slow for 10⁴+ moves). Soft blocks via **shape curves** (optimal aspect per slot) or discrete per-block aspect set — this is where P2 natively exploits II.2.
-- **Objective:** exact contest cost (area+HPWL from packed coords; soft via P1 incremental counters).
-- **Seed** from P0/P1 best (decode coords→tree), not random. **Parallel-temper** short chains across 48 cores. Hard wall-clock per I.3.
-- **Fixed obstacles (do FIRST on test 99, prove exact feasibility):** B*-tree-with-preplaced (insert preplaced as fixed nodes, adjust contour so movable never overlaps them; literature: B*-tree/TCG with pre-placed modules), or pragmatic pack-then-verify/repair against obstacle rects (reject overlapping states). Ship only if 100/100 feasible.
+**This is now the whole game (Part 0 UPDATE 3).** Topological SA has no legalization step — **every state is a valid, tight, overlap-free packing** — so it escapes the shelf optimum that capped everything else, and is the proven route to near-golden area+wirelength.
+
+**CRITICAL ANTI-REVERT RULE (read first):** this is a multi-day build that will NOT beat sprint5_v9 until M6. **Do NOT gate intermediate milestones (M1–M5) against the full contest score, and do NOT revert them for being slow or worse than v9.** Develop the SA as a **separate module / new code paths** (e.g. `_sp_pack`, `_sp_sa`), leaving `solve()` on sprint5_v9 so HEAD stays the best committed result throughout. Each milestone is validated on its OWN intrinsic metric below. Only at M6 do you wire it into `solve()` behind the `_true_contest_cost` best-of gate and compare runtime-adjusted vs v9. Commit each milestone (the module is dormant, so committing it can't regress HEAD).
+
+**Representation:** start with **sequence-pair** (two permutations; positions via longest-path on horizontal/vertical constraint graphs — cleaner for adding positional/obstacle constraints than B*-tree). B*-tree is an acceptable alternative. **Inner packing loop in numba `@njit`** (pure Python is too slow for 10⁴–10⁵ perturbations; this is mandatory for the contest runtime budget). Soft blocks: discrete per-block aspect set within ±1% area chosen in the move set (exploits II.2 — the shape lever the greedy packers couldn't use).
+
+**Milestones (each individually committable; validate on the stated intrinsic metric, NOT the full score):**
+- **M1 — Packer correctness (movable-only, ignore obstacles).** Implement SP encode/decode + longest-path packing. *Gate:* on case 99's movable blocks, produces a **valid non-overlapping packing**; assert no overlaps. (No score yet.)
+- **M2 — PROOF-OF-CONCEPT (cheapest decisive test; do early).** Add SA over SP minimizing bbox area + HPWL on **movable-only** case 99 (random aspect from the discrete set). Run it long (dev compute, no runtime limit yet). *Gate:* **utilization > 0.80** (vs the 0.59 greedy ceiling). **If SA can't exceed ~0.70 util even without obstacles/soft, STOP and escalate (E-new) — the approach is weaker than expected.** If it clears 0.80, the method is validated and the full build is justified. This single check de-risks the whole multi-day investment — do it before M3+.
+- **M3 — Fixed obstacles.** Add preplaced rectangles. Pragmatic approach: SA cost includes a large obstacle-overlap penalty (annealed); **reject any final state that overlaps an obstacle**. *Gate:* exact feasibility (no movable–obstacle overlap) on all 21 big cases; util still >0.75.
+- **M4 — Soft constraints in the objective.** Add boundary (per-block edge touch), cluster (component−1), MIB (distinct-shape−1) using the existing incremental counters as the SA cost (true `exp(2·V_rel)`). *Gate:* V_rel ≤ v9's (~0.10) while util stays high.
+- **M5 — Speed + parallelism.** numba-optimize the inner loop; **parallel-temper short chains across the 48 cores**, seed one chain from the v9/shelf layout (decode coords→SP). *Gate:* wall-clock ≤ ~0.5s/case for n=120 at the util/soft of M4.
+- **M6 — Integrate + gate.** Wire into `solve()` behind `_true_contest_cost` best-of (so v9 is the floor). Full eval + `score_real.py`. *Gate:* beats v9 runtime-adjusted at median∈{1,2,3}s, 100/100. Tag `s7_sp`. **This is the make-or-break for winning quality.**
+
+**If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
+**If M2 fails (SA can't exceed ~0.70 util):** escalate — the remaining bet is IV.P3 (learned placement), the contest's stated theme.
 
 ## IV.P3 — Data-driven (contest's stated theme; fast inference ⇒ floor-friendly)
 
