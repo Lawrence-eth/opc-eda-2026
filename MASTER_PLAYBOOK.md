@@ -104,6 +104,14 @@ Build the **strong repair-based optimizer** on top of the existing, working, reg
 2. **Never rush.** Correctness before speed; validate properly (full eval + `score_real.py`); if a result is partial, uncertain, or unverified, do NOT ship it — keep iterating or pause. A slower-but-correct path beats a fast-but-broken one.
 3. **No meaningless work.** Every experiment needs a one-line hypothesis with a plausible path to improving the score. Forbidden: re-testing II.6 dead-ends, trivial nudges, busywork to look productive. If positive-EV work is genuinely exhausted, **pause and report** — a graceful stop beats churn.
 
+### I.0a TIMELINE & PACING (set 2026-05-30)
+- **Presentation checkpoint: ~2 weeks out (≈2026-06-13).** Real submission deadline: ~1 month after that (≈2026-07-13).
+- **There is ample time — do NOT rush; correctness/quality over speed-of-delivery.** This is why we attempt the hard full floorplanner rather than settling.
+- **Phase plan:**
+  - **Weeks 1–2 (→ presentation): land the constraint-aware global floorplanner's QUALITY** (boundary-edge encoding, cluster super-blocks, MIB shared shape, per-block aspect in moves). Dev-budget speed is fine for now. Goal by presentation: a **dev-budget result that beats v9 on quality (lower hpwl_gap + area_gap) at 100% feasibility**, even if not yet fast. v9 remains the safe presentation fallback.
+  - **Weeks 3–6 (→ real deadline): speed + polish.** numba inner loop, warm-start from v9, parallel chains → get runtime-adjusted win; then de-overfit (cross-validate on folds), robustness (fuzz on training set), push util→0.9, optional ML warm-start. Final winning submission.
+- **Always keep HEAD = a valid, committed, 100%-feasible entry** (currently v9) so a submittable solution exists at every moment.
+
 ### I.1 Mission
 Win the ICCAD-2026 FloorSet contest (Problem C). The contest ranks submissions by total cost on a **hidden** 100-case set (same 21–120 block range, different instances). Minimize the **runtime-adjusted** total cost while remaining **100% feasible**.
 
