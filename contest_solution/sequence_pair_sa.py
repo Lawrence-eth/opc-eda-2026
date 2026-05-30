@@ -1,5 +1,5 @@
 """
-Sequence-pair SA floorplanner — M1/M2 implementation.
+Sequence-pair SA floorplanner — M1/M2/M3/M4 implementation.
 
 Sequence-pair (SP): two permutations Γ+ and Γ- of block indices.
 Packing rule: for blocks i, j:
@@ -17,7 +17,105 @@ SA perturbations: swap two random elements in Γ+ or Γ-.
 import math
 import random
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
+
+
+def compute_soft_violations(full_positions, preplaced_rects, constraints_np=None):
+    """Compute soft violation cost for the full layout (movable + preplaced).
+
+    Returns a cost term reflecting:
+    - Boundary violations: blocks not touching bbox edges (per constraint bitmask)
+    - Cluster violations: connected components - 1 per cluster group
+    - MIB violations: distinct shapes - 1 per MIB group
+
+    Args:
+        full_positions: list of (x, y, w, h) for ALL blocks (movable then preplaced)
+        preplaced_rects: list of (x, y, w, h) for preplaced blocks
+        constraints_np: numpy array [n_total, 5] (fixed, preplaced, mib_id, cluster_id, boundary_code)
+                        If None, returns 0 (no constraint info available).
+
+    Returns:
+        float: total soft violation cost (0 = no violations)
+    """
+    if constraints_np is None:
+        return 0.0
+
+    n = len(full_positions)
+    ncols = len(constraints_np[0]) if constraints_np and len(constraints_np) > 0 else 0
+
+    violations = 0.0
+
+    # Boundary violations
+    if ncols > 4:
+        x_min = min(p[0] for p in full_positions)
+        y_min = min(p[1] for p in full_positions)
+        x_max = max(p[0] + p[2] for p in full_positions)
+        y_max = max(p[1] + p[3] for p in full_positions)
+        for i in range(n):
+            code = int(constraints_np[i][4]) if i < len(constraints_np) else 0
+            if code == 0:
+                continue
+            bx, by, bw, bh = full_positions[i]
+            touches = {
+                1: abs(bx - x_min) < 1e-6,
+                2: abs(bx + bw - x_max) < 1e-6,
+                4: abs(by + bh - y_max) < 1e-6,
+                8: abs(by - y_min) < 1e-6,
+            }
+            if not all(touches[bit] for bit in (1, 2, 4, 8) if code & bit):
+                violations += 1.0
+
+    # Cluster (grouping) violations: connected components - 1 per group
+    if ncols > 3:
+        cluster_ids = {}
+        for i in range(n):
+            gid = int(constraints_np[i][3]) if i < len(constraints_np) else 0
+            if gid > 0:
+                cluster_ids.setdefault(gid, []).append(i)
+        for gid, members in cluster_ids.items():
+            if len(members) < 2:
+                continue
+            # Union-find for connected components (edge-sharing)
+            parent = {i: i for i in members}
+            def find(x):
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+            def union(a, b):
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[rb] = ra
+            for pi, i in enumerate(members):
+                x1, y1, w1, h1 = full_positions[i]
+                for j in members[pi+1:]:
+                    x2, y2, w2, h2 = full_positions[j]
+                    touch_x = abs(x1 + w1 - x2) < 1e-6 or abs(x2 + w2 - x1) < 1e-6
+                    touch_y = abs(y1 + h1 - y2) < 1e-6 or abs(y2 + h2 - y1) < 1e-6
+                    overlap_x = min(y1+h1, y2+h2) - max(y1, y2) > 1e-6
+                    overlap_y = min(x1+w1, x2+w2) - max(x1, x2) > 1e-6
+                    if (touch_x and overlap_x) or (touch_y and overlap_y):
+                        union(i, j)
+            n_components = len({find(i) for i in members})
+            violations += max(0, n_components - 1)
+
+    # MIB violations: distinct shapes - 1 per group
+    if ncols > 2:
+        mib_groups = {}
+        for i in range(n):
+            gid = int(constraints_np[i][2]) if i < len(constraints_np) else 0
+            if gid > 0:
+                mib_groups.setdefault(gid, []).append(i)
+        for gid, members in mib_groups.items():
+            if len(members) < 2:
+                continue
+            shapes = set()
+            for i in members:
+                w, h = full_positions[i][2], full_positions[i][3]
+                shapes.add((round(w, 4), round(h, 4)))
+            violations += max(0, len(shapes) - 1)
+
+    return violations
 
 
 def sp_pack(gamma_plus, gamma_minus, widths, heights):
@@ -217,8 +315,9 @@ def sp_sa_movable_only(block_count, area_targets, b2b_edges, p2b_edges, pins_pos
 
 def sp_sa_with_obstacles(movable_count, preplaced_rects, all_areas, all_dims,
                           b2b_edges, p2b_edges, pins_pos,
-                          max_time=30.0, seed=42, penalty_weight=1e6):
-    """M3-ready: SA over SP treating preplaced as fixed obstacles with penalty.
+                          max_time=30.0, seed=42, penalty_weight=1e6,
+                          constraints_np=None, soft_weight=0.01):
+    """M3/M4: SA over SP treating preplaced as fixed obstacles, with soft constraints.
 
     Args:
         movable_count: number of movable blocks (indices 0..movable_count-1)
@@ -229,6 +328,8 @@ def sp_sa_with_obstacles(movable_count, preplaced_rects, all_areas, all_dims,
         max_time: time budget
         seed: random seed
         penalty_weight: large penalty for obstacle overlaps
+        constraints_np: numpy array [n_total, 5] for soft constraint evaluation
+        soft_weight: weight for soft violations in SA cost
 
     Returns:
         Same as sp_sa_movable_only
@@ -256,8 +357,34 @@ def sp_sa_with_obstacles(movable_count, preplaced_rects, all_areas, all_dims,
             if px != -1.0 and py != -1.0:
                 p_adj[b_idx].append((px, py, w))
 
+    # Pre-compute N_soft normalization constant
+    n_soft_val = 0
+    if constraints_np is not None and len(constraints_np) > 0:
+        n_total = len(constraints_np)
+        ncols = len(constraints_np[0]) if n_total > 0 else 0
+        if ncols > 4:
+            n_soft_val += sum(1 for i in range(n_total) if constraints_np[i][4] != 0)
+        if ncols > 2:
+            mib_groups = {}
+            for i in range(n_total):
+                gid = int(constraints_np[i][2])
+                if gid > 0:
+                    mib_groups.setdefault(gid, 0)
+                    mib_groups[gid] += 1
+            for gid, cnt in mib_groups.items():
+                n_soft_val += max(0, cnt - 1)
+        if ncols > 3:
+            cl_groups = {}
+            for i in range(n_total):
+                gid = int(constraints_np[i][3])
+                if gid > 0:
+                    cl_groups.setdefault(gid, 0)
+                    cl_groups[gid] += 1
+            for gid, cnt in cl_groups.items():
+                n_soft_val += max(0, cnt - 1)
+
     def compute_cost(positions):
-        """Cost = bbox_area + λ·HPWL + P·obstacle_overlaps"""
+        """Cost = bbox_area + λ·HPWL + P·obstacle_overlaps + S·soft_violations"""
         hpwl = 0.0
         for i in range(n):
             cx_i = positions[i][0] + positions[i][2] * 0.5
@@ -282,10 +409,24 @@ def sp_sa_with_obstacles(movable_count, preplaced_rects, all_areas, all_dims,
                 ox = min(ix+iw, ox2) - max(ix, ox1)
                 oy = min(iy+ih, oy2) - max(iy, oy1)
                 if ox > 1e-6 and oy > 1e-6:
-                    pen += ox * oy  # overlap area
+                    pen += ox * oy
+
+        # Soft violations (boundary, cluster, MIB) — linear penalty for SA guidance
+        # Use exp(2*V_rel) only for final selection, not SA acceptance
+        soft_pen = 0.0
+        if constraints_np is not None and n_soft_val > 0:
+            full_positions = []
+            for i in range(n):
+                full_positions.append(positions[i])
+            for r in preplaced_rects:
+                full_positions.append(r)
+            soft_pen = compute_soft_violations(full_positions, preplaced_rects, constraints_np)
 
         LAMBDA = 0.01
-        return bbox + LAMBDA * hpwl + penalty_weight * pen
+        base_cost = bbox + LAMBDA * hpwl + penalty_weight * pen
+        # Linear soft penalty: guides SA without dominating
+        soft_penalty = soft_weight * soft_pen * (bbox / max(n_soft_val, 1))
+        return base_cost + soft_penalty
 
     # Init random SP
     gamma_plus = list(range(n))
@@ -297,6 +438,17 @@ def sp_sa_with_obstacles(movable_count, preplaced_rects, all_areas, all_dims,
     current_cost = compute_cost(positions)
     best_cost = current_cost
     best_positions = dict(positions)
+    # Track best non-overlapping state separately (for final-state rejection)
+    best_feasible_cost = float('inf')
+    best_feasible_positions = None
+
+    def _check_obstacle_overlap(pos):
+        for i in range(n):
+            ix, iy, iw, ih = pos[i]
+            for (ox1, oy1, ox2, oy2) in obstacles:
+                if min(ix+iw, ox2) - max(ix, ox1) > 1e-6 and min(iy+ih, oy2) - max(iy, oy1) > 1e-6:
+                    return True
+        return False
 
     # SA
     T0 = 100.0; T_min = 0.01; cooling = 0.9995; T = T0
@@ -317,11 +469,24 @@ def sp_sa_with_obstacles(movable_count, preplaced_rects, all_areas, all_dims,
             if current_cost < best_cost:
                 best_cost = current_cost
                 best_positions = dict(positions)
+            # Track best feasible (non-overlapping) state
+            if not _check_obstacle_overlap(positions) and new_cost < best_feasible_cost:
+                best_feasible_cost = new_cost
+                best_feasible_positions = dict(positions)
         else:
             arr[i_idx], arr[j_idx] = arr[j_idx], arr[i_idx]
 
         T *= cooling
         moves += 1
+
+    # Final-state rejection: if best overlaps, fall back to best feasible
+    if _check_obstacle_overlap(best_positions):
+        if best_feasible_positions is not None:
+            print(f"  WARNING: best state has obstacle overlaps, falling back to best feasible (cost={best_feasible_cost:.0f})")
+            best_positions = best_feasible_positions
+            best_cost = best_feasible_cost
+        else:
+            print(f"  WARNING: no feasible state found during SA")
 
     elapsed = time.time() - start
     total_area_best = sum(best_positions[i][2]*best_positions[i][3] for i in range(n))
