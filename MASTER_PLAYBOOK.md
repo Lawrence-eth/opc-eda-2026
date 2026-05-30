@@ -329,6 +329,16 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 
 *Gate (M4'):* runtime-adjusted total beats v9 at median∈{1,2,3}s with V_rel ≤ ~0.12 and 100/100 feasible (dev-budget speed first; M5 makes it fast). **Do NOT pivot to ML** — the SA works for what it's for; we were just pointing it at the whole problem instead of the interior.
 
+### M4' HYBRID OUTCOME (2026-05-30) — interior-only is futile; the FRAME + SHAPES are the real levers
+
+**Result:** interior-only SP-SA gave local 2.701 (vs v9 2.718, ~0.6%) at 0.69s (3.8× slower) → **worse runtime-adjusted at every median; reverted.** Critically, **area_gap did NOT move (1.18 → 1.18 on the 81–100 band).**
+
+**Decisive lesson:** tightening the *interior* cannot reduce the bounding box, because the bbox is governed by the **boundary frame + overall block shapes**, not the interior. So all three of {greedy, interior-only SP-SA} are now proven incapable of closing the area gap. The two real, still-unexploited levers (both confirmed by golden mining) are:
+1. **SHAPE** — golden uses aspect ratios med 1.45 / up to 3:1; we use ~1.0. Free variable (evaluator only checks area). We have NEVER successfully exploited it (shelf packer overlaps with non-square; SP-SA breaks soft constraints).
+2. **FRAME/global arrangement** — the perimeter blocks set the bbox; they must be reshaped + ordered to form a tight frame, which is exactly the constraint-laden part.
+
+**⇒ The only remaining path to a winning-tier score is a FULL constraint-aware global floorplanner** — SP-SA (or B*-tree) that optimizes the *whole* layout (frame + interior), with: boundary blocks encoded/penalized to their required edges, clusters as super-blocks, MIB shared shape, and **per-block aspect-ratio in the move set** (the shape lever). This is the hard build the earlier note called "complex/high-risk" — it is now confirmed as the necessary one; the shortcuts are exhausted. Build as a dormant module, milestone-gated, per-case best-of vs v9 (so HEAD stays safe). **Boundary-edge encoding is the key technical risk — prototype it on one case first.** If after a genuine effort it can't reach a runtime-adjusted win, the fallbacks are: ship v9 (valid, beats baseline) or pivot to ML (IV.P3).
+
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
 
 ## IV.P3 — Data-driven (contest's stated theme; fast inference ⇒ floor-friendly)
