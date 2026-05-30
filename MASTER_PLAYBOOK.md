@@ -349,6 +349,27 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
 
+### N2 COMPLETION (2026-05-30) — pairwise gap penalty + MIB + aspect ratio + SA bug fix
+
+**What was built:** Major upgrade to `sp_sa_full_layout` in `sequence_pair_sa.py`:
+1. **SA acceptance bug fix:** delta now computed vs `current_cost` (not `best_cost`) — proper Metropolis acceptance.
+2. **MIB shared shape:** one aspect ratio per MIB group, mutable in SA move set.
+3. **Per-block aspect ratio:** SA can reshape blocks (aspect set {1.0, 1.3, 1.6, 2.0, 2.5, 3.0} + transposes). Shape lever unlocked.
+4. **Pairwise gap cluster penalty:** directly targets edge-sharing (not just centroid proximity).
+5. **Fixed numpy truth-value ambiguity** in `compute_soft_violations`.
+
+**Results on case 99 (30s budget, seed=789):**
+- **Utilization: 0.737** (vs original N2 0.681, +8.2%; vs v9 ~0.52, +42%)
+- Boundary: 36/36 OK
+- Cluster violations: 16 (vs original N2 14)
+- MIB violations: 0
+
+**Trade-off:** util improved significantly (+8%), cluster violations slightly higher (16 vs 14). The util gain dominates in the score formula because area_gap is the biggest quality lever.
+
+**Super-block approach tried and abandoned:** Attempted to super-block clusters for guaranteed abutment. Interior-only super-blocking (1 cluster) gave util=0.683 with cluster=11. All-clusters super-blocking gave util=0.421 with cluster=0 but terrible boundary. The hybrid (super-block non-boundary members, individual boundary members) gave util=0.575. Conclusion: **super-blocks are too rigid for the current SA** — the pairwise gap penalty is the better approach.
+
+**Next: N3** — run on all 21 big cases with per-case seed selection, wire into solve() behind best-of gate vs v9.
+
 ## IV.P3 — Data-driven (contest's stated theme; fast inference ⇒ floor-friendly)
 
 **P3.1 Mine golden (DONE once, extend as needed; do early — informs P0/P1/P2).** `scripts/mine_golden.py`. Known so far: util 0.966, aspect ≤3:1 (med 1.45). Extend to: per-cluster shape/topology, perimeter-ring layout pattern, per-net wirelength distribution, how golden places preplaced relative to clusters. Turn findings into concrete priors (preferred aspect set, target density, ring builder).
