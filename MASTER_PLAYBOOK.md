@@ -310,6 +310,20 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 - **M6 gate sanity:** with area_gap ~0.25–0.35 (from ~0.87) the quality factor should drop enough that even at ~0.5s/case (vs v9's 0.18s) it wins runtime-adjusted at median≥1s. Verify with `score_real.py`; if it only wins at median≥2s, push M5 speed harder.
 - **ML (IV.P3) is no longer a pivot — it becomes a *future enhancement*:** a learned model that predicts a good initial sequence-pair would cut the moves M5 needs (faster) — revisit after M6 ships.
 
+### M4 BARRIER + RESOLUTION (2026-05-30) — DECOMPOSE: interior SP-SA + keep v9's frame
+
+**What happened:** M3 (obstacles) = 18/20 feasible, util 0.705. M4 (soft constraints in a free SP-SA) **failed**: V_rel = 0.712 (vs v9's 0.10), util fell to 0.667. Root cause: a *free* SP-SA optimizes area only and has no way to make boundary blocks touch edges, cluster members abut, or MIB shapes match — so it shreds the soft constraints (exp(2·0.712)=4.2× penalty swamps any area gain).
+
+**This is NOT a dead end — it tells us WHERE to apply the SA.** The two engines are each good at half the problem: v9's explicit logic satisfies soft constraints (frame via `_place_boundary_items`, contiguous clusters via `_cluster_local_pack`, MIB shapes via `_choose_dimensions`) → V_rel 0.10; SP-SA packs tightly → util 0.83. **Combine them — this is also literally golden's structure (perimeter ring + tight interior).**
+
+**RESOLUTION = surgical hybrid (the new M4'; do this instead of a free full-SA):**
+1. **Keep v9's pipeline intact** — boundary frame, preplaced handling, cluster super-blocks, MIB shape logic all stay (they already give V_rel≈0.10 and 100% feasibility).
+2. **Replace ONLY the interior packer** (`_pack_interior_units`, the part that gives ~0.52 util) **with the SP-SA**, packing the non-boundary/non-cluster interior blocks tightly into the free space inside the frame, treating the frame + preplaced as fixed obstacles.
+3. **Clusters → super-blocks in the SP** (reuse `_cluster_local_pack`) so abutment is automatic; **MIB → one shared shape** for the group. These are free structural wins, not new SA moves.
+4. **Per-case best-of gate against v9 (guaranteed safety):** if SP-SA loses or is infeasible on a case, keep v9's result. ⇒ **cannot regress and is always 100% feasible** — this also fixes M3's 2 infeasible cases automatically. The win is wherever interior-tightness helps (the high-weight big cases).
+
+*Gate (M4'):* runtime-adjusted total beats v9 at median∈{1,2,3}s with V_rel ≤ ~0.12 and 100/100 feasible (dev-budget speed first; M5 makes it fast). **Do NOT pivot to ML** — the SA works for what it's for; we were just pointing it at the whole problem instead of the interior.
+
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
 
 ## IV.P3 — Data-driven (contest's stated theme; fast inference ⇒ floor-friendly)
