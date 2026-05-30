@@ -129,6 +129,25 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 pass
 
+        # SP-SA path: try the constraint-aware sequence-pair SA and keep
+        # the result only if it beats v9 on _true_contest_cost.
+        # Only run for n >= 80 (big cases where SP-SA has room to improve).
+        if best_positions is not None and block_count >= 80:
+            try:
+                sp_result = self._try_sp_sa(
+                    block_count, area_targets, b2b_edges, p2b_edges,
+                    pins_pos, constraints, target_positions
+                )
+                if sp_result is not None:
+                    sp_cost = self._true_contest_cost(sp_result, constraints, area_targets,
+                                                      b2b_edges, p2b_edges, pins_pos)
+                    v9_cost = self._true_contest_cost(best_positions, constraints, area_targets,
+                                                      b2b_edges, p2b_edges, pins_pos)
+                    if sp_cost < v9_cost:
+                        best_positions = sp_result
+            except Exception:
+                pass  # SP-SA failed, keep v9
+
         return best_positions if best_positions is not None else []
 
     def _build_portfolio(self, block_count):
@@ -2096,6 +2115,82 @@ class MyOptimizer(FloorplanOptimizer):
                         degree += w
         area = sum(float(area_targets[i]) for i in blocks)
         return (-degree, -area, min(blocks))
+
+    def _try_sp_sa(self, block_count, area_targets, b2b_edges, p2b_edges,
+                   pins_pos, constraints, target_positions):
+        """Try the constraint-aware SP-SA and return positions if it produces
+        a valid layout. Returns None on failure.
+
+        This is the N3 integration: runs the SP-SA module and returns
+        positions in the same format as _construct_layout (list of Rect).
+        """
+        try:
+            from sequence_pair_sa import sp_sa_full_layout
+        except ImportError:
+            return None
+
+        n = block_count
+        # Convert area_targets to list
+        if hasattr(area_targets, 'tolist'):
+            area_list = area_targets[:n].tolist()
+        else:
+            area_list = [float(area_targets[i]) for i in range(n)]
+
+        # Compute dims (near-square or from target_positions for fixed blocks)
+        dims = []
+        for i in range(n):
+            if target_positions is not None and i < len(target_positions):
+                tw = float(target_positions[i][2]) if target_positions[i][2] > 0 else 0
+                th = float(target_positions[i][3]) if target_positions[i][3] > 0 else 0
+                if tw > 0 and th > 0:
+                    dims.append((tw, th))
+                    continue
+            a = area_list[i]
+            s = math.sqrt(max(a, 1.0))
+            dims.append((s, s))
+
+        # Convert edges to list of tuples
+        b2b_list = [(int(a), int(b), float(w)) for a, b, w in b2b_edges]
+        p2b_list = [(int(p), int(b), float(w)) for p, b, w in p2b_edges]
+
+        # Convert pins to list
+        if hasattr(pins_pos, 'tolist'):
+            pins = pins_pos.tolist()
+        else:
+            pins = [(float(p[0]), float(p[1])) for p in pins_pos]
+
+        # Convert constraints to numpy
+        if constraints is not None and hasattr(constraints, 'numpy'):
+            constraints_np = constraints[:n].numpy()
+        else:
+            constraints_np = None
+
+        # Run SP-SA with multiple seeds, pick best by _true_contest_cost
+        best_positions = None
+        best_true_cost = float('inf')
+
+        for seed in [42, 789, 2048]:
+            result = sp_sa_full_layout(
+                n, area_list, dims, b2b_list, p2b_list, pins,
+                constraints_np, max_time=15.0, seed=seed
+            )
+            if result[0] is None:
+                continue
+
+            positions_dict, bbox, cost, util = result
+
+            # Convert dict to list of Rect
+            pos_list = [positions_dict[i] for i in range(n)]
+
+            # Evaluate with true contest cost
+            true_cost = self._true_contest_cost(
+                pos_list, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+            )
+            if true_cost < best_true_cost:
+                best_true_cost = true_cost
+                best_positions = pos_list
+
+        return best_positions
 
     def _selection_cost(self, positions, constraints, area_targets, b2b_connectivity,
                         p2b_connectivity, pins_pos):
