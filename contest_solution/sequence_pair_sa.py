@@ -660,6 +660,7 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
     # Identify block types
     boundary_codes = {}
     preplaced_set = set()
+    cluster_groups = {}  # cluster_id -> list of block_ids
     if constraints_np is not None:
         for i in range(n):
             if len(constraints_np[i]) > 4:
@@ -668,6 +669,10 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
                     boundary_codes[i] = code
             if len(constraints_np[i]) > 1 and constraints_np[i][1] != 0:
                 preplaced_set.add(i)
+            if len(constraints_np[i]) > 3:
+                gid = int(constraints_np[i][3])
+                if gid > 0:
+                    cluster_groups.setdefault(gid, []).append(i)
 
     # Estimate bbox from total area (square-ish)
     est_side = math.sqrt(total_area) * 1.2  # 20% slack for non-square shapes
@@ -746,6 +751,19 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
             if code & 4: boundary_pen += abs(by + bh - ymax)      # top
             if code & 8: boundary_pen += abs(by - ymin)           # bottom
 
+        # Cluster cohesion penalty: sum of distances between cluster members and centroid
+        cluster_pen = 0.0
+        if cluster_groups:
+            for gid, members in cluster_groups.items():
+                if len(members) < 2:
+                    continue
+                cx_c = sum(positions[i][0] + positions[i][2] * 0.5 for i in members) / len(members)
+                cy_c = sum(positions[i][1] + positions[i][3] * 0.5 for i in members) / len(members)
+                for i in members:
+                    cx_i = positions[i][0] + positions[i][2] * 0.5
+                    cy_i = positions[i][1] + positions[i][3] * 0.5
+                    cluster_pen += abs(cx_i - cx_c) + abs(cy_i - cy_c)
+
         # Soft violations
         soft_pen = 0.0
         if constraints_np is not None:
@@ -753,9 +771,10 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
             soft_pen = compute_soft_violations(full_positions, [], constraints_np)
 
         LAMBDA = 0.01
-        BOUNDARY_WEIGHT = 100.0  # strong penalty for boundary violations
+        BOUNDARY_WEIGHT = 100.0
+        CLUSTER_WEIGHT = 50.0  # penalty for cluster member separation
         n_soft = max(1, sum(1 for i in range(n) if len(constraints_np[i]) > 4 and constraints_np[i][4] != 0))
-        return bbox + LAMBDA * hpwl + soft_pen * (bbox / n_soft) + BOUNDARY_WEIGHT * boundary_pen
+        return bbox + LAMBDA * hpwl + soft_pen * (bbox / n_soft) + BOUNDARY_WEIGHT * boundary_pen + CLUSTER_WEIGHT * cluster_pen
 
     best_positions = None
     best_cost = float('inf')
