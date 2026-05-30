@@ -52,6 +52,7 @@ Total  = Σ cost_i · exp(n_i/12) / Σ exp(n_j/12)
 | **M2: SP-SA proof-of-concept** | Util > 0.80 on case 99 movable | **Util = 0.828** (7849 moves, 30s) | ✅ PASS |
 | **M3: Preplaced obstacles** | Exact feasibility on all 21 big cases | 18/20 feasible, util 0.705 | ⚠️ Partial (2 cases infeasible) |
 | **M4: Soft constraints** | V_rel ≤ 0.10, util > 0.70 | V_rel=0.712, util=0.667 | ❌ FAIL |
+| **M4': Surgical hybrid** | Runtime-adjusted beats v9 | 2.7011 local (vs 2.7182), 0.69s avg | ❌ WORSE — SP-SA adds runtime without quality |
 | M5: Speed + numba | Not started | — | — |
 | M6: Integrate + gate | Not started | — | — |
 
