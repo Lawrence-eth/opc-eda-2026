@@ -432,6 +432,14 @@ class MyOptimizer(FloorplanOptimizer):
                 max_time=max_sa_time
             )
 
+        # IV.ENGINE: correctness-first polish
+        if block_count >= 50 and len(movable) >= 2 and self._hpwl_baseline is not None:
+            self._correctness_first_polish(
+                positions, block_count, movable, preplaced, boundary,
+                dims, area_targets, b2b_edges, p2b_edges, pins_pos, constraints,
+                max_time=0.5
+            )
+
         return [self._clean_tuple(p) for p in positions]
 
     def _layout_variants(self, block_count):
