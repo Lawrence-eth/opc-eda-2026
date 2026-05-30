@@ -99,6 +99,11 @@ Build the **strong repair-based optimizer** on top of the existing, working, reg
 
 # PART I — INVARIANTS (these never change; everything is judged against them)
 
+### I.0 GUIDING PRINCIPLES (operator's standing orders — apply ALWAYS, not just overnight)
+1. **Winning first.** The only goal is a winning-quality, 100%-feasible submission. Ship a change only if it genuinely improves the winning metric (runtime-adjusted total, median 1–3s). HEAD is best-of gated and always a valid submission.
+2. **Never rush.** Correctness before speed; validate properly (full eval + `score_real.py`); if a result is partial, uncertain, or unverified, do NOT ship it — keep iterating or pause. A slower-but-correct path beats a fast-but-broken one.
+3. **No meaningless work.** Every experiment needs a one-line hypothesis with a plausible path to improving the score. Forbidden: re-testing II.6 dead-ends, trivial nudges, busywork to look productive. If positive-EV work is genuinely exhausted, **pause and report** — a graceful stop beats churn.
+
 ### I.1 Mission
 Win the ICCAD-2026 FloorSet contest (Problem C). The contest ranks submissions by total cost on a **hidden** 100-case set (same 21–120 block range, different instances). Minimize the **runtime-adjusted** total cost while remaining **100% feasible**.
 
