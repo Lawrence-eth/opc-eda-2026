@@ -64,6 +64,8 @@ Total  = Σ cost_i · exp(n_i/12) / Σ exp(n_j/12)
 | **M3: Preplaced obstacles** | Exact feasibility on all 21 big cases | 18/20 feasible, util 0.705 | ⚠️ Partial |
 | **M4: Soft constraints** | V_rel ≤ 0.10, util > 0.70 | V_rel=0.712, util=0.667 | ❌ FAIL |
 | **M4': Surgical hybrid** | Runtime-adjusted beats v9 | 2.7011 local, 0.69s avg | ❌ WORSE |
+| **N1: Boundary-edge encoding** | Boundary blocks on required edge | 36/36 boundary OK, 0.665 util | ✅ PASS |
+| **N2: Cluster + MIB + shape** | V_rel drops, util ≥ 0.70 | **Util = 0.737**, boundary 36/36, cluster=16, MIB=0 | ✅ PASS |
 
 ### M4 Pivot Finding (decisive)
 The SP-SA **cannot survive soft constraints**. With soft penalties:
