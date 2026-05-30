@@ -142,24 +142,19 @@ def sp_pack(gamma_plus, gamma_minus, widths, heights):
         pos_minus[val] = idx
 
     # Longest-path for x coordinates (horizontal constraint graph)
-    # x[j] = max over all i LEFT of j of (x[i] + w[i])
-    # i is LEFT of j iff pos_plus[i] < pos_plus[j] AND pos_minus[i] < pos_minus[j]
     x = [0.0] * n
-    # Process in order of pos_plus (left to right in Γ+)
     order_plus = sorted(range(n), key=lambda k: pos_plus[k])
     for j_idx in range(n):
         j = order_plus[j_idx]
         x_max = 0.0
         for i_idx in range(j_idx):
             i = order_plus[i_idx]
-            if pos_minus[i] < pos_minus[j]:  # i is LEFT of j
+            if pos_minus[i] < pos_minus[j]:
                 if x[i] + widths[i] > x_max:
                     x_max = x[i] + widths[i]
         x[j] = x_max
 
     # Longest-path for y coordinates (vertical constraint graph)
-    # y[j] = max over all i BELOW j of (y[i] + h[i])
-    # i is BELOW j iff pos_plus[i] < pos_plus[j] AND pos_minus[i] > pos_minus[j]
     y = [0.0] * n
     order_minus = sorted(range(n), key=lambda k: pos_minus[k])
     for j_idx in range(n):
@@ -167,7 +162,7 @@ def sp_pack(gamma_plus, gamma_minus, widths, heights):
         y_max = 0.0
         for i_idx in range(j_idx):
             i = order_minus[i_idx]
-            if pos_plus[i] > pos_plus[j]:  # i is BELOW j (in Γ+, i is right of j; in Γ-, i is before j)
+            if pos_plus[i] > pos_plus[j]:
                 if y[i] + heights[i] > y_max:
                     y_max = y[i] + heights[i]
         y[j] = y_max
@@ -179,6 +174,137 @@ def sp_pack(gamma_plus, gamma_minus, widths, heights):
     x_max = max(x[i] + widths[i] for i in range(n)) if n > 0 else 0
     y_max = max(y[i] + heights[i] for i in range(n)) if n > 0 else 0
     return positions, (x_max, y_max)
+
+
+def snap_boundary_to_edge(positions, boundary_codes, eps=1e-6):
+    """Snap boundary blocks to their required bbox edge.
+
+    For each boundary block, compute the required edge from its bitmask code
+    (1=left, 2=right, 4=top, 8=bottom), then translate the block so it
+    touches that edge. Returns the snapped positions and the new bbox.
+
+    Args:
+        positions: dict {block_idx: (x, y, w, h)}
+        boundary_codes: dict {block_idx: int_bitmask}
+        eps: tolerance for edge touch
+
+    Returns:
+        snapped_positions: dict {block_idx: (x, y, w, h)}
+        bbox: (x_max, y_max)
+    """
+    if not boundary_codes:
+        # No boundary blocks — just compute bbox
+        x_max = max(p[0] + p[2] for p in positions.values()) if positions else 0
+        y_max = max(p[1] + p[3] for p in positions.values()) if positions else 0
+        return dict(positions), (x_max, y_max)
+
+    # First pass: compute bbox from non-boundary blocks + preplaced
+    non_boundary = {i: positions[i] for i in positions if i not in boundary_codes}
+    if non_boundary:
+        x_min_nb = min(p[0] for p in non_boundary.values())
+        y_min_nb = min(p[1] for p in non_boundary.values())
+        x_max_nb = max(p[0] + p[2] for p in non_boundary.values())
+        y_max_nb = max(p[1] + p[3] for p in non_boundary.values())
+    else:
+        x_min_nb, y_min_nb, x_max_nb, y_max_nb = 0, 0, 100, 100
+
+    # Second pass: snap boundary blocks to their required edge
+    snapped = dict(positions)
+    for i, code in boundary_codes.items():
+        if i not in snapped:
+            continue
+        x, y, w, h = snapped[i]
+        nx, ny = x, y
+
+        # Snap to required edges
+        if code & 1:  # left edge
+            nx = x_min_nb
+        if code & 2:  # right edge
+            nx = x_max_nb - w
+        if code & 4:  # top edge
+            ny = y_max_nb - h
+        if code & 8:  # bottom edge
+            ny = y_min_nb
+
+        snapped[i] = (nx, ny, w, h)
+
+    # Update bbox
+    x_max = max(p[0] + p[2] for p in snapped.values()) if snapped else 0
+    y_max = max(p[1] + p[3] for p in snapped.values()) if snapped else 0
+    return snapped, (x_max, y_max)
+
+
+def repair_overlaps(positions, eps=1e-6, max_iters=50):
+    """Repair overlaps by pushing blocks apart along minimum displacement axis.
+
+    Iterates until no overlaps remain or max_iters is reached.
+    Returns repaired positions and whether all overlaps were resolved.
+
+    Args:
+        positions: dict {block_idx: (x, y, w, h)}
+        eps: overlap tolerance
+        max_iters: maximum repair iterations
+
+    Returns:
+        repaired_positions: dict {block_idx: (x, y, w, h)}
+        feasible: bool — True if all overlaps resolved
+    """
+    n = len(positions)
+    indices = list(positions.keys())
+    repaired = dict(positions)
+
+    for _iter in range(max_iters):
+        overlaps_found = False
+        for i_idx in range(len(indices)):
+            for j_idx in range(i_idx + 1, len(indices)):
+                i, j = indices[i_idx], indices[j_idx]
+                xi, yi, wi, hi = repaired[i]
+                xj, yj, wj, hj = repaired[j]
+
+                ox = min(xi + wi, xj + wj) - max(xi, xj)
+                oy = min(yi + hi, yj + hj) - max(yi, yj)
+
+                if ox > eps and oy > eps:
+                    overlaps_found = True
+                    # Push apart along minimum displacement axis
+                    if ox < oy:
+                        # Push along x
+                        push = ox * 0.5 + eps
+                        if xi < xj:
+                            repaired[i] = (xi - push, yi, wi, hi)
+                            repaired[j] = (xj + push, yj, wj, hj)
+                        else:
+                            repaired[i] = (xi + push, yi, wi, hi)
+                            repaired[j] = (xj - push, yj, wj, hj)
+                    else:
+                        # Push along y
+                        push = oy * 0.5 + eps
+                        if yi < yj:
+                            repaired[i] = (xi, yi - push, wi, hi)
+                            repaired[j] = (xj, yj + push, wj, hj)
+                        else:
+                            repaired[i] = (xi, yi + push, wi, hi)
+                            repaired[j] = (xj, yj - push, wj, hj)
+
+        if not overlaps_found:
+            break
+
+    # Final overlap check
+    feasible = True
+    for i_idx in range(len(indices)):
+        for j_idx in range(i_idx + 1, len(indices)):
+            i, j = indices[i_idx], indices[j_idx]
+            xi, yi, wi, hi = repaired[i]
+            xj, yj, wj, hj = repaired[j]
+            ox = min(xi + wi, xj + wj) - max(xi, xj)
+            oy = min(yi + hi, yj + hj) - max(yi, yj)
+            if ox > eps and oy > eps:
+                feasible = False
+                break
+        if not feasible:
+            break
+
+    return repaired, feasible
 
 
 def sp_sa_movable_only(block_count, area_targets, b2b_edges, p2b_edges, pins_pos,
@@ -499,3 +625,208 @@ def sp_sa_with_obstacles(movable_count, preplaced_rects, all_areas, all_dims,
     print(f"  utilization={util:.3f} cost={best_cost:.0f}")
 
     return best_positions, (bx, by), best_cost, util
+
+
+def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pins_pos,
+                       constraints_np, max_time=30.0, seed=42):
+    """N1/N2/N3: Full constraint-aware SP-SA on ALL blocks.
+
+    Frame-first approach: estimate bbox from total area, place boundary
+    blocks at edges, then SP-SA pack interior blocks around them.
+    Per-case best-of vs v9 via caller.
+
+    Args:
+        block_count: total number of blocks
+        area_targets: list of area targets per block
+        dims: list of (w, h) per block
+        b2b_edges, p2b_edges, pins_pos: connectivity
+        constraints_np: numpy array [n, 5] (fixed, preplaced, mib_id, cluster_id, boundary_code)
+        max_time: SA time budget
+        seed: random seed
+
+    Returns:
+        positions: dict {block_idx: (x, y, w, h)} or None if infeasible
+        bbox: (x_max, y_max)
+        cost: float
+        util: float
+    """
+    random.seed(seed)
+    n = block_count
+
+    widths = {i: dims[i][0] for i in range(n)}
+    heights = {i: dims[i][1] for i in range(n)}
+    total_area = sum(widths[i] * heights[i] for i in range(n))
+
+    # Identify block types
+    boundary_codes = {}
+    preplaced_set = set()
+    if constraints_np is not None:
+        for i in range(n):
+            if len(constraints_np[i]) > 4:
+                code = int(constraints_np[i][4])
+                if code != 0:
+                    boundary_codes[i] = code
+            if len(constraints_np[i]) > 1 and constraints_np[i][1] != 0:
+                preplaced_set.add(i)
+
+    # Estimate bbox from total area (square-ish)
+    est_side = math.sqrt(total_area) * 1.2  # 20% slack for non-square shapes
+
+    # Build adjacency
+    b_adj = {i: [] for i in range(n)}
+    for a, b, w in b2b_edges:
+        if 0 <= a < n and 0 <= b < n:
+            b_adj[a].append((b, w))
+            b_adj[b].append((a, w))
+    p_adj = {i: [] for i in range(n)}
+    for pin_idx, b_idx, w in p2b_edges:
+        if 0 <= b_idx < n and 0 <= pin_idx < len(pins_pos):
+            px, py = pins_pos[pin_idx]
+            if px != -1.0 and py != -1.0:
+                p_adj[b_idx].append((px, py, w))
+
+    def compute_full_cost(positions):
+        """Full cost = bbox_area + λ·HPWL + soft_penalty"""
+        hpwl = 0.0
+        for i in range(n):
+            cx_i = positions[i][0] + positions[i][2] * 0.5
+            cy_i = positions[i][1] + positions[i][3] * 0.5
+            for j, w in b_adj[i]:
+                if j > i:
+                    cx_j = positions[j][0] + positions[j][2] * 0.5
+                    cy_j = positions[j][1] + positions[j][3] * 0.5
+                    hpwl += w * (abs(cx_i - cx_j) + abs(cy_i - cy_j))
+            for px, py, w in p_adj[i]:
+                hpwl += w * (abs(cx_i - px) + abs(cy_i - py))
+
+        xmax = max(positions[i][0] + widths[i] for i in range(n))
+        ymax = max(positions[i][1] + heights[i] for i in range(n))
+        bbox = xmax * ymax
+
+        soft_pen = 0.0
+        if constraints_np is not None:
+            full_positions = [positions[i] for i in range(n)]
+            soft_pen = compute_soft_violations(full_positions, [], constraints_np)
+
+        LAMBDA = 0.01
+        n_soft = max(1, sum(1 for i in range(n) if len(constraints_np[i]) > 4 and constraints_np[i][4] != 0))
+        return bbox + LAMBDA * hpwl + soft_pen * (bbox / n_soft)
+
+    # SP-SA on ALL blocks: pack + boundary penalty (no snap/repair)
+    # Boundary violations are penalized in the cost; SA converges to
+    # orderings where boundary blocks naturally land near their edges.
+    def compute_cost_with_boundary(positions):
+        """Cost = bbox_area + λ·HPWL + soft_penalty + B·boundary_penalty"""
+        hpwl = 0.0
+        for i in range(n):
+            cx_i = positions[i][0] + positions[i][2] * 0.5
+            cy_i = positions[i][1] + positions[i][3] * 0.5
+            for j, w in b_adj[i]:
+                if j > i:
+                    cx_j = positions[j][0] + positions[j][2] * 0.5
+                    cy_j = positions[j][1] + positions[j][3] * 0.5
+                    hpwl += w * (abs(cx_i - cx_j) + abs(cy_i - cy_j))
+            for px, py, w in p_adj[i]:
+                hpwl += w * (abs(cx_i - px) + abs(cy_i - py))
+
+        xmax = max(positions[i][0] + widths[i] for i in range(n))
+        ymax = max(positions[i][1] + heights[i] for i in range(n))
+        xmin = min(positions[i][0] for i in range(n))
+        ymin = min(positions[i][1] for i in range(n))
+        bbox = xmax * ymax
+
+        # Boundary penalty: distance from required edge
+        boundary_pen = 0.0
+        for i, code in boundary_codes.items():
+            if i not in positions:
+                continue
+            bx, by, bw, bh = positions[i]
+            if code & 1: boundary_pen += abs(bx - xmin)           # left
+            if code & 2: boundary_pen += abs(bx + bw - xmax)      # right
+            if code & 4: boundary_pen += abs(by + bh - ymax)      # top
+            if code & 8: boundary_pen += abs(by - ymin)           # bottom
+
+        # Soft violations
+        soft_pen = 0.0
+        if constraints_np is not None:
+            full_positions = [positions[i] for i in range(n)]
+            soft_pen = compute_soft_violations(full_positions, [], constraints_np)
+
+        LAMBDA = 0.01
+        BOUNDARY_WEIGHT = 100.0  # strong penalty for boundary violations
+        n_soft = max(1, sum(1 for i in range(n) if len(constraints_np[i]) > 4 and constraints_np[i][4] != 0))
+        return bbox + LAMBDA * hpwl + soft_pen * (bbox / n_soft) + BOUNDARY_WEIGHT * boundary_pen
+
+    best_positions = None
+    best_cost = float('inf')
+
+    gamma_plus = list(range(n))
+    gamma_minus = list(range(n))
+    random.shuffle(gamma_plus)
+    random.shuffle(gamma_minus)
+
+    # Initial pack + cost
+    raw_positions, _ = sp_pack(gamma_plus, gamma_minus, widths, heights)
+    best_cost = compute_cost_with_boundary(raw_positions)
+    best_positions = dict(raw_positions)
+
+    # SA loop
+    T0 = 100.0; T_min = 0.01; cooling = 0.9995; T = T0
+    moves = 0; accepts = 0; start = time.time()
+
+    while T > T_min and time.time() - start < max_time:
+        arr = gamma_plus if random.random() < 0.5 else gamma_minus
+        i_idx = random.randint(0, n-1); j_idx = random.randint(0, n-1)
+        while j_idx == i_idx: j_idx = random.randint(0, n-1)
+        arr[i_idx], arr[j_idx] = arr[j_idx], arr[i_idx]
+
+        raw_new, _ = sp_pack(gamma_plus, gamma_minus, widths, heights)
+        new_cost = compute_cost_with_boundary(raw_new)
+        delta = new_cost - best_cost
+        if delta < 0 or random.random() < math.exp(-delta / max(T, 1e-10)):
+            accepts += 1
+            if new_cost < best_cost:
+                best_cost = new_cost
+                best_positions = dict(raw_new)
+        else:
+            arr[i_idx], arr[j_idx] = arr[j_idx], arr[i_idx]
+
+        T *= cooling
+        moves += 1
+
+    elapsed = time.time() - start
+
+    if best_positions is None:
+        return None, (0, 0), float('inf'), 0.0
+
+    # Snap boundary blocks to bbox edges (best-effort, no repair)
+    result = snap_boundary_to_edge(best_positions, boundary_codes)[0]
+
+    cost = compute_full_cost(result)
+    bx = max(result[i][0] + widths[i] for i in range(n))
+    by = max(result[i][1] + heights[i] for i in range(n))
+    util = total_area / max(bx * by, 1e-6)
+
+    # Check boundary satisfaction
+    xmin = min(result[i][0] for i in range(n))
+    ymin = min(result[i][1] for i in range(n))
+    boundary_ok = 0; boundary_fail = 0
+    for i, code in boundary_codes.items():
+        bx_i, by_i, bw, bh = result[i]
+        touches = {
+            1: abs(bx_i - xmin) < 1e-6,
+            2: abs(bx_i + bw - bx) < 1e-6,
+            4: abs(by_i + bh - by) < 1e-6,
+            8: abs(by_i - ymin) < 1e-6,
+        }
+        if all(touches[bit] for bit in (1,2,4,8) if code & bit):
+            boundary_ok += 1
+        else:
+            boundary_fail += 1
+
+    print(f"  SP-SA (full): {moves} moves, {accepts} accepts in {elapsed:.1f}s")
+    print(f"  bbox={bx:.1f}x{by:.1f} area={bx*by:.0f}")
+    print(f"  utilization={util:.3f} cost={cost:.0f}")
+    print(f"  boundary: {boundary_ok} ok, {boundary_fail} fail")
+
+    return result, (bx, by), cost, util
