@@ -298,14 +298,19 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 
 **Milestones (each individually committable; validate on the stated intrinsic metric, NOT the full score):**
 - **M1 — Packer correctness (movable-only, ignore obstacles).** Implement SP encode/decode + longest-path packing. *Gate:* on case 99's movable blocks, produces a **valid non-overlapping packing**; assert no overlaps. (No score yet.)
-- **M2 — PROOF-OF-CONCEPT (cheapest decisive test; do early).** Add SA over SP minimizing bbox area + HPWL on **movable-only** case 99 (random aspect from the discrete set). Run it long (dev compute, no runtime limit yet). *Gate:* **utilization > 0.80** (vs the 0.59 greedy ceiling). **If SA can't exceed ~0.70 util even without obstacles/soft, STOP and escalate (E-new) — the approach is weaker than expected.** If it clears 0.80, the method is validated and the full build is justified. This single check de-risks the whole multi-day investment — do it before M3+.
+- **M2 — PROOF-OF-CONCEPT. ✅ DONE (2026-05-30): util = 0.828 on case 99 movable-only (7849 moves/30s dev budget) — PASS, method VALIDATED.** SP-SA decisively beats the 0.59 greedy ceiling. Full build (M3→M6) is justified. **Decision: CONTINUE, do not pivot to ML.** Do not spend more time optimizing movable-only util — the real challenges are the constraints (M3/M4) and speed (M5).
 - **M3 — Fixed obstacles.** Add preplaced rectangles. Pragmatic approach: SA cost includes a large obstacle-overlap penalty (annealed); **reject any final state that overlaps an obstacle**. *Gate:* exact feasibility (no movable–obstacle overlap) on all 21 big cases; util still >0.75.
 - **M4 — Soft constraints in the objective.** Add boundary (per-block edge touch), cluster (component−1), MIB (distinct-shape−1) using the existing incremental counters as the SA cost (true `exp(2·V_rel)`). *Gate:* V_rel ≤ v9's (~0.10) while util stays high.
 - **M5 — Speed + parallelism.** numba-optimize the inner loop; **parallel-temper short chains across the 48 cores**, seed one chain from the v9/shelf layout (decode coords→SP). *Gate:* wall-clock ≤ ~0.5s/case for n=120 at the util/soft of M4.
 - **M6 — Integrate + gate.** Wire into `solve()` behind `_true_contest_cost` best-of (so v9 is the floor). Full eval + `score_real.py`. *Gate:* beats v9 runtime-adjusted at median∈{1,2,3}s, 100/100. Tag `s7_sp`. **This is the make-or-break for winning quality.**
 
+**Execution notes for M3–M6 (post-M2-pass, 2026-05-30):**
+- **Expect util to ERODE as you add constraints — do NOT panic or revert when it does.** Movable-only = 0.828; adding obstacles (M3) fragments space, and the soft constraints (M4) — especially ~30% boundary blocks forming a perimeter frame + cluster abutment — will pull integrated util down to perhaps ~0.70–0.78. That is still a massive win over 0.52. Target: keep integrated util **>0.70** and area_gap **<0.35**; measure the erosion at each step.
+- **Speed (M5) is now the main risk.** M2 took 30s for ~7800 moves (pure Python); the contest needs ~0.5s. Path to ~60×: (a) **numba `@njit`** the longest-path/packing inner loop (mandatory), (b) **warm-start the SA from the v9 shelf layout** (decode coords→sequence-pair) so it *refines* instead of starting cold → far fewer moves needed, (c) **parallel chains across the 48 cores**, keep best. Warm-start is the highest-leverage of the three — prototype it early in M5.
+- **M6 gate sanity:** with area_gap ~0.25–0.35 (from ~0.87) the quality factor should drop enough that even at ~0.5s/case (vs v9's 0.18s) it wins runtime-adjusted at median≥1s. Verify with `score_real.py`; if it only wins at median≥2s, push M5 speed harder.
+- **ML (IV.P3) is no longer a pivot — it becomes a *future enhancement*:** a learned model that predicts a good initial sequence-pair would cut the moves M5 needs (faster) — revisit after M6 ships.
+
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
-**If M2 fails (SA can't exceed ~0.70 util):** escalate — the remaining bet is IV.P3 (learned placement), the contest's stated theme.
 
 ## IV.P3 — Data-driven (contest's stated theme; fast inference ⇒ floor-friendly)
 
