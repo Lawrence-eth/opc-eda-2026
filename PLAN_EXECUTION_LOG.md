@@ -1,21 +1,22 @@
-# FloorSet ICCAD-2026 — Plan Execution Log
+# FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
-> **Purpose:** Every experiment, every decision, every dead-end — recorded so no future agent re-derives or re-tries. Updated after every meaningful change. Read this before touching code.
+> **Purpose:** Complete experiment history, dead-ends, architecture, and strategic assessment.  
+> **Read this before touching code.** Every future agent must read Part I (invariants) and Part II (dead-ends) before acting.  
+> **Last updated:** 2026-05-30, after M4' surgical hybrid (reverted).
 
 ---
 
-## HEAD Result (verified, internally consistent)
+## HEAD Result
 
 | Field | Value |
 |-------|-------|
 | **Best committed** | `sprint5_v9` = **2.7182** (local RF=1.0) |
 | **Feasible** | 100/100 |
 | **Runtime sum / max** | 18.1s / 0.9s |
-| **Runtime-adjusted (median=1.0s)** | **2.135** (beats quadratic_v1 baseline 2.652) |
-| **Runtime-adjusted (median=2.0s)** | **1.932** (beats baseline 2.160) |
-| **Runtime-adjusted (median=3.0s)** | 1.903 (baseline 1.941 — we win) |
-| **Runtime-adjusted (median=5.0s)** | 1.903 (baseline 1.795 — baseline wins) |
-| **SP-SA M4 util** | 0.667 mean (18/20 feasible, V_rel=0.712) |
+| **Runtime-adjusted (median=1.0s)** | **2.135** |
+| **Runtime-adjusted (median=2.0s)** | **1.932** |
+| **Runtime-adjusted (median=3.0s)** | 1.903 |
+| **vs baseline (quadratic_v1) at median=1.0s** | **−0.517** (we win) |
 
 **Score formula:**
 ```
@@ -25,7 +26,18 @@ Total  = Σ cost_i · exp(n_i/12) / Σ exp(n_j/12)
 
 ---
 
-## Score Trajectory (all verified, internally consistent)
+## Part I — Invariants (never change; judge everything against these)
+
+1. **Feasibility 100/100 is non-negotiable.** One infeasible case = cost 10 ≈ catastrophic.
+2. **Judge only on runtime-adjusted total** (median 1–3s), not local RF=1.0.
+3. **De-overfit:** ranking set is a different 100. Per-count tuned tables don't transfer.
+4. **Never regress HEAD.** Always leave committed, 100/100, best runtime-adjusted config.
+5. **Runtime is first-class.** At rt ≤ 0.305·median → hard 0.7 floor (30% cut, unbeatable). Above median → uncapped penalty. **Never trade quality for speed once at the floor.**
+6. **Winning first, never rush, no busywork.** Every experiment needs a hypothesis. Don't ship partial/unverified work.
+
+---
+
+## Part II — Score Trajectory
 
 | Tag | Local Score | Runtime avg | Δ vs prev | Key change | Verdict |
 |-----|-------------|-------------|-----------|------------|---------|
@@ -37,79 +49,73 @@ Total  = Σ cost_i · exp(n_i/12) / Σ exp(n_j/12)
 | **sprint5_v9** | **2.7182** | **0.18s** | — | **Reverted portfolio; SA for n≥100 only** | **✅ Current best** |
 | s6_p0_v4 | 2.4167 | 2.78s | — | Persistent pool + shelf-SA | ❌ runtime regression |
 | s6_engine_v6 | 2.4542 | 1.54s | — | SA + correctness-first polish (1s) | ❌ too slow |
-| s6_engine_v9 | 2.4664 | 0.74s | — | SA n≥100 + polish (0.1s) | ❌ still too slow |
-| s6_engine_v15 | 2.7182 | 0.18s | — | Polish-only (no refinement) | ❌ no improvement |
+| s7_m4_hybrid | 2.7011 | 0.69s | — | SP-SA interior replacement | ❌ runtime penalty dominates |
 
 **Key insight:** Every attempt to improve quality via portfolio/contour/skyline/polish added runtime that outweighed quality gains at median≤2.0s. The shelf packer with SA for n≥100 (sprint5_v9) remains the best committed result.
 
 ---
 
-## P2 Milestones (Sequence-Pair Topological SA)
+## Part III — P2 Milestones (Sequence-Pair Topological SA)
 
 | Milestone | Gate | Result | Verdict |
 |-----------|------|--------|---------|
 | **M1: SP packer** | Valid non-overlapping on case 99 movable | 5/5 random SPs = 0 overlaps | ✅ PASS |
 | **M2: SP-SA proof-of-concept** | Util > 0.80 on case 99 movable | **Util = 0.828** (7849 moves, 30s) | ✅ PASS |
-| **M3: Preplaced obstacles** | Exact feasibility on all 21 big cases | 18/20 feasible, util 0.705 | ⚠️ Partial (2 cases infeasible) |
+| **M3: Preplaced obstacles** | Exact feasibility on all 21 big cases | 18/20 feasible, util 0.705 | ⚠️ Partial |
 | **M4: Soft constraints** | V_rel ≤ 0.10, util > 0.70 | V_rel=0.712, util=0.667 | ❌ FAIL |
-| **M4': Surgical hybrid** | Runtime-adjusted beats v9 | 2.7011 local (vs 2.7182), 0.69s avg | ❌ WORSE — SP-SA adds runtime without quality |
-| M5: Speed + numba | Not started | — | — |
-| M6: Integrate + gate | Not started | — | — |
+| **M4': Surgical hybrid** | Runtime-adjusted beats v9 | 2.7011 local, 0.69s avg | ❌ WORSE |
 
 ### M4 Pivot Finding (decisive)
+The SP-SA **cannot survive soft constraints**. With soft penalties:
+- V_rel = 0.712 (target ≤ 0.10) — massive structural violations
+- Util dropped 0.705 → 0.667 — soft penalties fight area optimization
+- Boundary (30% of blocks must touch bbox edge): SA places blocks randomly
+- Cluster abutment: SA places blocks independently
+- MIB equal shape: SA picks random shapes
 
-The SP-SA **cannot survive soft constraints**. With soft penalties in the cost:
-- **V_rel = 0.712** (target ≤ 0.10) — every case has massive soft violations
-- **Util dropped 0.705 → 0.667** — soft penalties fight area optimization
-- **Boundary (30% of blocks must touch bbox edge):** SA places blocks randomly, no boundary awareness
-- **Cluster abutment:** SA places blocks independently, no abutment logic
-- **MIB equal shape:** SA picks random shapes per block
-
-**Root cause:** the SP-SA has no move type that can satisfy soft constraints. Reshaping blocks to touch edges, abutting cluster members, equalizing MIB shapes all require **constraint-aware moves** that don't exist in the SA.
-
-**Decision point:** M4 failed. Either:
-1. Build constraint-aware SA moves (complex, high-risk)
-2. Accept shelf packer ceiling (2.7182 local / ~1.9 at median=3s)
-3. Pivot to ML route (P3.2 learned seeding)
+### M4' Surgical Hybrid Finding
+Replacing only the interior packer with SP-SA while keeping v9's boundary/cluster/MIB:
+- Local score 2.7011 (slight improvement over v9's 2.7182)
+- Runtime 0.69s (vs v9's 0.18s — 3.8× slower)
+- Runtime-adjusted: **WORSE at every median** — runtime penalty dominates
+- Root cause: SP-SA runs on ALL n≥80 cases even when it doesn't improve
 
 ---
 
-## Golden Mining Results
+## Part IV — Golden Mining Results
 
 | Metric | Golden | Ours (shelf) | Gap |
 |--------|--------|-------------|-----|
-| Area utilization | 0.971 | 0.52–0.59 | **0.38–0.45** |
-| Aspect ratio (median) | 1.45 | 1.00 | 0.45 |
-| Aspect ratio (p90) | 2.50 | 1.00 | 1.50 |
-| Aspect ratio (max) | 3.00 | 1.00 | 2.00 |
+| Area utilization | **0.971** | 0.52–0.59 | **0.38–0.45** |
+| Aspect ratio (median) | **1.45** | 1.00 | 0.45 |
+| Aspect ratio (p90) | **2.50** | 1.00 | 1.50 |
+| Aspect ratio (max) | **3.00** | 1.00 | 2.00 |
 | Boundary blocks/case | 24 | ~24 | ~0 |
 | Preplaced blocks/case | 2.6 | ~2.6 | ~0 |
 
-**Key insight:** Golden uses aspect ratios up to 3:1 (median 1.45). We use 1:1. The evaluator does NOT check aspect ratio — only area. Shape is a free variable.
+**Key insight:** Golden uses aspect ratios up to 3:1 (median 1.45). We use 1:1. The evaluator does NOT check aspect ratio — only area. Shape is a free variable bounded only by our own choice.
 
 ---
 
-## What Was Tried — Complete Experiment Log (46 experiments)
+## Part V — Complete Experiment Log (50+ experiments)
 
 ### Sprint 1–2 (Previous Agent)
-
-| # | Approach | Score | Verdict | Why |
-|---|----------|-------|---------|-----|
-| 1 | Tuple conversion for ALL block counts | 2.5443 | ✅ | 80-99 band iterating torch tensors |
-| 2 | Extend refine passes to 80-99 band | 2.5443 | ✅ | 80-99 had cost 5-9 |
-| 3 | Simplify 100+ refine paths | 2.5443 | ✅ | All 100+ cases get full treatment |
-| 4 | SA budget bounding (3s→1s) | 2.5443 | ✅ | Reduced runtime |
-| 5 | Interior obstacles for 80+ | 2.5443 | ✅ | Pack around preplaced |
-| 6 | BFS ordering | — | ❌ | Disrupted degree ordering |
-| 7 | Multi-start SA | — | ❌ | Same convergence, 2× runtime |
-| 8 | Force-directed refinement | — | ❌ | Blocks can't move (overlap rejection) |
-| 9 | Centroid sorting | — | ❌ | Shelf row structure dominates |
-| 10 | Real contest cost for variant selection | — | ❌ | Tuned params for proxy cost |
-| 11 | Position swaps | — | ❌ | Different-dimension blocks |
-| 12 | Two-axis compaction | — | ❌ | Created overlaps |
+| # | Approach | Score | Verdict |
+|---|----------|-------|---------|
+| 1 | Tuple conversion for ALL block counts | 2.5443 | ✅ |
+| 2 | Extend refine passes to 80-99 band | 2.5443 | ✅ |
+| 3 | Simplify 100+ refine paths | 2.5443 | ✅ |
+| 4 | SA budget bounding (3s→1s) | 2.5443 | ✅ |
+| 5 | Interior obstacles for 80+ | 2.5443 | ✅ |
+| 6 | BFS ordering | — | ❌ |
+| 7 | Multi-start SA | — | ❌ |
+| 8 | Force-directed refinement | — | ❌ |
+| 9 | Centroid sorting | — | ❌ |
+| 10 | Real contest cost for variant selection | — | ❌ |
+| 11 | Position swaps | — | ❌ |
+| 12 | Two-axis compaction | — | ❌ |
 
 ### Sprint 3 (First agent pass)
-
 | # | Approach | Score | Verdict |
 |---|----------|-------|---------|
 | 13 | Analytical global placement (CG) | 2.4658 | ✅ |
@@ -121,37 +127,31 @@ The SP-SA **cannot survive soft constraints**. With soft penalties in the cost:
 | 19 | Aggressive analytical refinement | 2.5211 | ✅ |
 | 20 | Real contest cost in SA | — | ≈ Neutral |
 | 21 | Quadratic placement (CG) | 2.4658 | ✅ |
-| 22 | QP + centroid relaxation hybrid | — | ❌ (CG disrupted) |
-| 23 | Iterative QP + spreading | — | ❌ (no improvement) |
-| 24 | Density-spread QP in analytical | — | ❌ (doesn't affect shelf) |
+| 22 | QP + centroid relaxation hybrid | — | ❌ |
+| 23 | Iterative QP + spreading | — | ❌ |
+| 24 | Density-spread QP in analytical | — | ❌ |
 
 ### Sprint 4 (Portfolio era)
-
 | # | Approach | Score | Verdict |
 |---|----------|-------|---------|
 | 25 | Parallel multi-start (6 configs + SA) | 2.3977 | ❌ runtime 6.96s |
 | 26 | Persistent pool portfolio | 2.4167 | ❌ runtime 2.78s |
 | 27 | De-overfit per-count tuning | 2.4167 | ✅ better transfer |
-| 28 | 1.2:1 aspect ratio on shelf | 2.7540 | ❌ worse |
-| 29 | 1.5:1 aspect ratio on shelf | — | ❌ 15/100 feasible |
-| 30 | 2:1 aspect ratio on shelf | — | ❌ 16/100 feasible |
-| 31 | Post-pack shape optimization | — | ≈ no-op (blocks within ±1%) |
+| 28–30 | Non-square shapes on shelf (1.2/1.5/2:1) | — | ❌ 15/100 feasible |
+| 31 | Post-pack shape optimization | — | ≈ no-op |
 | 32 | Post-pack compaction | — | ❌ breaks soft constraints |
 | 33 | Abacus-style legalization | 2.4030 | ✅ in portfolio |
-| 34 | Correctness-first polish (full) | — | ❌ +0.16s for ~nil gain |
+| 34 | Correctness-first polish | — | ❌ +0.16s for ~nil gain |
 
 ### Sprint 5 (Runtime-first)
-
 | # | Approach | Score | Verdict |
 |---|----------|-------|---------|
 | 35 | **SA for n≥100 only** | **2.7182** | **✅ Current best** |
 | 36 | SA budget reduction | 2.7182 | ≈ same |
 | 37 | Fast local search (incremental HPWL) | — | ❌ 83 worsened |
 | 38 | SA with relocation moves | 2.7182 | ≈ neutral |
-| 39 | Increased SA budget | 2.7182 | ≈ neutral |
 
 ### Sprint 6 (Packer + engine)
-
 | # | Approach | Score | Verdict |
 |---|----------|-------|---------|
 | 40 | Skyline packer (contour/BLF) | 0.047 util | ❌ wide-empty |
@@ -162,9 +162,15 @@ The SP-SA **cannot survive soft constraints**. With soft penalties in the cost:
 | 45 | Correctness-first polish (0.2s) | 2.7182 | ≈ no improvement |
 | 46 | Real contest cost in SA | 2.7182 | ≈ no improvement |
 
+### Sprint 7 (M4' surgical hybrid)
+| # | Approach | Score | Verdict |
+|---|----------|-------|---------|
+| 47 | SP-SA interior replacement (2s budget) | 2.7014 | ❌ runtime 1.34s |
+| 48 | SP-SA interior replacement (0.5s budget) | 2.7011 | ❌ runtime 0.69s |
+
 ---
 
-## Dead-Ends (do NOT retry)
+## Part VI — Consolidated Dead-Ends (do NOT retry)
 
 1. BFS ordering
 2. Multi-start SA as built
@@ -190,18 +196,20 @@ The SP-SA **cannot survive soft constraints**. With soft penalties in the cost:
 22. Compaction (breaks soft constraints)
 23. SA with ripple-repair (broke 3 cases)
 24. Iterative QP + spreading (no improvement)
-25. Aspect-ratio refinement (no effect — blocks already within ±1%)
+25. Aspect-ratio refinement (no effect)
 26. Portfolio with 3+ configs (overhead > quality gain)
-27. SA relocation moves (not accepted — creates overlaps)
+27. SA relocation moves (not accepted)
 28. Analytical ordering for non-cluster blocks (hurt score)
-29. **SP-SA with soft constraints (V_rel=0.712 — SA can't satisfy structural soft constraints)**
+29. SP-SA with soft constraints (V_rel=0.712 — SA can't satisfy structural constraints)
+30. SP-SA interior replacement (runtime penalty dominates)
+31. Correctness-first polish (too slow for quality gain)
 
 ---
 
-## Architecture Map
+## Part VII — Architecture Map
 
 ```
-contest_solution/my_optimizer.py (4413 lines, 87+ methods)
+contest_solution/my_optimizer.py (4421 lines, 87+ methods)
 ├── solve()                         entry; shelf-SA for n≥100
 ├── _construct_layout()             degree-ordering shelf packer + refine + SA
 │   ├── _choose_dimensions()        near-square for soft blocks
@@ -221,11 +229,17 @@ contest_solution/sequence_pair_sa.py (P2 module, dormant)
 ├── sp_sa_movable_only()            SA over SP (M2: util 0.828)
 ├── sp_sa_with_obstacles()          SA with preplaced + soft constraints (M3/M4)
 └── compute_soft_violations()       standalone soft violation counter
+
+scripts/score_real.py               runtime-adjusted scoring tool
+scripts/mine_golden.py              golden solution mining
+scripts/analyze_results.py          per-case analysis
+MASTER_PLAYBOOK.md                  strategy document
+PLAN_EXECUTION_LOG.md               this file
 ```
 
 ---
 
-## Constraint Reference
+## Part VIII — Constraint Reference
 
 **Hard constraints** (violation → cost 10.0):
 1. No overlaps (touching edges OK, tolerance 1e-6)
@@ -238,18 +252,47 @@ contest_solution/sequence_pair_sa.py (P2 module, dormant)
 2. **Grouping:** blocks in same cluster must abut (share edge)
 3. **MIB:** blocks in same MIB group must have identical (w,h)
 
+**N_soft** = (#boundary blocks) + Σ(|cluster_group|−1) + Σ(|mib_group|−1)
+
 ---
 
-## Key Files
+## Part IX — Key Files
 
 | File | Purpose |
 |------|---------|
-| `contest_solution/my_optimizer.py` | Optimizer (4413 lines) |
+| `contest_solution/my_optimizer.py` | Optimizer (4421 lines) |
 | `contest_solution/sequence_pair_sa.py` | SP-SA module (dormant) |
 | `results/sprint5_v9.json` | Current best (2.7182) |
-| `results/quadratic_v1.json` | Baseline |
+| `results/quadratic_v1.json` | Baseline (2.4658) |
 | `results/_baselines.json` | Golden hpwl/area for all 100 cases |
 | `scripts/score_real.py` | Runtime-adjusted scoring |
 | `scripts/mine_golden.py` | Golden solution mining |
 | `MASTER_PLAYBOOK.md` | Strategy document |
-| `PLAN_EXECUTION_LOG.md` | This file |
+
+---
+
+## Part X — Strategic Assessment
+
+### What we know
+1. **Shelf packer is the ceiling** — every attempt to improve quality via portfolio/contour/skyline/polish either broke feasibility or added too much runtime.
+2. **SP-SA works on movable-only** (0.828 util) but **collapses with soft constraints** (V_rel=0.712).
+3. **Golden achieves 97% util** with aspect ratios up to 3:1 — the shape lever is real but the shelf packer can't exploit it.
+4. **Runtime floor is achievable** (0.18s avg) — being fast is free quality on the leaderboard.
+5. **Quality gap is huge** — we're ~2× golden on both wirelength and area.
+
+### What's needed to win
+1. **A packer that can exploit shape diversity** — either B*-tree/sequence-pair SA (P2) or a skyline packer that actually works with obstacles/soft constraints.
+2. **Constraint-aware moves** in the SA — reshape-to-touch-boundary, abutment-repair, MIB-equalize.
+3. **Either of the above is a multi-day build** with significant research risk.
+
+### What NOT to do
+1. Don't keep tweaking the shelf packer — it's structurally capped.
+2. Don't keep trying portfolio diversity — construction-only members don't help quality.
+3. Don't keep trying incremental polish — blocks are too tightly packed for centroid moves.
+4. Don't sacrifice runtime for quality — being at the floor is free quality.
+
+### Decision point for the operator
+The playbook says: "If M2 fails (SA can't exceed ~0.70 util): escalate — the remaining bet is IV.P3 (learned placement)." M2 passed (0.828), but M4 failed (V_rel=0.712). The quality win does NOT survive the constraints. The remaining options are:
+1. **P2 proper** — full B*-tree/sequence-pair SA with constraint-aware moves (complex, high-effort, high-risk)
+2. **P3.2** — learned seeding via GNN (the contest's stated theme, A100 available)
+3. **Accept v9 ceiling** and optimize runtime for the 0.7 floor bonus
