@@ -360,6 +360,19 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 - *Gate (N4 / presentation goal):* on the big cases, **V_rel ≤ ~0.12 AND util ≥ ~0.70 AND beats v9 on `_true_contest_cost`** (quality; ignore runtime for now), 100/100 feasible. Then → M5 speed.
 - **Fallback if N4 can't get V_rel ≤ ~0.15 with the area win intact after genuine effort:** ship v9 for the presentation (safe, 100/100) and treat ML warm-start (IV.P3) as the real-deadline bet. We have time (presentation ~06-13).
 
+### N4 WARM-START OUTCOME (2026-05-31) — SP-SA "fight the constraints" path is EXHAUSTED; lock v9 for presentation
+
+**Result: n4_warmstart.json identical to v9 on every metric (lost the gate on all 100 cases), at 24.8s/case.** Warm-start (decode v9→SP) + post-SA cluster snap did not crack it. Best V_rel reached **0.33** (target ≤0.15) — 2.2× over.
+- **Why:** the SA's area optimization disrupts cluster abutment; and the center-sort decode used for warm-start was **lossy — it broke boundary (36→21/36)**. So warm-start traded cluster gains for boundary losses. The area win (util ~0.67–0.74) never overcomes the `exp(2·V_rel)` penalty.
+- **Note (important nuance):** v9 itself proves low V_rel (~0.10) + boundary + clusters are *jointly* achievable — so it's not literally impossible, but the *free SP-SA that re-derives the layout* can't hold the constraints while packing tight. Across N1→N4 we tried: 3 cluster-penalty formulations, super-blocks (too rigid, util 0.42), two warm-start decodes, post-SA cluster snap, weight sweeps. **The "build the layout from scratch and make it obey the rules" approach is exhausted.**
+
+**DECISIONS:**
+- ✅ **Presentation entry = LOCK sprint5_v9** (100/100, 0.18s, beats baseline by 0.517 @ median 1s). No risk. The SP-SA module stays dormant (HEAD `solve()` already best-of-gated; it just never wins — harmless, but consider disabling the `_try_sp_sa` call so the committed solver isn't 100× slower if ever run as-is).
+- ⏸ **Deadline strategy = OPEN (operator decision pending).** The SP-SA *area breakthrough* (0.52→0.74 util) is real and worth not throwing away. Candidate paths for the ~4 weeks after the presentation:
+  1. **Faithful-warm-start + constraint-preserving moves (surgical analytic):** fix N4's exact flaw — a decode that reproduces v9 *exactly* (boundary 36/36 + clusters abutted, V_rel 0.10), then SA moves that **can only improve area/HPWL and never break a satisfied constraint** (reject any move that raises V_rel). Starts at v9 quality, can only improve. Lower effort; directly addresses why N4 failed.
+  2. **Data-driven / ML (IV.P3):** learn from golden — which has tight packing AND satisfied constraints *simultaneously*, the exact balance we can't hand-engineer. On-theme, highest ceiling, highest effort/risk.
+  3. **Lock v9 as final too:** safe floor, likely mid-pack, not winning-tier.
+
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
 
 ### N2 COMPLETION (2026-05-30) — pairwise gap penalty + MIB + aspect ratio + SA bug fix
