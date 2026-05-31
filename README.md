@@ -2,6 +2,8 @@
 
 Deterministic heuristic optimizer for data-driven SoC floorplanning (21–120 blocks).
 
+> **📊 Presentation / overview: [`docs/SUMMARY.md`](docs/SUMMARY.md)** — problem, solution, results, methodology, key insights, and honest assessment (each section ≈ one slide). Start here.
+
 ## Current Result (submission)
 
 Current submission = **`sprint5_v9`** — the optimizer in `contest_solution/my_optimizer.py`; result snapshot `results/v9_locked.json`.
@@ -54,9 +56,21 @@ PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py
 ## Release Checks
 
 ```bash
-.venv/bin/python -m pytest -q tests/test_optimizer_soft_constraints.py tests/test_sp_labels.py
-.venv/bin/python scripts/check_public_release.py   # defaults: results/v9_locked.json, --max-score 2.72
+.venv/bin/python -m pytest                          # 51 passed
+.venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/v9_locked.json, --max-score 2.72)
 ```
+
+## Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| [`docs/SUMMARY.md`](docs/SUMMARY.md) | **Presentation overview** — problem, solution, results, insights (start here) |
+| [`MASTER_PLAYBOOK.md`](MASTER_PLAYBOOK.md) | Full strategy & decision trail (authoritative current state at top) |
+| [`PLAN_EXECUTION_LOG.md`](PLAN_EXECUTION_LOG.md) | Chronological experiment log |
+| [`PROJECT_STATUS.md`](PROJECT_STATUS.md) | Status summary |
+| `docs/extracted/` | Contest problem statement + official Q&A |
+| `docs/archive/` | Superseded plans/reports (history) |
+| `logs/` | Per-session execution logs |
 
 ## Contest
 

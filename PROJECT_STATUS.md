@@ -20,8 +20,6 @@
 - Extended `scripts/analyze_results.py` with weighted metric-pressure estimates for HPWL, area, and soft-violation-ratio improvements, plus score-weighted soft-driver ranking when enriched counts are present.
 - Extended `scripts/analyze_results.py` with optional structural case profiles from the official checkout, including fixed/preplaced block counts, boundary demand, cluster and MIB group pressure, and B2B/P2B net counts for weighted focus cases.
 - Added `--write-focus-json` to `scripts/analyze_results.py` so high-impact weighted cases, score concentration, metric pressure, and the recommendation can be saved as a compact planning artifact without replacing the published best-result JSON.
-- Added committed diagnostic artifacts for the current best result: `results/enriched_diagnostics.json` with reconstructed soft-violation attribution and `results/focus_cases.json` with compact weighted-case planning data.
-- Added regression tests that keep committed diagnostic artifacts aligned with the published best result and prevent focus reports from carrying full saved positions.
 - Added analyzer regression tests covering weighted-score reconstruction and soft-violation reporting.
 - Added analyzer regression tests for metric-pressure and score-weighted soft-driver calculations.
 - Added analyzer regression tests for structural constraint-profile extraction and reporting.
@@ -89,18 +87,8 @@ Current submission = **`sprint5_v9`** (`results/v9_locked.json`). Local official
 - Chosen for the contest's runtime-adjusted metric (speed dominates for median ≤ ~3.5s). Raw 2.7182 looks higher than the old 2.6326 baseline but scores better once runtime is applied. `quadratic_v1` (2.466 @ 0.69s) kept as a high-median hedge. Earlier sprint numbers below are historical — see MASTER_PLAYBOOK.md.
 - Public release guard: PASSED against the official evaluator JSON
 
-Current official-format result file:
-
-- `results/tuned52_official_full.json`
-
-Curated historical result file:
-
-- `results/boundary_full.json`
-
-Diagnostic companion files:
-
-- `results/enriched_diagnostics.json`
-- `results/focus_cases.json`
+Current result artifact (the submission): **`results/v9_locked.json`** (2.7182, 100/100).
+Older `tuned*_official_full.json` files are historical baselines, kept for reference.
 
 ## Implementation Notes
 
@@ -114,67 +102,26 @@ The implementation targets the main local validation cost drivers:
 6. bounding-box area gap;
 7. runtime.
 
-Soft-constraint diagnostics on the final 100-case validation run:
-
-- boundary violations: 122 total
-- grouping violations: 366 total
-- MIB violations: 55 total
-
-Remaining violations are mostly hard-constraint tradeoffs. Preplaced blocks cannot be moved to satisfy a soft boundary condition without breaking fixed preplacement. Some MIB groups also have target areas that do not allow one exact common shape without creating hard area violations.
+Soft constraints (boundary / grouping / MIB) are near their practical floor (V_rel ≈ 0.10). Remaining violations are mostly hard-constraint tradeoffs: preplaced blocks cannot be moved to satisfy a soft boundary condition without breaking fixed preplacement, and some MIB groups have target areas that do not allow one exact common shape without a hard area violation. Per-case soft-violation attribution is available via `scripts/analyze_results.py --contest-dir external/FloorSet/iccad2026contest`.
 
 ## Useful Commands
 
 From the contest directory after copying `contest_solution/my_optimizer.py` into place:
 
 ```bash
-python -m pytest test_my_optimizer.py -q
-PYTHONPATH=.. python iccad2026_evaluate.py --validate my_optimizer.py --quick
-PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py --verbose --save-solutions --output results/boundary_full.json
+# From the contest dir (after copying my_optimizer.py + sequence_pair_sa.py into place):
+PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py --output ../../../results/out.json
+
+# From the repository root:
+python scripts/analyze_results.py results/v9_locked.json --top 20      # score + per-band drivers
+python scripts/analyze_results.py results/v9_locked.json --contest-dir external/FloorSet/iccad2026contest   # + soft-violation attribution
+python scripts/audit_results.py   results/v9_locked.json --expected-cases 100 --require-positions
+python scripts/compare_results.py results/v9_locked.json candidate.json
+python scripts/check_public_release.py                                 # release gate (PASS)
+python -m pytest                                                       # 51 passed
 ```
 
-From the repository root:
-
-```bash
-python scripts/analyze_results.py results/boundary_full.json
-python scripts/analyze_results.py results/boundary_full.json --write-focus-json results/focus_cases.json
-python scripts/analyze_results.py results/boundary_full.json --contest-dir external/FloorSet/iccad2026contest
-python scripts/analyze_results.py results/boundary_full.json --contest-dir external/FloorSet/iccad2026contest --write-enriched results/enriched_diagnostics.json
-python scripts/analyze_results.py results/boundary_full.json --diagnostic-sidecar results/enriched_diagnostics.json
-python scripts/audit_results.py results/boundary_full.json --expected-cases 100 --require-positions
-python scripts/compare_results.py results/boundary_full.json candidate_full.json
-python scripts/check_public_release.py --contest-optimizer /path/to/FloorSet/iccad2026contest/my_optimizer.py
-python -m pytest -q
-```
-
-Without Torch installed, the public test suite skips the optimizer tests that
-need contest tensor inputs and still runs the diagnostics and comparison-guard
-tests. Use the contest environment for the full optimizer regression suite
-before publishing solver changes. The comparison guard requires candidate
-full-run JSON files to preserve per-case full feasibility, include every baseline
-`test_id`, avoid duplicate candidate IDs, reconstruct to the declared score,
-and strictly improve the published total score before replacing best-result artifacts.
-The result audit should pass on any published full-run
-artifact before it is compared or copied over the current best result; it also
-checks saved rectangles for positive-area overlaps and verifies that top-level
-score and summary averages are consistent with the per-case metrics.
-The analyzer's score-concentration section should be checked before solver
-experiments so case-level tuning focuses on the cases that materially affect
-the block-count weighted score.
-When `results/enriched_diagnostics.json` matches the published result, the
-analyzer now merges its derived boundary/grouping/MIB counts and structural
-constraint profile into the report automatically. This keeps the published
-best-result JSON unchanged while making default diagnostics specific enough to
-choose the next solver target.
-The compact focus JSON can be regenerated for each candidate or enriched result
-to keep experiment notes aligned with the current weighted-score drivers.
-When run with `--contest-dir`, the analyzer should also be used to inspect the
-weighted cases' structural profile. High boundary density points toward
-perimeter ordering and boundary-cluster packing experiments; dense B2B
-connectivity points toward connectivity-aware ordering or local movement.
-The public release check combines the result audit with a public-facing docs
-scan and optional optimizer-copy synchronization, so a release can fail early if
-the uploaded optimizer diverges from the validated contest copy or the docs
-contain wording that should not appear in the public repository.
+The release check combines a result audit (feasibility, score/summary consistency, overlap check) with a public-docs scan, so a release fails early if the uploaded optimizer diverges from the validated copy. The analyzer's score-concentration section identifies the high-weight cases (n≥100 ≈ 80% of the total). See `docs/SUMMARY.md` for the full write-up.
 
 ## Next Improvement Ideas
 
