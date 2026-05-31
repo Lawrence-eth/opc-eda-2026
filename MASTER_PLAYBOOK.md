@@ -390,7 +390,28 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 5. Implement as a refinement pass applied to v9's output inside `solve()`, best-of gated by `_true_contest_cost`. Keep it FAST (shape moves are O(1) cost-delta with incremental eval).
 
 **Gate:** beats v9 on `_true_contest_cost` (lower area_gap, V_rel ≤ v9's ~0.10, 100/100 feasible). Milestone target: **area_gap 0.87 → ≤0.6** first (util ≥0.62), then chase ≤0.4. Validate on the big cases; expect this to move the score because area_gap is half the quality factor and shape has zero HPWL cost. Tag `n5_shape`.
-**If N5 plateaus well above golden:** proceed to N6 (ML).
+
+### N5 OUTCOME (2026-05-31) — FAILED; the N5 premise was geometrically wrong; ANALYTIC PATH EXHAUSTED
+
+**N5 doesn't work, and the spec was flawed (planner error):** reshaping a boundary block CANNOT shrink the bbox, because the block must keep touching its edge — narrowing a right-edge block keeps `x+w = xmax` (its left side just moves in, opening a gap). bbox is unchanged. Interior reshaping → overlaps (blocks already tightly packed); center-shift compaction → 156 unrepairable overlaps. **Net: 0 improvement, nothing committed.**
+
+**The deeper, now-proven truth:** v9's layout is a **local optimum whose bbox is fixed by its global frame structure.** Beating its area REQUIRES global rearrangement; global rearrangement (SP-SA) breaks the soft constraints; local refinement can't rearrange. **Five analytic attempts (N1 SP-SA, N3 integrate, N4 warm-start, M4' hybrid, N5 shape) have now all failed on this same wall. The analytic/hand-engineered path is EXHAUSTED.** Do not propose more analytic refinements of v9 — that is now busywork (I.0).
+
+**⇒ PIVOT to N6 (data-driven / ML) — the contest's stated theme and the last untried high-ceiling path.** See IV.N6.
+
+## IV.N6 — Data-driven / learned floorplanning  *(THE remaining shot at winning; run with fewer stops)*
+
+**Why ML, why now:** the contest is literally "**Data-Driven** SoC Floorplanning" and ships the **FloorSet dataset** (many instances + golden solutions, in `external/FloorSet/`). Golden has tight packing AND satisfied constraints *simultaneously* — the exact balance no hand-built method achieved. A model trained on golden can learn that joint structure; inference is ~ms (floor-friendly). This is the *designed* solution path, not a moonshot — the risk is execution/generalization, not concept.
+
+**De-risk with a cheap PROOF-OF-CONCEPT first (like M2 did for SP-SA):**
+- **N6-POC:** train a small model (GNN or set/transformer over blocks) on a subset of FloorSet *training* instances to predict block positions/ordering; supervise on golden. **Gate:** on HELD-OUT training instances, the model's output (after light legalization) reaches util ≥0.75 and V_rel ≤0.15 — i.e., it demonstrably learns golden-like structure. **If the POC can't approach golden on held-out training data, STOP — ML won't beat v9 either, and we lock v9.** This decides the weeks-long investment cheaply.
+- Only if POC passes: build the full pipeline (features → model → inference → constraint-respecting legalization that PRESERVES the model's structure → best-of gate vs v9).
+
+**Autonomy (addresses "why does it keep stopping"):** N6 is a longer self-contained build. **Run through its sub-steps (data prep → POC train → POC eval → full train → integrate) committing each, WITHOUT stopping to report** — stop only at (a) the N6-POC gate result, (b) the final "beats v9?" eval, or (c) a hard blocker. This cuts the check-in frequency the operator noticed.
+
+**Constraints to respect:** inference + legalization must keep 100/100 feasibility (overlaps, ±1% area, preplaced/fixed exact) and be fast; best-of gate vs v9 so HEAD never regresses. Generalization: train/select on held-out folds; the real ranking set is different instances.
+
+**If N6-POC fails or the full pipeline can't beat v9 after genuine effort:** lock v9 as the final submission (safe floor) and report — we will have exhausted the credible paths.
 
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
 
