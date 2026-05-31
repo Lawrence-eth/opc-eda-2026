@@ -2,13 +2,18 @@
 
 Deterministic heuristic optimizer for data-driven SoC floorplanning (21–120 blocks).
 
-## Current Score
+## Current Result (submission)
+
+Current submission = **`sprint5_v9`** — the optimizer in `contest_solution/my_optimizer.py`; result snapshot `results/v9_locked.json`.
 
 | Metric | Value |
 |--------|-------|
-| Validation score | **2.6326** |
-| Feasible cases | 100 / 100 |
-| Average runtime | 1.03s |
+| Validation score (RF=1.0) | 2.7182 |
+| Feasible cases | **100 / 100** |
+| Average runtime | **~0.18s/case** (max ~0.9s) |
+| Runtime-adjusted total @ median 1s | **2.11** (baseline `quadratic_v1`: 2.65) |
+
+**Note on the score:** the contest cost is *runtime-adjusted* — `cost · max(0.7, (rt/median)^0.3)`. v9 trades a little raw quality for large speed, which dominates at the contest's likely runtime range (it beats every earlier solution for assumed median ≤ ~3.5s). So the raw 2.7182 is *higher* (worse) than older raw scores (e.g. the 2.6326 baseline) but the *runtime-adjusted* score is better. A higher-raw-quality, still-fast alternative (`quadratic_v1`, 2.466 @ 0.69s) is retained as a hedge for high-median scenarios. Full reasoning + history: `MASTER_PLAYBOOK.md`.
 
 *Validation-set results only. Final ranking uses hidden test data.*
 

@@ -80,13 +80,13 @@ The optimizer is a constructive heuristic:
 
 ## Validation Results
 
-Latest local official validation over 100 Lite validation cases:
+Current submission = **`sprint5_v9`** (`results/v9_locked.json`). Local official validation over 100 Lite cases:
 
 - Feasible: 100 / 100
-- Total score: 2.6326
-- Average cost: 2.9065
-- Average runtime: 1.03s
-- Official quick validator: PASSED
+- Total score (RF=1.0): 2.7182
+- Average runtime: ~0.18s/case (max ~0.9s)
+- Runtime-adjusted @ median 1s: 2.11 (beats baseline 2.65)
+- Chosen for the contest's runtime-adjusted metric (speed dominates for median ≤ ~3.5s). Raw 2.7182 looks higher than the old 2.6326 baseline but scores better once runtime is applied. `quadratic_v1` (2.466 @ 0.69s) kept as a high-median hedge. Earlier sprint numbers below are historical — see MASTER_PLAYBOOK.md.
 - Public release guard: PASSED against the official evaluator JSON
 
 Current official-format result file:

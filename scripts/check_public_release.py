@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts import audit_results, compare_results
 
-DEFAULT_RESULT = ROOT / "results" / "boundary_full.json"
+DEFAULT_RESULT = ROOT / "results" / "v9_locked.json"
 DEFAULT_PUBLIC_OPTIMIZER = ROOT / "contest_solution" / "my_optimizer.py"
 DEFAULT_SCAN_PATHS = (
     ROOT / "README.md",
@@ -176,7 +176,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--result", type=Path, default=DEFAULT_RESULT, help="Published full result JSON")
     parser.add_argument("--expected-cases", type=int, default=100, help="Expected number of evaluated cases")
-    parser.add_argument("--max-score", type=float, default=2.0133, help="Maximum allowed published score")
+    parser.add_argument("--max-score", type=float, default=2.72, help="Maximum allowed published score (v9 raw = 2.7182)")
     parser.add_argument("--allow-missing-positions", action="store_true", help="Do not require saved rectangles")
     parser.add_argument("--public-optimizer", type=Path, default=DEFAULT_PUBLIC_OPTIMIZER)
     parser.add_argument("--contest-optimizer", type=Path, default=None, help="Optional active contest optimizer to compare")

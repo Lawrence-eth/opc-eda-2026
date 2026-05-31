@@ -57,6 +57,7 @@ logs/
 # Local experiment artifacts
 # Curated result JSONs are tracked explicitly below or with git add -f.
 results/*.json
+!results/v9_locked.json
 !results/boundary_full.json
 !results/enriched_diagnostics.json
 !results/focus_cases.json
