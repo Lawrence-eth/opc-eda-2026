@@ -21,21 +21,22 @@ Current submission = **`sprint5_v9`** — the optimizer in `contest_solution/my_
 
 ```
 contest_solution/
-├── my_optimizer.py          # Optimizer (submission source)
-├── test_my_optimizer.py     # Optimizer tests
-├── iccad2026_evaluate.py    # Official evaluator
-├── lite_dataset.py          # Dataset loader
-└── lite_dataset_test.py     # Dataset tests
-scripts/
-├── benchmark_ml_score.py    # Local benchmark
-├── audit_results.py         # Result audit
-├── check_public_release.py  # Release guard
-├── analyze_results.py       # Analysis tools
-├── compare_results.py       # Result comparison
-└── setup_and_evaluate.sh    # Setup helper
-tests/                       # Regression tests
-results/                     # Curated validation artifacts
-docs/                        # Contest reference docs
+├── my_optimizer.py          # Optimizer — THE submission source
+├── sequence_pair_sa.py      # Experimental SP-SA floorplanner (dormant; see playbook)
+├── iccad2026_evaluate.py    # Official evaluator (working copy)
+└── *dataset*.py             # Dataset loaders + tests
+scripts/                     # analyze / audit / compare / release-check / benchmark
+tests/                       # Regression + unit tests
+results/                     # Result artifacts (v9_locked.json = current; others gitignored)
+external/FloorSet/           # Contest dataset + official evaluator
+docs/
+├── extracted/               # Contest problem statement + Q&A
+└── archive/                 # Superseded plans/reports (history)
+logs/                        # Per-session execution logs
+
+MASTER_PLAYBOOK.md           # Strategy & decision playbook (authoritative current state at top)
+PLAN_EXECUTION_LOG.md        # Chronological experiment log
+PROJECT_STATUS.md            # Status summary
 ```
 
 ## Quick Start
@@ -54,10 +55,7 @@ PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py
 
 ```bash
 .venv/bin/python -m pytest -q tests/test_optimizer_soft_constraints.py tests/test_sp_labels.py
-.venv/bin/python scripts/check_public_release.py \
-  --result results/tuned52_official_full.json \
-  --max-score 2.6325939450644142 \
-  --contest-optimizer "$CONTEST_OPTIMIZER"
+.venv/bin/python scripts/check_public_release.py   # defaults: results/v9_locked.json, --max-score 2.72
 ```
 
 ## Contest

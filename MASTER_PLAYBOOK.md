@@ -1,6 +1,6 @@
 # FloorSet ICCAD-2026 — MASTER PLAYBOOK (self-navigating, multi-week)
 
-**Author:** planning agent (Opus 4.8). **Supersedes** `NEXT_PLAN.md`, `SPRINT5_PLAN.md`, `SPRINT6_PLAN.md` (kept for history).
+**Author:** planning agent (Opus 4.8). **Supersedes** the earlier plans/reports now in `docs/archive/` (`NEXT_PLAN.md`, `SPRINT5_PLAN.md`, `SPRINT6_PLAN.md`, `NEXT_STEPS.md`, `REPORT.md`, `SPRINT3_REPORT.md`) — kept for history.
 **Audience:** executing agent. This document grew by accretion; the **CURRENT STATE banner directly below is authoritative and overrides any older "STATE"/"next action" text** in Part 0 and the Part III decision tree (those are HISTORICAL — kept for the reasoning trail, not current instructions).
 
 ---
