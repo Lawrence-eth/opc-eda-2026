@@ -117,8 +117,11 @@ class MyOptimizer(FloorplanOptimizer):
 
         for cfg in configs:
             try:
-                positions = self._construct_layout(
-                    block_count, area_targets, b2b_connectivity, p2b_connectivity,
+                # Dispatch via _solve_one so cfg['path']/params are actually honored
+                # (the portfolio is a single shelf config today; this keeps the
+                # architecture coherent if more configs are reactivated later).
+                positions = self._solve_one(
+                    cfg, block_count, area_targets, b2b_connectivity, p2b_connectivity,
                     pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
                 if positions:
@@ -126,8 +129,9 @@ class MyOptimizer(FloorplanOptimizer):
                     if cost < best_cost:
                         best_cost = cost
                         best_positions = positions
-            except Exception:
-                pass
+            except Exception as e:
+                if getattr(self, "verbose", False):
+                    print(f"[WARN] layout path {cfg.get('path','?')} failed: {e}", file=sys.stderr)
 
         # SP-SA path: try the constraint-aware sequence-pair SA and keep
         # the result only if it beats v9 on _true_contest_cost.
@@ -2779,7 +2783,10 @@ class MyOptimizer(FloorplanOptimizer):
         import time
         import random
         import math
-        
+
+        # Deterministic seed so the submission is fully reproducible (per case).
+        random.seed(42 + block_count)
+
         start_time = time.time()
         if len(movable) < 2:
             return
