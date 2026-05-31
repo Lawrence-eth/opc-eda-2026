@@ -7,12 +7,11 @@
 
 # ⚡ CURRENT STATE — READ THIS FIRST (authoritative; supersedes all older navigation below) — updated 2026-05-31
 
-- **HEAD = `e938b9a`: fast v9, the LOCKED presentation entry.** Verified: local **2.7182**, **100/100 feasible**, **0.17s/case** (`results/v9_locked.json`). `solve()` runs the shelf+SA v9 path; the SP-SA call is disabled (`_ENABLE_SP_SA=False`) because it never won the best-of gate. Always keep HEAD = this safe fast entry.
-- **Done & exhausted (do NOT reopen — these are dead-ends now):** the entire **analytic path** — greedy/skyline packers, interior-only hybrids, the shelf "ENGINE" polish, and the constraint-aware **sequence-pair SA (N1→N5)**. SP-SA packs tight (util 0.74) but cannot hold the cluster-abutment soft constraint while packing (V_rel 0.24–0.33 ≫ v9's 0.10), so it loses the gate on every case. Five attempts, same wall: beating v9's area needs global rearrangement, which breaks the soft rules. See the N3/N4/N5 OUTCOME blocks in Part IV.
-- **NEXT (the only remaining shot at winning-tier): `IV.N6` — data-driven / ML.** The contest's stated theme; FloorSet ships golden training data (tight AND rule-following at once). Start with the **cheap N6-POC** (can a small model learn golden-like layouts on held-out training instances? util≥0.75, V_rel≤0.15). If POC fails → lock v9 as final. Run N6 **autonomously** through its sub-steps; stop only at the POC gate, the final "beats v9?" eval, or a hard blocker.
+- **HEAD = sprint5_v9: fast v9, the LOCKED FINAL submission.** Verified: local **2.7182**, **100/100 feasible**, **~0.18s/case**. All paths exhausted; v9 is the best we can ship.
+- **ALL PATHS EXHAUSTED — v9 IS FINAL.** The analytic path (N1–N5) and the ML path (N6-POC) have all been tried and failed. The 2× golden gap cannot be closed with the approaches available in this session. See outcome trail below.
+- **Outcome trail:** PACKER→ENGINE→SP-SA M1/M2→N1/N2→N3/N4 (SP-SA can't hold constraints)→N5 (shape-tighten blocked by rigid frame)→N6-POC (ML packer bottleneck, util 0.642 ≪ 0.75 gate).
+- **Presentation ready:** v9 beats baseline by 0.517 @ median 1s, 100/100 feasible, fast. Ship it.
 - **Timeline:** presentation ≈2026-06-13 (v9 is ready now), real deadline ≈2026-07-13.
-- **Always-true invariants:** `I.0` principles (winning first / never rush / no busywork), best-of gate vs v9 so HEAD never regresses, judge on the runtime-adjusted metric (`scripts/score_real.py`), `II.6` dead-ends never retried.
-- **Ignore as historical:** Part 0's "STATE: PACKER" line, UPDATE 2/3, and Part III's STATE 0–3 (P0/P1/P2) tree. They document how we got here; they are NOT the current next action. The chronological outcome trail is: PACKER→ENGINE→SP-SA M1/M2→N1/N2→N3→N4→N5→**N6 (now)**.
 
 ---
 ---
@@ -427,6 +426,27 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 **If N6-POC fails or the full pipeline can't beat v9 after genuine effort:** lock v9 as the final submission (safe floor) and report — we will have exhausted the credible paths.
 
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
+
+### N5 OUTCOME (2026-05-31) — shape-tighten of v9 doesn't work
+
+**Result:** N5 (constraint-preserving shape-tighten) tested with multiple approaches. None shrink the bbox.
+- Frame-reshape (boundary blocks): 0 blocks reshaped. 10 blocks at x+w=xmax; reshaping to narrower doesn't shrink xmax (must still touch edge).
+- Interior shape-fill: 0 blocks reshaped. All blocks tightly packed (distance=0 to neighbors); every reshape causes overlaps.
+- Gap-filling reshape: 3 blocks reshaped, bbox unchanged. Filling gaps doesn't shrink bbox.
+- Center-shift: bbox shrinks 1% but 156 overlaps introduced. Compaction can't repair.
+**Root cause:** v9's boundary blocks form a rigid frame at the bbox edges. Reshaping them doesn't shrink the bbox because they must still touch the edges. Interior blocks are tightly packed — reshaping causes overlaps.
+
+### N6-POC OUTCOME (2026-05-31) — ML path exhausted; v9 is FINAL
+
+**Result:** N6-POC tested with multiple approaches. Best ML util = 0.642 (MLP ordering + shelf pack), well below the 0.75 gate.
+- MLP position prediction: 3.48 util (broken — predicts (x,y) independently → overlaps).
+- MLP ordering + shelf pack: 0.642 util (best ML result).
+- Golden ordering + shelf pack: 0.582 util (baseline — even perfect ordering fails).
+- Golden ordering + skyline pack: 0.600 util (better packer, still below 0.75).
+- MLP normalized position: 0.024 MSE loss (denormalization broken, no overlap guarantee).
+**Root cause:** The packer is the bottleneck, not the model. Even with perfect golden ordering, simple packers (shelf/skyline) only reach 0.60 util. Golden achieves 0.977 via aggressive aspect ratios (median 1.45, up to 3:1) + tight topological packing. A per-block MLP can't replicate this.
+**POC gate: ❌ FAILED.** Util 0.642 < 0.75. The gap is structural (packer limitation), not model quality.
+**Decision:** Per the playbook: "If the POC can't approach golden on held-out training data, STOP — ML won't beat v9 either, and we lock v9." **v9 is locked as the final submission.**
 
 ### N2 COMPLETION (2026-05-30) — pairwise gap penalty + MIB + aspect ratio + SA bug fix
 
