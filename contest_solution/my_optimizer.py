@@ -132,7 +132,14 @@ class MyOptimizer(FloorplanOptimizer):
         # SP-SA path: try the constraint-aware sequence-pair SA and keep
         # the result only if it beats v9 on _true_contest_cost.
         # Only run for n >= 80 (big cases where SP-SA has room to improve).
-        if best_positions is not None and block_count >= 80:
+        #
+        # DISABLED (2026-05-31): across N3/N4 full evals the SP-SA never won the
+        # best-of gate on any case (cluster V_rel ~0.24-0.33 erases its area win),
+        # so calling it only added ~45s/case for an identical result. HEAD must be
+        # the FAST v9 (the locked presentation entry, ~0.18s/case). The SP-SA code
+        # is retained (dormant) for the N6/ML work. Flip _ENABLE_SP_SA to re-enable.
+        _ENABLE_SP_SA = False
+        if _ENABLE_SP_SA and best_positions is not None and block_count >= 80:
             try:
                 sp_result = self._try_sp_sa(
                     block_count, area_targets, b2b_edges, p2b_edges,
