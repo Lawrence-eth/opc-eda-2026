@@ -43,6 +43,8 @@ PROJECT_STATUS.md            # Status summary
 
 ## Quick Start
 
+`my_optimizer.py` targets the FloorSet contest framework — it is **not** a standalone module (it imports `iccad2026_evaluate` → `cost`/`utils`, which live in the FloorSet checkout). Run it by copying it into the official contest dir, with the FloorSet root on `PYTHONPATH` (the `PYTHONPATH=..` below). One-shot setup + eval: `scripts/setup_and_evaluate.sh`.
+
 ```bash
 # Validate
 cp contest_solution/my_optimizer.py /path/to/FloorSet/iccad2026contest/
@@ -52,6 +54,7 @@ PYTHONPATH=.. python iccad2026_evaluate.py --validate my_optimizer.py --quick
 # Evaluate
 PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py
 ```
+(The submission is self-contained as the single file `my_optimizer.py`; `sequence_pair_sa.py` is only needed if the dormant SP-SA path is re-enabled.)
 
 ## Release Checks
 

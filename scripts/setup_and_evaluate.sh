@@ -9,7 +9,9 @@ fi
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -U pip
-pip install torch shapely pymupdf pytest
+# Install the official contest dependencies (torch, numpy, shapely, matplotlib,
+# tqdm, requests) plus pytest, rather than an ad-hoc list.
+pip install -r external/FloorSet/iccad2026contest/requirements.txt pytest
 cp contest_solution/my_optimizer.py external/FloorSet/iccad2026contest/my_optimizer.py
 cp contest_solution/test_my_optimizer.py external/FloorSet/iccad2026contest/test_my_optimizer.py
 cd external/FloorSet
