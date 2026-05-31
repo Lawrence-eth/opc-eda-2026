@@ -11,7 +11,16 @@
 - **ALL PATHS EXHAUSTED — v9 IS FINAL.** The analytic path (N1–N5), the ML path (N6-POC), and the contiguous-cluster path (N7) have all been tried and failed. The fundamental trade-off: cluster contiguity (V_rel≈0) requires tight grouping that reduces util; packing flexibility (util≥0.65) requires free arrangement that breaks cluster abutment. No approach achieves both.
 - **Outcome trail:** PACKER→ENGINE→SP-SA M1/M2→N1/N2→N3/N4 (cluster abutment blocker)→N5 (shape-tighten, rigid frame)→N6-POC (ML packer bottleneck, 0.642)→N7 (util/V_rel trade-off, 0.284 best).
 - **Presentation ready:** v9 beats baseline by 0.517 @ median 1s, 100/100 feasible, fast. Ship it.
-- **Timeline:** presentation ≈2026-06-13 (v9 ready now), real deadline ≈2026-07-13.
+- **Quality work is CLOSED — no more variants (that's now busywork, I.0).** The ONE remaining valuable task is **N9: robustness-harden v9 for the HIDDEN set** (a different 100; one infeasible case = cost 10 = catastrophic). Run v9 against the broader FloorSet *training* instances, confirm 100% feasibility, fix any edge-case break, confirm no per-count overfit tuning. NOT quality — insurance. Spec in IV.N9.
+- **Timeline:** presentation ≈2026-06-13 (v9 ready now), real deadline ≈2026-07-13. Spend runway on N9 + presentation prep, not more quality attempts.
+
+## IV.N9 — Robustness hardening of v9 (responsible final step; insurance, NOT quality)
+One infeasible/degenerate layout on the hidden set returns cost 10 and tanks the weighted score. De-risk it:
+1. **Feasibility fuzz:** run `solve()` on a large sample of FloorSet *training* instances (beyond the 100 validation; loaders in `external/FloorSet/`). Assert per case: no overlaps, soft-block areas within ±1%, fixed/preplaced exact, bounded runtime. Log every failure.
+2. **Fix edge cases** that break (range-extreme n, dense/degenerate connectivity, unusual constraint combos, empty-interior / all-boundary cases). Each fix gated so the validation 100 stays 2.7182 / 100-100.
+3. **Overfit check:** confirm no per-block-count hardcoded tables fit to the validation 100; strip any that won't generalize; re-verify.
+4. **Determinism + runtime:** stable, no pathological slow case, deterministic output.
+**Gate:** 100% feasible across all sampled training instances AND validation 100 still 2.7182/100. Then v9 is submission-hardened. Push from THIS repo only.
 
 ---
 ---
