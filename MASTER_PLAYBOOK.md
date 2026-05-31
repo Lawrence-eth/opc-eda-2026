@@ -7,11 +7,12 @@
 
 # ⚡ CURRENT STATE — READ THIS FIRST (authoritative; supersedes all older navigation below) — updated 2026-05-31
 
-- **HEAD = sprint5_v9: fast v9, the LOCKED FINAL submission.** Verified: local **2.7182**, **100/100 feasible**, **~0.18s/case**. All paths exhausted; v9 is the best we can ship.
-- **ALL PATHS EXHAUSTED — v9 IS FINAL.** The analytic path (N1–N5) and the ML path (N6-POC) have all been tried and failed. The 2× golden gap cannot be closed with the approaches available in this session. See outcome trail below.
-- **Outcome trail:** PACKER→ENGINE→SP-SA M1/M2→N1/N2→N3/N4 (SP-SA can't hold constraints)→N5 (shape-tighten blocked by rigid frame)→N6-POC (ML packer bottleneck, util 0.642 ≪ 0.75 gate).
-- **Presentation ready:** v9 beats baseline by 0.517 @ median 1s, 100/100 feasible, fast. Ship it.
-- **Timeline:** presentation ≈2026-06-13 (v9 is ready now), real deadline ≈2026-07-13.
+- **HEAD = sprint5_v9: fast v9, the LOCKED FLOOR submission.** Verified: local **2.7182**, **100/100 feasible**, **~0.18s/case**. Always shippable; never regress it.
+- **The agent declared "all paths exhausted" after N6-POC — that is ONE STEP EARLY (planner override 2026-05-31).** Reason: buried in the N2 log is the decisive datum — **"all-clusters super-blocks: util 0.421, cluster violations 0, boundary 36/36."** I.e. **rigid contiguous-cluster placement PROVABLY solves ALL soft constraints (V_rel→0)**; it only tanked utilization (too rigid). So the cluster nut — the one thing that blocked SP-SA (N3/N4 lost only on cluster V_rel 0.24–0.33) — is **solvable by construction.** The unsolved piece is narrow and well-defined: **recover utilization while keeping cluster contiguity.**
+- **NEXT = N7 (the last credible card): flexible contiguous-cluster SP-SA.** Keep cluster members **consecutive in BOTH sequence-pair orders** (guarantees a contiguous region → abutment, the proven V_rel→0 effect) but let their internal order + shapes vary (recover the util that rigid fixed-shape super-blocks lost). Spec in **IV.N7**. This is evidenced, not a hope — do NOT confuse it with the rigid super-block dead-end.
+- **Path to a WIN = two milestones:** N7 (quality go/no-go: beat v9 on `_true_contest_cost`, ignoring runtime, at V_rel ≤0.12) → if it wins, **N8 speed** (numba + warm-start + parallel + fewer seeds) to also win runtime-adjusted. If N7 quality fails after genuine effort → v9 is truly FINAL.
+- **Outcome trail:** PACKER→ENGINE→SP-SA M1/M2→N1/N2→N3/N4 (lost only on cluster abutment)→N5 (shape-tighten, geometric dead-end)→N6-POC (ML used a weak packer — 0.642; not a model failure)→**N7 (now)**.
+- **Presentation ready NOW:** v9 is the floor — 100/100, fast, beats baseline. **Timeline:** presentation ≈2026-06-13, deadline ≈2026-07-13 (ample time for N7→N8).
 
 ---
 ---
@@ -424,6 +425,24 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 **Constraints to respect:** inference + legalization must keep 100/100 feasibility (overlaps, ±1% area, preplaced/fixed exact) and be fast; best-of gate vs v9 so HEAD never regresses. Generalization: train/select on held-out folds; the real ranking set is different instances.
 
 **If N6-POC fails or the full pipeline can't beat v9 after genuine effort:** lock v9 as the final submission (safe floor) and report — we will have exhausted the credible paths.
+
+**N6-POC OUTCOME (2026-05-31): FAILED at 0.642 util — BUT it was a PACKER failure, not a model failure.** The POC turned the model's ordering into a layout with shelf/skyline packers (capped ~0.60); it never used the SP-SA packer (which already reaches 0.737). So ML didn't get a fair test — and more importantly, the real blocker all along is the *packer's cluster handling*, which N7 addresses directly. ML is therefore parked (revisit only as a seeder for N7 later if useful).
+
+## IV.N7 — Flexible contiguous-cluster SP-SA  *(THE LAST CREDIBLE CARD; evidenced, time-boxed)*
+
+**The evidence that makes this worth doing (not busywork):** in N2, **rigid all-clusters super-blocks gave cluster violations = 0 and boundary 36/36 (V_rel→0)** — contiguity *provably* solves every soft constraint. It only failed because fixed-shape super-blocks crushed util to 0.421. SP-SA otherwise reaches util 0.737 with boundary+MIB solved (N2). **So the entire remaining gap to beating v9 is: keep cluster contiguity (→ V_rel≈0) while letting the packing stay flexible (→ util ≥0.7).**
+
+**The technique (standard SP grouping, done flexibly — distinct from the rigid super-block dead-end):**
+- Constrain each cluster's members to occupy **consecutive positions in BOTH Γ+ and Γ−** ⇒ they pack into one contiguous region ⇒ abut (1 connected component) ⇒ V_rel from clusters ≈0. This is enforced by the SA moves (only swap *within* a cluster's slot or move the whole slot), NOT by pre-packing them into a fixed rectangle.
+- **Keep flexible:** members' internal order and per-block aspect ratios still vary (this is what rigid super-blocks killed). The cluster's region shape emerges from packing, not pre-fixed.
+- Boundary blocks that are also cluster members: keep the existing boundary encoding; if a cluster spans boundary+interior, allow the contiguous slot to sit against the required edge.
+
+**Milestones (each committed; SP-SA stays a dormant module, best-of gated vs v9 so HEAD never regresses):**
+- **N7a — Verify contiguity solves clusters flexibly:** on case 99, run SP-SA with consecutive-in-both-orders clusters + flexible internals. *Gate:* cluster violations ≈0, boundary 36/36, **util ≥0.65** (vs rigid's 0.42 and pairwise-penalty's 0.63). If util can't exceed ~0.65 with V_rel≈0, the flexibility isn't enough → report.
+- **N7b — Full eval, QUALITY go/no-go (ignore runtime):** integrate behind the best-of gate, run all cases at dev budget. *Gate:* **beats v9 on `_true_contest_cost` with V_rel ≤0.12, 100/100** on the big cases. THIS is make-or-break. If it wins → the area breakthrough finally converts to a score win.
+- **N8 — Speed (only if N7b wins):** the dev-budget SP-SA is ~45s/case; to win the *runtime-adjusted* score it must hit ~0.3–0.5s. Path: **numba `@njit` the pack/longest-path inner loop**, **warm-start from v9** (fewer moves), **parallel chains** across cores, **drop to 1–2 seeds**. *Gate:* runtime-adjusted beats v9 at median∈{1,2,3}s, 100/100. Tag `n8_final`.
+
+**Hard stop:** if N7a can't clear ~0.65 util at V_rel≈0, OR N7b can't beat v9 on quality, **STOP and lock v9 as final** — that exhausts the credible cards honestly. (No more cluster-penalty variants — those are II.6 dead-ends.)
 
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
 
