@@ -347,6 +347,19 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 
 **⇒ The only remaining path to a winning-tier score is a FULL constraint-aware global floorplanner** — SP-SA (or B*-tree) that optimizes the *whole* layout (frame + interior), with: boundary blocks encoded/penalized to their required edges, clusters as super-blocks, MIB shared shape, and **per-block aspect-ratio in the move set** (the shape lever). This is the hard build the earlier note called "complex/high-risk" — it is now confirmed as the necessary one; the shortcuts are exhausted. Build as a dormant module, milestone-gated, per-case best-of vs v9 (so HEAD stays safe). **Boundary-edge encoding is the key technical risk — prototype it on one case first.** If after a genuine effort it can't reach a runtime-adjusted win, the fallbacks are: ship v9 (valid, beats baseline) or pivot to ML (IV.P3).
 
+### N3 FULL-EVAL OUTCOME (2026-05-30) — area breakthrough real, but CLUSTER ABUTMENT is the one blocker
+
+**SP-SA built (N1+N2) and wired into `solve()` (best-of gated). First full eval (`results/n3_sp_sa.json`): identical to v9 on every metric — SP-SA lost the gate on all 100 cases — at 18.6s/case avg (dev budget).** Diagnosis (solid):
+- ✅ Boundary solved (36/36), ✅ MIB solved (0 viol), ✅ **area breakthrough real: util 0.737 vs v9 ~0.52 (+42%) on case 99.**
+- ❌ **Cluster abutment unsolved:** ~16 cluster violations → V_rel ≈0.24 (vs v9 ≈0.10). `exp(2·0.24)=1.62` vs `exp(2·0.10)=1.22` — the soft penalty **erases the area win**, so `_true_contest_cost` picks v9 every case. The pairwise-gap penalty isn't enough; super-blocks were too rigid (util 0.42).
+- Runtime (45s/case) is a *separate* M5 problem; ignore it until quality wins.
+
+**⇒ This is now a SINGLE, well-localized gap: make clusters abut without killing the packing.** Do NOT pivot to ML and do NOT accept defeat — boundary+MIB+area already work; only clusters remain. **Milestone N4 = fix cluster abutment:**
+1. **Warm-start from v9 (primary):** decode v9's (x,y,w,h) layout into a sequence-pair (pairwise left/right/above/below → Γ+/Γ−), then run the SA *from that state*. Starts at V_rel≈0.10 with clusters already abutted; SA *refines* area/HPWL instead of exploring from scratch. **Dual win: better cluster start AND far fewer moves → much faster (helps M5 too).**
+2. **Post-SA cluster-abut snap (secondary, complementary):** after the SA, snap each cluster's members into a contiguous block at their centroid + local overlap repair — exactly the pattern that already works for boundary (`snap_boundary_to_edge` → 36/36). Fixes residual cluster violations.
+- *Gate (N4 / presentation goal):* on the big cases, **V_rel ≤ ~0.12 AND util ≥ ~0.70 AND beats v9 on `_true_contest_cost`** (quality; ignore runtime for now), 100/100 feasible. Then → M5 speed.
+- **Fallback if N4 can't get V_rel ≤ ~0.15 with the area win intact after genuine effort:** ship v9 for the presentation (safe, 100/100) and treat ML warm-start (IV.P3) as the real-deadline bet. We have time (presentation ~06-13).
+
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
 
 ### N2 COMPLETION (2026-05-30) — pairwise gap penalty + MIB + aspect ratio + SA bug fix
