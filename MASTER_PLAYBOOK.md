@@ -368,10 +368,29 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 
 **DECISIONS:**
 - ✅ **Presentation entry = LOCK sprint5_v9** (100/100, 0.18s, beats baseline by 0.517 @ median 1s). No risk. The SP-SA module stays dormant (HEAD `solve()` already best-of-gated; it just never wins — harmless, but consider disabling the `_try_sp_sa` call so the committed solver isn't 100× slower if ever run as-is).
-- ⏸ **Deadline strategy = OPEN (operator decision pending).** The SP-SA *area breakthrough* (0.52→0.74 util) is real and worth not throwing away. Candidate paths for the ~4 weeks after the presentation:
-  1. **Faithful-warm-start + constraint-preserving moves (surgical analytic):** fix N4's exact flaw — a decode that reproduces v9 *exactly* (boundary 36/36 + clusters abutted, V_rel 0.10), then SA moves that **can only improve area/HPWL and never break a satisfied constraint** (reject any move that raises V_rel). Starts at v9 quality, can only improve. Lower effort; directly addresses why N4 failed.
-  2. **Data-driven / ML (IV.P3):** learn from golden — which has tight packing AND satisfied constraints *simultaneously*, the exact balance we can't hand-engineer. On-theme, highest ceiling, highest effort/risk.
-  3. **Lock v9 as final too:** safe floor, likely mid-pack, not winning-tier.
+- ✅ **Deadline strategy = DECIDED (2026-05-31): SEQUENCE two bets, lowest-risk first, v9 always the floor.**
+  - **N5 (NOW, primary): constraint-preserving SHAPE-tighten of v9.** This is the one proven lever never successfully used (golden util 0.97 via aspect 1.45–3:1; we use 1.0; shape is free — evaluator only checks area). Spec in **IV.N5** below. Lower-risk (starts from v9, can't regress, can't break feasibility), fast, directly attacks the area gap.
+  - **N6 (AFTER N5 plateaus, or in parallel given unlimited compute): Data-driven / ML (IV.P3).** Learn from golden (tight AND rule-following simultaneously). Highest ceiling + on-theme; run second with the N5 win banked and N5's structural learnings feeding the ML features.
+  - Rationale: ~6 weeks + unlimited compute ⇒ take BOTH shots at the ceiling; order by risk-adjusted EV; never drop the safe floor.
+
+## IV.N5 — Constraint-preserving shape-tighten of v9  *(PRIMARY next build)*
+
+**Premise:** v9 is loose (util ~0.52) and **rule-satisfying (V_rel ~0.10)**. Golden reaches 0.97 mainly via **block shapes** (aspect 1.45 median, up to 3:1, at constant area). We have NEVER successfully applied the shape lever. Apply it to v9's feasible layout with moves that **only keep what doesn't break a satisfied constraint** ⇒ can't regress, can't go infeasible.
+
+**Why this is genuinely NEW (not a repeat of dead-ends):**
+- M4' interior-hybrid was futile because it only touched the interior; **the bbox is set by the FRAME** → **N5 reshapes the boundary-frame blocks** (the thing that sets bbox width/height), not just the interior.
+- shape-on-shelf broke feasibility; **N5 reshapes on v9's already-feasible layout with overlap+constraint repair, reverting any bad move.**
+- SP-SA broke constraints by rebuilding from scratch; **N5 preserves v9's exact structure.**
+
+**Build (incremental, each gated, best-of vs v9 so HEAD never regresses):**
+1. **Frame-reshape move:** for each boundary block, try aspect ratios within ±1% area that shrink the bbox extent on its edge (e.g. right-edge blocks taller+narrower to pull the right edge in; top-edge wider+shorter). Accept iff: no overlap, boundary still touched, no soft-constraint break, true cost drops. Re-touch all boundary blocks to the new extremes after each accepted reshape.
+2. **Interior shape-fill:** reshape interior blocks to fill the whitespace the frame reshaping opens, then compact toward the frame. Same accept rule.
+3. **MIB:** reshape MIB-group members together (shared shape) only.
+4. **Iterate** reshape→compact→re-touch until no improving move. Greedy first (can't regress), then a short SA tail over shape choices if greedy plateaus (still constraint-preserving).
+5. Implement as a refinement pass applied to v9's output inside `solve()`, best-of gated by `_true_contest_cost`. Keep it FAST (shape moves are O(1) cost-delta with incremental eval).
+
+**Gate:** beats v9 on `_true_contest_cost` (lower area_gap, V_rel ≤ v9's ~0.10, 100/100 feasible). Milestone target: **area_gap 0.87 → ≤0.6** first (util ≥0.62), then chase ≤0.4. Validate on the big cases; expect this to move the score because area_gap is half the quality factor and shape has zero HPWL cost. Tag `n5_shape`.
+**If N5 plateaus well above golden:** proceed to N6 (ML).
 
 **If M6 wins:** strip overfit tuning, cross-validate (IV.C), then push util→0.9 with better SA schedules / shape curves.
 
