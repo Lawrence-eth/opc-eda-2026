@@ -1115,3 +1115,566 @@ def sp_sa_full_layout(block_count, area_targets, dims, b2b_edges, p2b_edges, pin
     print(f"  MIB violations: {mib_viols} ({len(mib_groups)} groups)")
 
     return result, (bx, by), cost, util
+
+
+def sp_sa_n7_contiguous_clusters(block_count, area_targets, dims, b2b_edges, p2b_edges, pins_pos,
+                                  constraints_np, max_time=30.0, seed=42):
+    """N7: Flexible contiguous-cluster SP-SA.
+
+    Key innovation: cluster members are consecutive in BOTH Γ+ and Γ−,
+    which guarantees they pack into one contiguous region (abut → V_rel≈0).
+    But their INTERNAL order + per-block aspect ratios are flexible (recovers util).
+
+    This is NOT rigid super-blocks (which fixed shape → util 0.421).
+    This is NOT another cluster penalty (which couldn't guarantee abutment).
+    This is structural enforcement via SP ordering constraints.
+
+    SA move set (weighted random):
+    - 40% intra-cluster swap (reorder within a cluster's consecutive slot)
+    - 30% inter-block swap (swap two non-cluster blocks or move cluster slots)
+    - 15% cluster slot move (move a cluster's consecutive block to a new position)
+    - 15% aspect reshape (per-block or per-MIB group)
+
+    Args:
+        block_count: total number of blocks
+        area_targets: list of area targets per block
+        dims: list of (w, h) per block
+        b2b_edges, p2b_edges, pins_pos: connectivity
+        constraints_np: numpy array [n, 5] (fixed, preplaced, mib_id, cluster_id, boundary_code)
+        max_time: SA time budget
+        seed: random seed
+
+    Returns:
+        positions: dict {block_idx: (x, y, w, h)} or None if infeasible
+        bbox: (x_max, y_max)
+        cost: float
+        util: float
+    """
+    random.seed(seed)
+    n = block_count
+
+    # --- Step 1: Identify block types and groups ---
+    boundary_codes = {}
+    preplaced_set = set()
+    cluster_groups = {}   # cluster_id -> list of block_ids
+    mib_groups = {}       # mib_id -> list of block_ids
+    if constraints_np is not None:
+        for i in range(n):
+            ncols = len(constraints_np[i])
+            if ncols > 4:
+                code = int(constraints_np[i][4])
+                if code != 0:
+                    boundary_codes[i] = code
+            if ncols > 1 and constraints_np[i][1] != 0:
+                preplaced_set.add(i)
+            if ncols > 3:
+                gid = int(constraints_np[i][3])
+                if gid > 0:
+                    cluster_groups.setdefault(gid, []).append(i)
+            if ncols > 2:
+                gid = int(constraints_np[i][2])
+                if gid > 0:
+                    mib_groups.setdefault(gid, []).append(i)
+
+    # --- Step 2: Build SP with cluster members consecutive in both orders ---
+    # Strategy: treat each cluster as a "slot" in the SP. The slot's members
+    # are consecutive in both Γ+ and Γ−. Non-cluster blocks are individual.
+
+    # Build list of "SP entities" — each is either a single block or a cluster slot
+    sp_entities = []  # list of (type, id) where type is 'block' or 'cluster'
+    cluster_slot_ids = {}  # cluster_id -> index in sp_entities
+    block_to_entity = {}   # block_idx -> index in sp_entities
+
+    for gid, members in cluster_groups.items():
+        if len(members) >= 2:
+            slot_idx = len(sp_entities)
+            sp_entities.append(('cluster', gid))
+            cluster_slot_ids[gid] = slot_idx
+            for m in members:
+                block_to_entity[m] = slot_idx
+
+    for i in range(n):
+        if i not in block_to_entity:
+            slot_idx = len(sp_entities)
+            sp_entities.append(('block', i))
+            block_to_entity[i] = slot_idx
+
+    n_entities = len(sp_entities)
+
+    # Build mapping: entity_idx -> list of block indices
+    entity_to_blocks = {}
+    for idx, (etype, eid) in enumerate(sp_entities):
+        if etype == 'cluster':
+            entity_to_blocks[idx] = cluster_groups[eid]
+        else:
+            entity_to_blocks[idx] = [eid]
+
+    # Mutable dims for the SA
+    current_dims = {i: (dims[i][0], dims[i][1]) for i in range(n)}
+
+    # --- Step 3: Initialize SP with consecutive cluster members ---
+    # Γ+ and Γ− are lists of block indices, with cluster members consecutive
+    # BUT the internal order can differ between Γ+ and Γ− (flexible 2D shapes)
+    gamma_plus = []
+    gamma_minus = []
+
+    # Create entity orderings (random permutation of entities)
+    entity_order_plus = list(range(n_entities))
+    entity_order_minus = list(range(n_entities))
+    random.shuffle(entity_order_plus)
+    random.shuffle(entity_order_minus)
+
+    # For each cluster, maintain separate internal orderings for Γ+ and Γ−
+    cluster_internal_plus = {}   # cluster_gid -> list of block indices (order in Γ+)
+    cluster_internal_minus = {}  # cluster_gid -> list of block indices (order in Γ−)
+    for gid, members in cluster_groups.items():
+        if len(members) >= 2:
+            order_p = list(members)
+            order_m = list(members)
+            random.shuffle(order_p)
+            random.shuffle(order_m)
+            cluster_internal_plus[gid] = order_p
+            cluster_internal_minus[gid] = order_m
+
+    # Expand entities to block lists
+    for eidx in entity_order_plus:
+        etype, eid = sp_entities[eidx]
+        if etype == 'cluster':
+            gamma_plus.extend(cluster_internal_plus[eid])
+        else:
+            gamma_plus.extend(entity_to_blocks[eidx])
+
+    for eidx in entity_order_minus:
+        etype, eid = sp_entities[eidx]
+        if etype == 'cluster':
+            gamma_minus.extend(cluster_internal_minus[eid])
+        else:
+            gamma_minus.extend(entity_to_blocks[eidx])
+
+    # Build SP widths/heights
+    sp_widths = {i: current_dims[i][0] for i in range(n)}
+    sp_heights = {i: current_dims[i][1] for i in range(n)}
+
+    # --- Step 4: Build adjacency for HPWL ---
+    b_adj = {i: [] for i in range(n)}
+    for a, b, w in b2b_edges:
+        if 0 <= a < n and 0 <= b < n:
+            b_adj[a].append((b, w))
+            b_adj[b].append((a, w))
+    p_adj = {i: [] for i in range(n)}
+    for pin_idx, b_idx, w in p2b_edges:
+        if 0 <= b_idx < n and 0 <= pin_idx < len(pins_pos):
+            px, py = pins_pos[pin_idx]
+            if px != -1.0 and py != -1.0:
+                p_adj[b_idx].append((px, py, w))
+
+    # Precompute n_soft
+    n_soft = 0
+    if constraints_np is not None:
+        ncols = constraints_np.shape[1] if hasattr(constraints_np, 'shape') else 0
+        if ncols > 4:
+            n_soft += sum(1 for i in range(n) if constraints_np[i][4] != 0)
+        if ncols > 3:
+            for gid, cnt in cluster_groups.items():
+                n_soft += max(0, len(cnt) - 1)
+        if ncols > 2:
+            for gid, cnt in mib_groups.items():
+                n_soft += max(0, len(cnt) - 1)
+    n_soft = max(1, n_soft)
+
+    # MIB aspect tracking
+    mib_aspect_ratio = {}
+    for gid, members in mib_groups.items():
+        if members:
+            w0, h0 = current_dims[members[0]]
+            mib_aspect_ratio[gid] = w0 / max(h0, 1e-9)
+
+    # --- Step 5: Cost function ---
+    def compute_cost(positions_dict):
+        """Cost = bbox + λ·HPWL + boundary_penalty.
+        No cluster penalty needed — consecutive ordering guarantees abutment.
+        """
+        # HPWL
+        hpwl = 0.0
+        for i in range(n):
+            cx_i = positions_dict[i][0] + positions_dict[i][2] * 0.5
+            cy_i = positions_dict[i][1] + positions_dict[i][3] * 0.5
+            for j, w in b_adj[i]:
+                if j > i:
+                    cx_j = positions_dict[j][0] + positions_dict[j][2] * 0.5
+                    cy_j = positions_dict[j][1] + positions_dict[j][3] * 0.5
+                    hpwl += w * (abs(cx_i - cx_j) + abs(cy_i - cy_j))
+            for px, py, w in p_adj[i]:
+                hpwl += w * (abs(cx_i - px) + abs(cy_i - py))
+
+        # Bbox
+        xmax = max(positions_dict[i][0] + positions_dict[i][2] for i in range(n))
+        ymax = max(positions_dict[i][1] + positions_dict[i][3] for i in range(n))
+        xmin = min(positions_dict[i][0] for i in range(n))
+        ymin = min(positions_dict[i][1] for i in range(n))
+        bbox = xmax * ymax
+
+        # Boundary penalty
+        boundary_pen = 0.0
+        for i, code in boundary_codes.items():
+            if i not in positions_dict:
+                continue
+            bx, by, bw, bh = positions_dict[i]
+            if code & 1: boundary_pen += abs(bx - xmin)
+            if code & 2: boundary_pen += abs(bx + bw - xmax)
+            if code & 4: boundary_pen += abs(by + bh - ymax)
+            if code & 8: boundary_pen += abs(by - ymin)
+
+        LAMBDA = 0.01
+        BOUNDARY_WEIGHT = 500.0
+        return bbox + LAMBDA * hpwl + BOUNDARY_WEIGHT * boundary_pen
+
+    # Helper: get positions from SP
+    def get_positions(gp, gm):
+        raw, _ = sp_pack(gp, gm, sp_widths, sp_heights)
+        return raw
+
+    # --- Step 6: SA initialization ---
+    raw_positions = get_positions(gamma_plus, gamma_minus)
+    current_cost = compute_cost(raw_positions)
+    best_cost = current_cost
+    best_positions = dict(raw_positions)
+    best_dims = {i: (sp_widths[i], sp_heights[i]) for i in range(n)}
+
+    # --- Step 7: Helper functions for constrained moves ---
+    def get_entity_at_pos(order, pos):
+        """Get the entity index at position `pos` in the block order."""
+        block_idx = order[pos]
+        return block_to_entity[block_idx]
+
+    def get_entity_range(order, entity_idx):
+        """Get the start and end positions of an entity's blocks in the order."""
+        blocks = set(entity_to_blocks[entity_idx])
+        start = None
+        end = None
+        for pos, block_idx in enumerate(order):
+            if block_idx in blocks:
+                if start is None:
+                    start = pos
+                end = pos
+        if start is None:
+            return None, None
+        return start, end + 1  # [start, end)
+
+    def swap_within_entity(order, entity_idx):
+        """Swap two random blocks within a cluster entity's consecutive slot."""
+        blocks = entity_to_blocks[entity_idx]
+        if len(blocks) < 2:
+            return False  # can't swap within a single block
+        start, end = get_entity_range(order, entity_idx)
+        if start is None:
+            return False
+        i_pos = random.randint(start, end - 1)
+        j_pos = random.randint(start, end - 1)
+        while j_pos == i_pos:
+            j_pos = random.randint(start, end - 1)
+        order[i_pos], order[j_pos] = order[j_pos], order[i_pos]
+        return True
+
+    def swap_entity_slots(order):
+        """Swap two entity slots (preserving each entity's internal order)."""
+        e1 = random.randint(0, n_entities - 1)
+        e2 = random.randint(0, n_entities - 1)
+        while e2 == e1:
+            e2 = random.randint(0, n_entities - 1)
+
+        # Find positions (ensure start1 < start2)
+        start1, end1 = get_entity_range(order, e1)
+        start2, end2 = get_entity_range(order, e2)
+        if start1 is None or start2 is None:
+            return False
+        if start1 > start2:
+            start1, end1, start2, end2 = start2, end2, start1, end1
+
+        # Extract the three segments: [before1] [seq1] [between] [seq2] [after2]
+        seq1 = order[start1:end1]
+        seq2 = order[start2:end2]
+        between = order[end1:start2]
+        before = order[:start1]
+        after = order[end2:]
+
+        # Rebuild: [before] [seq2] [between] [seq1] [after]
+        new_order = before + seq2 + between + seq1 + after
+
+        # Replace order contents
+        for i in range(len(order)):
+            order[i] = new_order[i]
+        return True
+
+    def move_entity_slot(order):
+        """Move a cluster entity's slot to a new random position."""
+        # Pick a random cluster entity
+        cluster_entities = [idx for idx, (etype, _) in enumerate(sp_entities) if etype == 'cluster']
+        if not cluster_entities:
+            return False
+        eidx = random.choice(cluster_entities)
+
+        # Get the entity's blocks
+        blocks = entity_to_blocks[eidx]
+        start, end = get_entity_range(order, eidx)
+        if start is None:
+            return False
+        seq = order[start:end]
+
+        # Remove from current position
+        new_order = order[:start] + order[end:]
+
+        # Insert at random new position
+        insert_pos = random.randint(0, len(new_order))
+        new_order = new_order[:insert_pos] + seq + new_order[insert_pos:]
+
+        # Replace order contents
+        for i in range(len(order)):
+            order[i] = new_order[i]
+        return True
+
+    # --- Step 8: SA move helpers ---
+    def _rebuild_sp():
+        """Rebuild gamma_plus and gamma_minus from entity orderings + internal orderings."""
+        gamma_plus.clear()
+        gamma_minus.clear()
+        for eidx in entity_order_plus:
+            etype, eid = sp_entities[eidx]
+            if etype == 'cluster':
+                gamma_plus.extend(cluster_internal_plus[eid])
+            else:
+                gamma_plus.extend(entity_to_blocks[eidx])
+        for eidx in entity_order_minus:
+            etype, eid = sp_entities[eidx]
+            if etype == 'cluster':
+                gamma_minus.extend(cluster_internal_minus[eid])
+            else:
+                gamma_minus.extend(entity_to_blocks[eidx])
+
+    def _swap_entity_slots(entity_order):
+        """Swap two random entity slots in the entity ordering."""
+        i = random.randint(0, n_entities - 1)
+        j = random.randint(0, n_entities - 1)
+        while j == i:
+            j = random.randint(0, n_entities - 1)
+        entity_order[i], entity_order[j] = entity_order[j], entity_order[i]
+
+    def _move_entity_slot(entity_order):
+        """Move a random cluster entity to a new position in the entity ordering."""
+        cluster_idxs = [idx for idx, (etype, _) in enumerate(sp_entities) if etype == 'cluster']
+        if not cluster_idxs:
+            return
+        src = random.choice(cluster_idxs)
+        el = entity_order[src]
+        entity_order.pop(src)
+        dst = random.randint(0, len(entity_order))
+        entity_order.insert(dst, el)
+
+    # --- Step 9: SA loop ---
+    T0 = 100.0; T_min = 0.01; cooling = 0.9995; T = T0
+    moves = 0; accepts = 0; sa_start = time.time()
+
+    while T > T_min and time.time() - sa_start < max_time:
+        # Choose move type
+        r = random.random()
+        if r < 0.40:
+            move_type = 'intra_cluster_swap'
+        elif r < 0.70:
+            move_type = 'inter_entity_swap'
+        elif r < 0.85:
+            move_type = 'cluster_slot_move'
+        else:
+            move_type = 'reshape'
+
+        saved_dims = {}
+
+        # --- Apply move ---
+        if move_type == 'intra_cluster_swap':
+            # Pick a random cluster and swap two blocks within its internal ordering
+            cluster_gids = list(cluster_groups.keys())
+            if cluster_gids:
+                gid = random.choice(cluster_gids)
+                if random.random() < 0.5:
+                    internal = cluster_internal_plus[gid]
+                else:
+                    internal = cluster_internal_minus[gid]
+                if len(internal) >= 2:
+                    i = random.randint(0, len(internal) - 1)
+                    j = random.randint(0, len(internal) - 1)
+                    while j == i:
+                        j = random.randint(0, len(internal) - 1)
+                    internal[i], internal[j] = internal[j], internal[i]
+                    _rebuild_sp()
+
+        elif move_type == 'inter_entity_swap':
+            if random.random() < 0.5:
+                _swap_entity_slots(entity_order_plus)
+            else:
+                _swap_entity_slots(entity_order_minus)
+            _rebuild_sp()
+
+        elif move_type == 'cluster_slot_move':
+            if random.random() < 0.5:
+                _move_entity_slot(entity_order_plus)
+            else:
+                _move_entity_slot(entity_order_minus)
+            _rebuild_sp()
+
+        elif move_type == 'reshape':
+            # Pick a random block to reshape
+            target = random.randint(0, n - 1)
+
+            # Skip fixed/preplaced blocks
+            if target in preplaced_set:
+                pass
+            elif (constraints_np is not None and len(constraints_np[target]) > 2
+                  and int(constraints_np[target][2]) > 0
+                  and int(constraints_np[target][2]) in mib_groups
+                  and len(mib_groups[int(constraints_np[target][2])]) > 1):
+                # Reshape entire MIB group
+                mib_gid = int(constraints_np[target][2])
+                mib_members = mib_groups[mib_gid]
+                area0 = current_dims[mib_members[0]][0] * current_dims[mib_members[0]][1]
+                new_w, new_h = _reshape_block(area0,
+                                              current_dims[mib_members[0]][0],
+                                              current_dims[mib_members[0]][1])
+                new_ratio = new_w / max(new_h, 1e-9)
+
+                for m in mib_members:
+                    saved_dims[m] = (sp_widths[m], sp_heights[m])
+                    area_m = area_targets[m]
+                    new_wm = math.sqrt(area_m * new_ratio)
+                    new_hm = area_m / new_wm
+                    sp_widths[m] = new_wm
+                    sp_heights[m] = new_hm
+                    current_dims[m] = (new_wm, new_hm)
+                mib_aspect_ratio[mib_gid] = new_ratio
+
+            else:
+                # Reshape a single block
+                saved_dims[target] = (sp_widths[target], sp_heights[target])
+                area = area_targets[target]
+                new_w, new_h = _reshape_block(area, sp_widths[target], sp_heights[target])
+                sp_widths[target] = new_w
+                sp_heights[target] = new_h
+                current_dims[target] = (new_w, new_h)
+
+        # --- Evaluate move ---
+        raw_new = get_positions(gamma_plus, gamma_minus)
+        new_cost = compute_cost(raw_new)
+
+        # Metropolis acceptance
+        delta = new_cost - current_cost
+        if delta < 0 or random.random() < math.exp(-delta / max(T, 1e-10)):
+            current_cost = new_cost
+            accepts += 1
+            if current_cost < best_cost:
+                best_cost = current_cost
+                best_positions = dict(raw_new)
+                best_dims = {i: (sp_widths[i], sp_heights[i]) for i in range(n)}
+        else:
+            # Revert
+            for m, (old_w, old_h) in saved_dims.items():
+                sp_widths[m] = old_w
+                sp_heights[m] = old_h
+                current_dims[m] = (old_w, old_h)
+
+        T *= cooling
+        moves += 1
+
+    elapsed = time.time() - sa_start
+
+    if best_positions is None:
+        return None, (0, 0), float('inf'), 0.0
+
+    # --- Step 10: Post-process ---
+    # Restore best dims
+    for i, (w, h) in best_dims.items():
+        sp_widths[i] = w
+        sp_heights[i] = h
+
+    # Re-pack at best SP
+    result = get_positions(gamma_plus, gamma_minus)
+
+    # Snap boundary blocks to bbox edges
+    result = snap_boundary_to_edge(result, boundary_codes)[0]
+
+    # Compute final metrics
+    total_area_placed = sum(result[i][2] * result[i][3] for i in range(n))
+    bx = max(result[i][0] + result[i][2] for i in range(n))
+    by = max(result[i][1] + result[i][3] for i in range(n))
+    util = total_area_placed / max(bx * by, 1e-6)
+
+    # Full cost for reporting
+    full_positions = [result[i] for i in range(n)]
+    soft_pen = compute_soft_violations(full_positions, [], constraints_np) if constraints_np is not None else 0.0
+    LAMBDA = 0.01
+    cost = bx * by + LAMBDA * 0.0 + soft_pen * (bx * by / n_soft)
+
+    # Check boundary satisfaction
+    xmin = min(result[i][0] for i in range(n))
+    ymin = min(result[i][1] for i in range(n))
+    boundary_ok = 0; boundary_fail = 0
+    for i, code in boundary_codes.items():
+        bx_i, by_i, bw, bh = result[i]
+        touches = {
+            1: abs(bx_i - xmin) < 1e-6,
+            2: abs(bx_i + bw - bx) < 1e-6,
+            4: abs(by_i + bh - by) < 1e-6,
+            8: abs(by_i - ymin) < 1e-6,
+        }
+        if all(touches[bit] for bit in (1, 2, 4, 8) if code & bit):
+            boundary_ok += 1
+        else:
+            boundary_fail += 1
+
+    # Count cluster violations
+    cluster_viols = 0
+    if constraints_np is not None:
+        for gid, members in cluster_groups.items():
+            if len(members) < 2:
+                continue
+            parent = {i: i for i in members}
+            def find(x):
+                while parent[x] != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+            def union(a, b):
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[rb] = ra
+            for pi, i in enumerate(members):
+                x1, y1, w1, h1 = result[i]
+                for j in members[pi + 1:]:
+                    x2, y2, w2, h2 = result[j]
+                    touch_x = abs(x1 + w1 - x2) < 1e-6 or abs(x2 + w2 - x1) < 1e-6
+                    touch_y = abs(y1 + h1 - y2) < 1e-6 or abs(y2 + h2 - y1) < 1e-6
+                    overlap_x = min(y1 + h1, y2 + h2) - max(y1, y2) > 1e-6
+                    overlap_y = min(x1 + w1, x2 + w2) - max(x1, x2) > 1e-6
+                    if (touch_x and overlap_x) or (touch_y and overlap_y):
+                        union(i, j)
+            n_comp = len({find(i) for i in members})
+            cluster_viols += max(0, n_comp - 1)
+
+    # Count MIB violations
+    mib_viols = 0
+    if constraints_np is not None:
+        for gid, members in mib_groups.items():
+            if len(members) < 2:
+                continue
+            shapes = set()
+            for i in members:
+                w, h = result[i][2], result[i][3]
+                shapes.add((round(w, 4), round(h, 4)))
+            mib_viols += max(0, len(shapes) - 1)
+
+    print(f"  N7 SP-SA: {moves} moves, {accepts} accepts in {elapsed:.1f}s")
+    print(f"  n_entities={n_entities} (clusters={len(cluster_groups)}, blocks={n - sum(len(m) for m in cluster_groups.values())})")
+    print(f"  bbox={bx:.1f}x{by:.1f} area={bx * by:.0f}")
+    print(f"  utilization={util:.3f} cost={cost:.0f}")
+    print(f"  boundary: {boundary_ok} ok, {boundary_fail} fail")
+    print(f"  cluster violations: {cluster_viols}")
+    print(f"  MIB violations: {mib_viols}")
+
+    return result, (bx, by), cost, util

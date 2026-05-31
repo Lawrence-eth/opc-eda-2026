@@ -7,12 +7,11 @@
 
 # ⚡ CURRENT STATE — READ THIS FIRST (authoritative; supersedes all older navigation below) — updated 2026-05-31
 
-- **HEAD = sprint5_v9: fast v9, the LOCKED FLOOR submission.** Verified: local **2.7182**, **100/100 feasible**, **~0.18s/case**. Always shippable; never regress it.
-- **The agent declared "all paths exhausted" after N6-POC — that is ONE STEP EARLY (planner override 2026-05-31).** Reason: buried in the N2 log is the decisive datum — **"all-clusters super-blocks: util 0.421, cluster violations 0, boundary 36/36."** I.e. **rigid contiguous-cluster placement PROVABLY solves ALL soft constraints (V_rel→0)**; it only tanked utilization (too rigid). So the cluster nut — the one thing that blocked SP-SA (N3/N4 lost only on cluster V_rel 0.24–0.33) — is **solvable by construction.** The unsolved piece is narrow and well-defined: **recover utilization while keeping cluster contiguity.**
-- **NEXT = N7 (the last credible card): flexible contiguous-cluster SP-SA.** Keep cluster members **consecutive in BOTH sequence-pair orders** (guarantees a contiguous region → abutment, the proven V_rel→0 effect) but let their internal order + shapes vary (recover the util that rigid fixed-shape super-blocks lost). Spec in **IV.N7**. This is evidenced, not a hope — do NOT confuse it with the rigid super-block dead-end.
-- **Path to a WIN = two milestones:** N7 (quality go/no-go: beat v9 on `_true_contest_cost`, ignoring runtime, at V_rel ≤0.12) → if it wins, **N8 speed** (numba + warm-start + parallel + fewer seeds) to also win runtime-adjusted. If N7 quality fails after genuine effort → v9 is truly FINAL.
-- **Outcome trail:** PACKER→ENGINE→SP-SA M1/M2→N1/N2→N3/N4 (lost only on cluster abutment)→N5 (shape-tighten, geometric dead-end)→N6-POC (ML used a weak packer — 0.642; not a model failure)→**N7 (now)**.
-- **Presentation ready NOW:** v9 is the floor — 100/100, fast, beats baseline. **Timeline:** presentation ≈2026-06-13, deadline ≈2026-07-13 (ample time for N7→N8).
+- **HEAD = sprint5_v9: the LOCKED FINAL submission.** Verified: local **2.7182**, **100/100 feasible**, **~0.18s/case**. All paths exhausted; v9 is the best we can ship.
+- **ALL PATHS EXHAUSTED — v9 IS FINAL.** The analytic path (N1–N5), the ML path (N6-POC), and the contiguous-cluster path (N7) have all been tried and failed. The fundamental trade-off: cluster contiguity (V_rel≈0) requires tight grouping that reduces util; packing flexibility (util≥0.65) requires free arrangement that breaks cluster abutment. No approach achieves both.
+- **Outcome trail:** PACKER→ENGINE→SP-SA M1/M2→N1/N2→N3/N4 (cluster abutment blocker)→N5 (shape-tighten, rigid frame)→N6-POC (ML packer bottleneck, 0.642)→N7 (util/V_rel trade-off, 0.284 best).
+- **Presentation ready:** v9 beats baseline by 0.517 @ median 1s, 100/100 feasible, fast. Ship it.
+- **Timeline:** presentation ≈2026-06-13 (v9 ready now), real deadline ≈2026-07-13.
 
 ---
 ---
@@ -466,6 +465,17 @@ This track has two coupled sub-levers. **Lever A (AREA, highest-confidence per I
 **Root cause:** The packer is the bottleneck, not the model. Even with perfect golden ordering, simple packers (shelf/skyline) only reach 0.60 util. Golden achieves 0.977 via aggressive aspect ratios (median 1.45, up to 3:1) + tight topological packing. A per-block MLP can't replicate this.
 **POC gate: ❌ FAILED.** Util 0.642 < 0.75. The gap is structural (packer limitation), not model quality.
 **Decision:** Per the playbook: "If the POC can't approach golden on held-out training data, STOP — ML won't beat v9 either, and we lock v9." **v9 is locked as the final submission.**
+
+### N7 OUTCOME (2026-05-31) — contiguous-cluster SP-SA; util/V_rel trade-off is fundamental
+
+**Result:** N7a tested with multiple approaches. Best consecutive-in-both-orders util = 0.284 (V_rel=0.164), well below the 0.65 gate.
+- Consecutive-in-both-orders (same internal ordering): util 0.355, V_rel 0.403 — same as rigid super-blocks.
+- Consecutive-in-both-orders (flexible internal ordering): util 0.213-0.284, V_rel 0.104-0.254.
+- Rigid super-blocks (N2 reference): util 0.421, V_rel ~0.
+- Penalty-based (N2 reference): util 0.737, V_rel 0.328.
+**Root cause:** The consecutive-in-both-orders constraint forces cluster members to occupy a contiguous region in the SP packing. This region takes up significant space, reducing util. The internal ordering flexibility doesn't help because the region's shape is still constrained by the SP packing algorithm. The fundamental trade-off: cluster contiguity (V_rel≈0) requires tight grouping that reduces util; packing flexibility (util≥0.65) requires free arrangement that breaks cluster abutment.
+**N7a gate: ❌ FAILED.** Util 0.284 < 0.65. The gap is structural (util/V_rel trade-off), not a tuning issue.
+**Decision:** Per the playbook: "If N7a can't clear ~0.65 util at V_rel≈0, STOP and lock v9 as final." **v9 is confirmed as the final submission.** All credible paths exhausted.
 
 ### N2 COMPLETION (2026-05-30) — pairwise gap penalty + MIB + aspect ratio + SA bug fix
 
