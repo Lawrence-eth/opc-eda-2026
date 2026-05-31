@@ -1,7 +1,18 @@
 # FloorSet ICCAD-2026 — MASTER PLAYBOOK (self-navigating, multi-week)
 
 **Author:** planning agent (Opus 4.8). **Supersedes** `NEXT_PLAN.md`, `SPRINT5_PLAN.md`, `SPRINT6_PLAN.md` (kept for history).
-**Audience:** executing agent running 24/7 with unlimited compute/tokens. **This document is designed so you do NOT need a new plan every hour** — it encodes the decision logic. Navigate it yourself via Part III. Only stop for a re-plan when an **Escalation Trigger (Part VI)** fires.
+**Audience:** executing agent. This document grew by accretion; the **CURRENT STATE banner directly below is authoritative and overrides any older "STATE"/"next action" text** in Part 0 and the Part III decision tree (those are HISTORICAL — kept for the reasoning trail, not current instructions).
+
+---
+
+# ⚡ CURRENT STATE — READ THIS FIRST (authoritative; supersedes all older navigation below) — updated 2026-05-31
+
+- **HEAD = `e938b9a`: fast v9, the LOCKED presentation entry.** Verified: local **2.7182**, **100/100 feasible**, **0.17s/case** (`results/v9_locked.json`). `solve()` runs the shelf+SA v9 path; the SP-SA call is disabled (`_ENABLE_SP_SA=False`) because it never won the best-of gate. Always keep HEAD = this safe fast entry.
+- **Done & exhausted (do NOT reopen — these are dead-ends now):** the entire **analytic path** — greedy/skyline packers, interior-only hybrids, the shelf "ENGINE" polish, and the constraint-aware **sequence-pair SA (N1→N5)**. SP-SA packs tight (util 0.74) but cannot hold the cluster-abutment soft constraint while packing (V_rel 0.24–0.33 ≫ v9's 0.10), so it loses the gate on every case. Five attempts, same wall: beating v9's area needs global rearrangement, which breaks the soft rules. See the N3/N4/N5 OUTCOME blocks in Part IV.
+- **NEXT (the only remaining shot at winning-tier): `IV.N6` — data-driven / ML.** The contest's stated theme; FloorSet ships golden training data (tight AND rule-following at once). Start with the **cheap N6-POC** (can a small model learn golden-like layouts on held-out training instances? util≥0.75, V_rel≤0.15). If POC fails → lock v9 as final. Run N6 **autonomously** through its sub-steps; stop only at the POC gate, the final "beats v9?" eval, or a hard blocker.
+- **Timeline:** presentation ≈2026-06-13 (v9 is ready now), real deadline ≈2026-07-13.
+- **Always-true invariants:** `I.0` principles (winning first / never rush / no busywork), best-of gate vs v9 so HEAD never regresses, judge on the runtime-adjusted metric (`scripts/score_real.py`), `II.6` dead-ends never retried.
+- **Ignore as historical:** Part 0's "STATE: PACKER" line, UPDATE 2/3, and Part III's STATE 0–3 (P0/P1/P2) tree. They document how we got here; they are NOT the current next action. The chronological outcome trail is: PACKER→ENGINE→SP-SA M1/M2→N1/N2→N3→N4→N5→**N6 (now)**.
 
 ---
 ---
@@ -66,7 +77,7 @@ Leave: HEAD committed & 100/100; the `## OVERNIGHT PROGRESS` log filled; the bes
 ➡️ **CRITICAL PATH = build a skyline/tetris packer with integrated shape (aspect-ratio) selection** — see the new **Part IV.PACKER** spec below. This is the substrate that (a) unlocks the 52%→~96% utilization win (the single biggest quality lever), (b) is feasible *by construction* (skyline never overlaps), and (c) is fast (O(n log n)). It is a lighter, lower-risk first step than full topological SA (P2) and likely captures most of the area win. Everything else (incremental polish P1.B, topological SA P2) layers on top of it.
 
 ### Revised navigation (overrides Part III until the packer lands)
-You are at **STATE: PACKER**. Do Part IV.PACKER. Gate: prototype must hit **>0.70 utilization on cases 99/97/95 standalone** before integration; integrated result must beat v9 runtime-adjusted at median∈{1,2,3}s, 100/100. On pass → resume Part III at STATE 2 (P2) with the new packer as substrate. Do NOT spend more runtime to win (v9 is at the floor); win on QUALITY at v9-level runtime (~0.2–0.4s).
+> ⚠️ **HISTORICAL (superseded by the ⚡ CURRENT STATE banner at the top).** This said "STATE: PACKER" — that round is long done. The packer/ENGINE/SP-SA paths were all tried and exhausted; the current next action is **IV.N6 (ML)**. Text kept only for the reasoning trail.
 
 ### Standing correction to strategy
 Quality comes from **a better packer + a fast optimizer**, not from portfolio breadth and not from spending more wall-clock. Target: match v9's runtime (~0.2–0.4s, at floor) while cutting hpwl_gap/area_gap. Stop re-testing portfolio-diversity and shape-on-shelf (both are now dead-ends, II.6).
@@ -190,7 +201,9 @@ BFS ordering; multi-start SA as built; force-directed refinement under hard over
 ---
 ---
 
-# PART III — DECISION TREE (your navigator; consult after every experiment)
+# PART III — DECISION TREE (⚠️ HISTORICAL — superseded by the ⚡ CURRENT STATE banner at top)
+
+> This STATE 0→3 / P0–P2 tree drove Sprints 5–6 and is now fully traversed and exhausted (all branches led to dead-ends; see the ⚡ banner). **Do NOT execute it.** Current next action = **IV.N6 (ML)**. Kept for the reasoning trail only.
 
 > Determine your current STATE from the latest committed result + log, then take the indicated ACTION. Each phase has a hard ACCEPTANCE GATE and explicit on-pass / on-fail branches. Spec for each phase is in Part IV.
 
