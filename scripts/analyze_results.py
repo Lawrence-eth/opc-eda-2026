@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Analyze FloorSet validation result JSON files.
 
-The official evaluator stores per-case quality metrics in results/boundary_full.json.
+The official evaluator stores per-case quality metrics in results/v9_locked.json.
 This script makes the next optimization step less blind by highlighting the cases
 that dominate the score and by aggregating metrics by block-count range.
 
 Usage:
     python scripts/analyze_results.py
-    python scripts/analyze_results.py results/boundary_full.json --top 30
-    python scripts/analyze_results.py results/boundary_full.json --contest-dir external/FloorSet/iccad2026contest
-    python scripts/analyze_results.py results/boundary_full.json --contest-dir external/FloorSet/iccad2026contest --write-enriched results/enriched_full.json
-    python scripts/analyze_results.py results/boundary_full.json --write-focus-json results/focus_cases.json
+    python scripts/analyze_results.py results/v9_locked.json --top 30
+    python scripts/analyze_results.py results/v9_locked.json --contest-dir external/FloorSet/iccad2026contest
+    python scripts/analyze_results.py results/v9_locked.json --contest-dir external/FloorSet/iccad2026contest --write-enriched results/enriched_full.json
+    python scripts/analyze_results.py results/v9_locked.json --write-focus-json results/focus_cases.json
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from statistics import mean
 from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_RESULT = ROOT / "results" / "boundary_full.json"
+DEFAULT_RESULT = ROOT / "results" / "v9_locked.json"
 RANGES = [(21, 40), (41, 60), (61, 80), (81, 100), (101, 120)]
 ALPHA = 0.5
 BETA = 2.0

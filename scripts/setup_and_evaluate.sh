@@ -18,6 +18,6 @@ cd iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python -m pytest test_my_optimizer.py -q
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --validate my_optimizer.py
 mkdir -p "$ROOT/results"
-PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py --verbose --save-solutions --output "$ROOT/results/boundary_full.json"
+PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py --verbose --save-solutions --output "$ROOT/results/v9_locked.json"
 cd "$ROOT"
-python scripts/audit_results.py results/boundary_full.json --expected-cases 100 --require-positions
+python scripts/audit_results.py results/v9_locked.json --expected-cases 100 --require-positions

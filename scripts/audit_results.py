@@ -6,7 +6,7 @@ does not cover: duplicate case IDs, missing required fields, non-finite values,
 summary mismatches, infeasible cases, and malformed saved rectangles.
 
 Examples:
-    python scripts/audit_results.py results/boundary_full.json
+    python scripts/audit_results.py results/v9_locked.json
     python scripts/audit_results.py candidate_full.json --expected-cases 100 --max-score 2.0133
 """
 from __future__ import annotations

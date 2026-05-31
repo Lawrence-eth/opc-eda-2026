@@ -6,8 +6,8 @@ candidate is infeasible, evaluates fewer cases than the baseline, or does not
 strictly improve the total score unless explicitly allowed.
 
 Examples:
-    python scripts/compare_results.py results/boundary_full.json candidate.json
-    python scripts/compare_results.py results/boundary_full.json candidate.json --allow-equal
+    python scripts/compare_results.py results/v9_locked.json candidate.json
+    python scripts/compare_results.py results/v9_locked.json candidate.json --allow-equal
 """
 from __future__ import annotations
 

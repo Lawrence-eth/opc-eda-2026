@@ -58,10 +58,6 @@ logs/
 # Curated result JSONs are tracked explicitly below or with git add -f.
 results/*.json
 !results/v9_locked.json
-!results/boundary_full.json
-!results/enriched_diagnostics.json
-!results/focus_cases.json
-!results/summary.json
 !results/tuned34_official_full.json
 !results/tuned35_official_full.json
 !results/tuned36_official_full.json
