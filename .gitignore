@@ -80,3 +80,4 @@ results/*.json
 results/*.png
 results/archive/
 results/local/
+.claude/
