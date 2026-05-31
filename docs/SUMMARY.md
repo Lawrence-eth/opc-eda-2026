@@ -137,6 +137,6 @@ PYTHONPATH=.. python3 iccad2026_evaluate.py --evaluate my_optimizer.py --output 
 # Analyze + release gate + tests
 python3 scripts/analyze_results.py results/v9_locked.json --top 20
 python3 scripts/check_public_release.py     # PASS
-python -m pytest                            # 51 passed
+python -m pytest                            # all tests pass (torch-dependent tests skip if torch absent)
 ```
 Result snapshot of the submission: `results/v9_locked.json` (2.7182, 100/100).

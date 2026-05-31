@@ -118,7 +118,7 @@ python scripts/analyze_results.py results/v9_locked.json --contest-dir external/
 python scripts/audit_results.py   results/v9_locked.json --expected-cases 100 --require-positions
 python scripts/compare_results.py results/v9_locked.json candidate.json
 python scripts/check_public_release.py                                 # release gate (PASS)
-python -m pytest                                                       # 51 passed
+python -m pytest                                                       # all tests pass (torch-dependent tests skip if torch absent)
 ```
 
 The release check combines a result audit (feasibility, score/summary consistency, overlap check) with a public-docs scan, so a release fails early if the uploaded optimizer diverges from the validated copy. The analyzer's score-concentration section identifies the high-weight cases (n≥100 ≈ 80% of the total). See `docs/SUMMARY.md` for the full write-up.

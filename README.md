@@ -56,7 +56,7 @@ PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py
 ## Release Checks
 
 ```bash
-.venv/bin/python -m pytest                          # 51 passed
+.venv/bin/python -m pytest                          # all tests pass (torch-dependent tests skip if torch absent)
 .venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/v9_locked.json, --max-score 2.72)
 ```
 
