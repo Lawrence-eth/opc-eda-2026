@@ -29,6 +29,7 @@ DEFAULT_PUBLIC_OPTIMIZER = ROOT / "contest_solution" / "my_optimizer.py"
 DEFAULT_SCAN_PATHS = (
     ROOT / "README.md",
     ROOT / "PROJECT_STATUS.md",
+    ROOT / "docs" / "SUMMARY.md",
 )
 
 BLOCKED_PHRASES = (

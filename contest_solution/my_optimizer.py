@@ -47,7 +47,7 @@ def _worker_solve(args):
             pins_pos, constraints, target_positions, b2b_edges, p2b_edges
         )
         if positions:
-            tc = opt._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+            tc = opt._true_contest_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos, target_positions)
             return (cfg_idx, positions, tc)
     except Exception:
         pass
@@ -155,9 +155,9 @@ class MyOptimizer(FloorplanOptimizer):
                 )
                 if sp_result is not None:
                     sp_cost = self._true_contest_cost(sp_result, constraints, area_targets,
-                                                      b2b_edges, p2b_edges, pins_pos)
+                                                      b2b_edges, p2b_edges, pins_pos, target_positions)
                     v9_cost = self._true_contest_cost(best_positions, constraints, area_targets,
-                                                      b2b_edges, p2b_edges, pins_pos)
+                                                      b2b_edges, p2b_edges, pins_pos, target_positions)
                     if sp_cost < v9_cost:
                         best_positions = sp_result
             except Exception:
@@ -2199,7 +2199,7 @@ class MyOptimizer(FloorplanOptimizer):
 
             # Evaluate with true contest cost
             true_cost = self._true_contest_cost(
-                pos_list, constraints, area_targets, b2b_edges, p2b_edges, pins_pos
+                pos_list, constraints, area_targets, b2b_edges, p2b_edges, pins_pos, target_positions
             )
             if true_cost < best_true_cost:
                 best_true_cost = true_cost
@@ -2239,8 +2239,14 @@ class MyOptimizer(FloorplanOptimizer):
                 s += max(0, int((cl == g).sum().item()) - 1)
         return s
 
-    def _is_feasible(self, positions, constraints, area_targets):
-        """Check hard constraints: no overlaps, area tolerance ±1%, fixed/preplaced dims."""
+    def _is_feasible(self, positions, constraints, area_targets, target_positions=None):
+        """Hard-constraint feasibility check mirroring the official evaluator:
+        (1) no block overlaps, (2) soft-block area within ±1% of target. When
+        `target_positions` is supplied it ALSO verifies fixed-shape (w,h) and
+        preplaced (x,y,w,h) match the input exactly (tol 1e-4) — the third hard
+        constraint. (In the live shelf path fixed/preplaced are exact by
+        construction and never perturbed, so omitting target_positions is safe;
+        passing it makes the gate complete for any other candidate source.)"""
         n = len(positions)
         for i in range(n):
             x1, y1, w1, h1 = positions[i]
@@ -2261,13 +2267,31 @@ class MyOptimizer(FloorplanOptimizer):
             w, h = positions[i][2], positions[i][3]
             if abs(w * h - t) / t > 0.01 + 1e-9:
                 return False
+        # Fixed-shape / preplaced exactness (only checkable with expected positions).
+        if target_positions is not None and ncols > 0:
+            for i in range(n):
+                is_fixed = constraints[i, 0] != 0
+                is_pre = ncols > 1 and constraints[i, 1] != 0
+                if not (is_fixed or is_pre) or not self._has_xywh(target_positions, i):
+                    continue
+                x, y, w, h = positions[i]
+                tx, ty, tw, th = (float(target_positions[i, k]) for k in range(4))
+                if abs(w - tw) > 1e-4 or abs(h - th) > 1e-4:
+                    return False
+                if is_pre and (abs(x - tx) > 1e-4 or abs(y - ty) > 1e-4):
+                    return False
         return True
 
-    def _true_contest_cost(self, positions, constraints, area_targets, b2b, p2b, pins_pos):
-        """Compute the exact contest cost for final selection (not proxy)."""
+    def _true_contest_cost(self, positions, constraints, area_targets, b2b, p2b, pins_pos,
+                           target_positions=None):
+        """Compute the exact contest cost for final selection (not proxy).
+
+        Pass target_positions to enable the full hard-constraint gate (incl.
+        fixed/preplaced exactness); without it, the gate checks overlaps + area.
+        """
         if self._hpwl_baseline is None or self._area_baseline is None:
             return self._selection_cost(positions, constraints, area_targets, b2b, p2b, pins_pos)
-        if not self._is_feasible(positions, constraints, area_targets):
+        if not self._is_feasible(positions, constraints, area_targets, target_positions):
             return 10.0
         hpwl = calculate_hpwl_b2b(positions, b2b) + calculate_hpwl_p2b(positions, p2b, pins_pos)
         bbox = calculate_bbox_area(positions)

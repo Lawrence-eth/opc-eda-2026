@@ -67,8 +67,8 @@ Verified on the 100 Lite validation cases (`results/v9_locked.json`):
 | Feasibility | **100 / 100** |
 | Raw validation score (RF=1.0) | **2.7182** |
 | Avg runtime | **~0.18 s/case** (max ~0.9 s) |
-| Robustness | **5,000 / 5,000** training instances feasible (0 failures) |
-| Overfit | None — one config for all block counts |
+| Robustness | **5,000 / 5,000** training instances feasible, 0 failures (artifact: `results/n9_robustness.json`) |
+| Overfit | No per-count *parameter* table (the validation-fit tuning was stripped). A few coarse high-count *structural* gates remain (e.g. n∈{117–120}); feasibility-validated on training instances (below). |
 
 **Runtime-adjusted total (lower = better), vs. the strong baseline `quadratic_v1`:**
 
