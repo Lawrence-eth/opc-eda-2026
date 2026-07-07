@@ -34,6 +34,7 @@ floor that v9's whole strategy banks on. The package therefore had to be torch-f
 | Torch-free port equivalence (python shim via op_wrapper) | 2.718225, 100/100, **0/100 position differences** vs in-process run |
 | **Packaged binary** via the official command (`--evaluate op_wrapper.py`) | **2.718225, 100/100, 0 position differences**; runtime avg 0.244s/case, n≥100 avg 0.475s, max 0.759s (79× headroom under the 60s wrapper timeout) |
 | Binary fuzz on 400 random training instances (exact wrapper protocol) | **400/400 hard-feasible**, avg 0.205s, max 0.705s |
+| **Re-verified after CAMPAIGN_GOLDEN G4 engine** (2026-07-07): wrapper + rebuilt binary | **2.120411, 100/100, 0 position diffs** vs in-process; avg 0.33s/case incl. spawn (max 0.96s); fuzz 400/400 feasible (max 1.15s) |
 
 Fixed during packaging: `torch_stub.py` originally aliased `float`, shadowing the
 builtin inside the stub (all cases silently fell back → score 9.98). Caught by the

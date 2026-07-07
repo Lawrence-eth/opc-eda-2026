@@ -19,6 +19,7 @@ echo "== assemble shim sources =="
 rm -rf "$SRC" "$SUB/dist" "$SUB/build"
 mkdir -p "$SRC"
 cp "$ROOT/contest_solution/my_optimizer.py" "$SRC/my_optimizer.py"
+cp "$ROOT/contest_solution/dissect.py"      "$SRC/dissect.py"
 cp "$PKG/torch_stub.py"                     "$SRC/torch.py"
 cp "$PKG/eval_stub.py"                      "$SRC/iccad2026_evaluate.py"
 cp "$PKG/solver_main.py"                    "$SRC/solver_main.py"
@@ -36,6 +37,7 @@ cd "$SUB"
   --distpath "$SUB/dist" --workpath "$SUB/build" --specpath "$SUB/build" \
   --paths "$SRC" \
   --hidden-import my_optimizer \
+  --hidden-import dissect \
   --hidden-import iccad2026_evaluate \
   --hidden-import torch \
   "$SRC/solver_main.py" >/dev/null

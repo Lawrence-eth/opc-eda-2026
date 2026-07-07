@@ -7,7 +7,7 @@ best-of gates on exact contest cost.
 
 **Status (2026-07-07): dissection engine built and integrated — G4 gate PASSED.
 Official eval: 2.1204 (was 2.7182), 100/100 feasible, 93/100 cases improved,
-runtime-adjusted beats v9 at every median. Next: G5 repackage; then G3
+runtime-adjusted beats v9 at every median. G5 repackage done (binary verified, 2.120411 parity). Next: G3
 completion (V_rel 0.176 → ≤0.109) and G6 polish.**
 Every milestone below records its real, measured result when it lands —
 nothing in this file is aspirational; if a number is missing, it hasn't run.
@@ -117,9 +117,9 @@ runtime floor even with the executable spawn overhead (~0.11s).
   against a non-golden reference censors improvements, found the hard way).
   GATE PASSED: official 2.1204 vs 2.7182; runtime-adjusted @{1,2,3}s =
   1.849/1.584/1.508 vs v9's 2.110/1.924/1.903; 93/100 improved; 51/51 tests.
-- **G5 — Repackage + verify**: rebuild the executable, run the §7 gate in
-  `SUBMISSION_PLAN.md` (bit-identical reproduction + 400-instance fuzz + full
-  wrapper eval).
+- **G5 — Repackage + verify** ✅ (2026-07-07): dissect.py bundled; stub gained
+  elementwise comparisons; wrapper+binary = **2.120411, 100/100, 0 position
+  diffs**, avg 0.33s/case incl. spawn; fuzz 400/400. Package current.
 - **G6 — Polish (open-ended, gated)**: SA over the dissection (sibling swaps,
   subtree transplants, strip re-partitions) under exact cost; aspect-bound
   tuning; floater insertion for fixed-block slack recovery; per-case portfolio
