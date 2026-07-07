@@ -1,5 +1,13 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-07 integrated v10 — cluster edge stacks + band free-width + clamp re-queue
+- Clusters with multiple same-edge boundary members: L/R members now form vertical stacks on the
+  cluster's outer side (all touch the edge). Band height re-derived from obstacle-free width.
+  Clamped rows always re-queue L/R heads/tails (right-alignment preserved).
+- dissect-only 1.9393 (91/100 wins), n>=100 vr 0.110 (G3 V_rel gate met); ag regressed 0.18->0.25
+  (band heights; case 70 outlier util 0.49 — shielded by best-of; open lead)
+- Integrated official **1.8074**, 100/100, rt avg 0.18s; radj@{0.5,1,2,3}s = 1.602/1.353/1.266/1.265 — ✅ kept
+
 ### 2026-07-07 integrated v9 — MIB forcing + segment L/R injection + edge retouch
 - MIB groups split across units -> forced shared square dims (slack traded for shape consistency)
 - L/R-required units injected into die-edge obstacle segments; final edge-retouch pass (live clash check)

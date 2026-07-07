@@ -201,6 +201,37 @@ def _place_unit_in_row(case, u, x, y, h, out, flat=False):
 
 def _place_cluster(case, u, x, y, h, out, flat=False):
     blocks = list(u.blocks)
+    # members requiring the left/right die edge form vertical stacks on the
+    # cluster's outer sides (the cluster itself is routed to that row end),
+    # so ALL of them touch the edge, not just the first
+    if not flat:
+        eL = [b for b in blocks if case.boundary[b] & 1 and not case.rigid_dims(b)]
+        eR = [b for b in blocks if case.boundary[b] & 2 and not case.rigid_dims(b)]
+        mid = [b for b in blocks if b not in set(eL) | set(eR)]
+        if len(eL) > 1 or len(eR) > 1:
+            cx = x
+            if eL:
+                aL = sum(case.area[b] for b in eL)
+                wL = aL / h
+                yy = y
+                for b in eL:
+                    bh = case.area[b] / wL
+                    out[b] = (cx, yy, wL, bh)
+                    yy += bh
+                cx += wL
+            if mid:
+                sub = Unit(mid, 'cluster', case)
+                cx = _place_cluster(case, sub, cx, y, h, out, flat=False)
+            if eR:
+                aR = sum(case.area[b] for b in eR)
+                wR = aR / h
+                yy = y
+                for b in eR:
+                    bh = case.area[b] / wR
+                    out[b] = (cx, yy, wR, bh)
+                    yy += bh
+                cx += wR
+            return cx
     fixed = [b for b in blocks if case.rigid_dims(b)]
     soft = [b for b in blocks if not case.rigid_dims(b)]
     if flat or fixed or len(blocks) <= 2:
@@ -468,15 +499,17 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
             back = []
             x = x0
             for u in row:
+                if u is head:
+                    l_queue.insert(0, u)
+                    continue
+                if u is tail:
+                    r_queue.insert(0, u)
+                    continue
                 ok = _unit_ok_at_height(case, u, h, max_aspect=25.0)
                 w_need = u.fixed_w + (_soft_area(case, u) / h
                                       if _soft_area(case, u) > 0 else 0.0)
                 if ok and x + w_need <= x1 + 1e-9:
                     x = _place_unit_in_row(case, u, x, y, h, out)
-                elif u is head:
-                    l_queue.insert(0, u)
-                elif u is tail:
-                    r_queue.insert(0, u)
                 else:
                     back.append(u)
             queue = back + queue
@@ -783,8 +816,15 @@ def _band_row(case, band_units, W, y, obstacles, out, spill):
     soft_a = sum(_soft_area(case, u) for u in band_units)
     fixh = max((u.fixed_h for u in band_units), default=0.0)
     h = max(soft_a / max(W - fixw, W * 0.15), fixh, 1e-6)
-    blocked = [(ox, ox + ow) for (ox, oy, ow, oh) in obstacles
-               if oy < y + h - _EPS and oy + oh > y + _EPS]
+    # obstacles crossing the band eat width: re-derive h from the FREE width
+    for _ in range(3):
+        blocked = [(ox, ox + ow) for (ox, oy, ow, oh) in obstacles
+                   if oy < y + h - _EPS and oy + oh > y + _EPS]
+        free_w = sum(e - s for s, e in _free_intervals(0.0, W, blocked))
+        h2 = max(soft_a / max(free_w - fixw, W * 0.15), fixh, 1e-6)
+        if abs(h2 - h) < 1e-9:
+            break
+        h = h2
     segs = _free_intervals(0.0, W, blocked)
     units = list(band_units)
     right_corner = [u for u in units if u.boundary & 2]
@@ -811,6 +851,8 @@ def _band_row(case, band_units, W, y, obstacles, out, spill):
         segs = segs[:-1] + [(a, x)]
     elif right_corner:
         rem.extend(right_corner)
+    rest = sorted(rest, key=lambda u: -(u.fixed_w + (_soft_area(case, u) / h
+                                        if _soft_area(case, u) > 0 else 0.0)))
     rem.extend(_segment_fill(case, rest, segs, y, h, out, max_aspect=60.0,
                              flat=True))
     spill.extend(rem)
