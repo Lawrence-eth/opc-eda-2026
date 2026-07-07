@@ -3,6 +3,8 @@
 Deterministic heuristic optimizer for data-driven SoC floorplanning (21–120 blocks).
 
 > **📊 Presentation / overview: [`docs/SUMMARY.md`](docs/SUMMARY.md)** — problem, solution, results, methodology, key insights, and honest assessment (each section ≈ one slide). Start here.
+>
+> **📦 Submission: [`SUBMISSION_PLAN.md`](SUBMISSION_PLAN.md)** — the June-2026 organizer requirements (PyInstaller executable via `op_wrapper.py`), the verified torch-free package (`packaging/`, build with `packaging/build_submission.sh`), full verification results, and the plan to the ≈2026-07-13 deadline.
 
 ## Current Result (submission)
 
