@@ -177,7 +177,7 @@ class MyOptimizer(FloorplanOptimizer):
             tp_l = (target_positions[:block_count].tolist()
                     if target_positions is not None else None)
             pins_l = pins_pos.tolist() if pins_pos is not None else []
-            for wf in (0.85, 1.0, 1.15):
+            for wf in (0.8, 0.9, 1.0, 1.1, 1.2):
                 try:
                     cand = dissect_solve(block_count, areas_l, b2b_edges,
                                          p2b_edges, pins_l, con_l, tp_l,

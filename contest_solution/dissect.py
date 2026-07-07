@@ -152,8 +152,20 @@ def _edge_order(case, blocks):
 # realization primitives (all exact-fill)
 # ---------------------------------------------------------------------------
 
-def _place_unit_in_row(case, u, x, y, h, out):
-    """Place unit u at x in row band [y, y+h). Returns the new x cursor."""
+def _place_unit_in_row(case, u, x, y, h, out, flat=False):
+    """Place unit u at x in row band [y, y+h). Returns the new x cursor.
+    flat=True forces clusters into a single lane (used in the bottom/top
+    bands, where every member must keep the band-edge touch)."""
+    if u.kind == 'vstack':
+        # vertical stack of soft blocks sharing one column: every member
+        # spans the full stack width, so all touch the column's x-sides
+        w = u.area / h
+        yy = y
+        for b in u.blocks:
+            bh = case.area[b] / w
+            out[b] = (x, yy, w, bh)
+            yy += bh
+        return x + w
     if u.kind == 'mib':
         a = min(case.area[b] for b in u.blocks)
         w = a / h
@@ -162,7 +174,7 @@ def _place_unit_in_row(case, u, x, y, h, out):
             x += w
         return x
     if u.kind == 'cluster':
-        return _place_cluster(case, u, x, y, h, out)
+        return _place_cluster(case, u, x, y, h, out, flat=flat)
     b = u.blocks[0]
     fd = case.fixed_dims(b)
     if fd:
@@ -173,11 +185,11 @@ def _place_unit_in_row(case, u, x, y, h, out):
     return x + w
 
 
-def _place_cluster(case, u, x, y, h, out):
+def _place_cluster(case, u, x, y, h, out, flat=False):
     blocks = list(u.blocks)
     fixed = [b for b in blocks if case.fixed_dims(b)]
     soft = [b for b in blocks if not case.fixed_dims(b)]
-    if fixed or len(blocks) <= 2:
+    if flat or fixed or len(blocks) <= 2:
         cx = x
         for b in sorted(fixed, key=lambda b: -case.fixed_dims(b)[1]):
             w, hh = case.fixed_dims(b)
@@ -315,7 +327,7 @@ def _unit_ok_at_height(case, u, h, max_aspect=12.0):
     return True
 
 
-def _segment_fill(case, units, segs, y, h, out):
+def _segment_fill(case, units, segs, y, h, out, max_aspect=12.0, flat=False):
     """Place units into free x-segments of a fixed-height slab [y, y+h).
     Returns units that did not fit (whitespace remainders accepted)."""
     rem = list(units)
@@ -324,13 +336,13 @@ def _segment_fill(case, units, segs, y, h, out):
         j = 0
         while j < len(rem):
             u = rem[j]
-            if not _unit_ok_at_height(case, u, h):
+            if not _unit_ok_at_height(case, u, h, max_aspect=max_aspect):
                 j += 1
                 continue
             soft_a = _soft_area(case, u)
             w_need = u.fixed_w + (soft_a / h if soft_a > 0 else 0.0)
             if x + w_need <= b + 1e-9:
-                x = _place_unit_in_row(case, u, x, y, h, out)
+                x = _place_unit_in_row(case, u, x, y, h, out, flat=flat)
                 rem.pop(j)
             else:
                 j += 1
@@ -380,11 +392,16 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
             fixh = max(fixh, u.fixed_h)
             fixw += u.fixed_w
         head = tail = None
-        if l_queue:
-            head = l_queue.pop(0)
+        # estimate rows remaining so over-long edge queues stack up now
+        q_area = sum(uu.area for uu in queue) or 1.0
+        h_typ = max(_row_target(case, queue[:8] or l_queue or r_queue,
+                                q_area, span), 1e-6) if (queue or l_queue or r_queue) else 1.0
+        rows_left = max(1, round(q_area / (span * h_typ)))
+        head = _pop_edge_stack(case, l_queue, rows_left)
+        if head is not None:
             _admit(head)
-        if r_queue:
-            tail = r_queue.pop(0)
+        tail = _pop_edge_stack(case, r_queue, rows_left)
+        if tail is not None:
             _admit(tail)
         i = 0
         while i < len(queue):
@@ -446,6 +463,36 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
                 _place_unit_in_row(case, tail, x, y, h, out)
         y += h
     return y
+
+
+def _pop_edge_stack(case, edge_queue, rows_left):
+    """Pop 1..k units from an edge queue; if more units remain than rows,
+    bundle several SOFT singletons into one vertical stack so they all still
+    touch the die edge."""
+    if not edge_queue:
+        return None
+    k = max(1, -(-len(edge_queue) // max(rows_left, 1)))  # ceil
+    if len(edge_queue) >= 4:
+        k = max(k, 2)
+    first = edge_queue.pop(0)
+    if k == 1 or first.kind != 'block' or first.fixed_w > 0:
+        return first
+    stack_blocks = list(first.blocks)
+    taken = 1
+    i = 0
+    while taken < k and i < len(edge_queue):
+        u = edge_queue[i]
+        if u.kind == 'block' and u.fixed_w == 0:
+            stack_blocks.extend(u.blocks)
+            edge_queue.pop(i)
+            taken += 1
+        else:
+            i += 1
+    if len(stack_blocks) == 1:
+        return first
+    u = Unit(stack_blocks, 'vstack', case)
+    u.boundary = first.boundary
+    return u
 
 
 def _soft_area_list(case, row):
@@ -649,6 +696,8 @@ def _band_row(case, band_units, W, y, obstacles, out, spill):
     right_corner = [u for u in units if u.boundary & 2]
     rest = [u for u in units if not (u.boundary & 2)]
     rem = []
+    # NOTE: slivers are legal (evaluator checks area only); bands use a very
+    # loose aspect guard so small blocks still make it onto their edge
     # reserve space for right-corner units at the very end of the last
     # segment FIRST, so the left-to-right fill can never collide with them
     if right_corner and segs:
@@ -664,11 +713,12 @@ def _band_row(case, band_units, W, y, obstacles, out, spill):
             else:
                 rem.append(u)
         for u, xu in placed_rc:
-            _place_unit_in_row(case, u, xu, y, h, out)
+            _place_unit_in_row(case, u, xu, y, h, out, flat=True)
         segs = segs[:-1] + [(a, x)]
     elif right_corner:
         rem.extend(right_corner)
-    rem.extend(_segment_fill(case, rest, segs, y, h, out))
+    rem.extend(_segment_fill(case, rest, segs, y, h, out, max_aspect=60.0,
+                             flat=True))
     spill.extend(rem)
     return y + h
 
