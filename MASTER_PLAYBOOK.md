@@ -5,7 +5,17 @@
 
 ---
 
-# ⚡ CURRENT STATE — READ THIS FIRST (authoritative; supersedes all older navigation below) — updated 2026-05-31
+# ⚡ CURRENT STATE — READ THIS FIRST — updated 2026-07-07
+
+> **This playbook's navigation is now HISTORICAL.** The active plan is
+> **`docs/CAMPAIGN_GOLDEN.md`** (exact-area dissection engine; no deadline; goal = win),
+> with submission mechanics in **`SUBMISSION_PLAN.md`** and agent onboarding in **`CLAUDE.md`**.
+> What remains binding from this file: the **dead-end list (Part II.6)**, the invariants
+> (Part I), and the experiment-logging protocol (Part VII). The "v9 is FINAL" conclusion
+> below was correct for its constraints (pre-2026-07-07) and is superseded by operator
+> directive: quality pursuit continues, gated so v9 can never regress.
+
+## (historical banner, 2026-05-31)
 
 - **HEAD = sprint5_v9: the LOCKED FINAL submission.** Verified: local **2.7182**, **100/100 feasible**, **~0.18s/case**. All paths exhausted; v9 is the best we can ship.
 - **ALL PATHS EXHAUSTED — v9 IS FINAL.** The analytic path (N1–N5), the ML path (N6-POC), and the contiguous-cluster path (N7) have all been tried and failed. The fundamental trade-off: cluster contiguity (V_rel≈0) requires tight grouping that reduces util; packing flexibility (util≥0.65) requires free arrangement that breaks cluster abutment. No approach achieves both.

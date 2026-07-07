@@ -1,9 +1,10 @@
 # SUBMISSION PLAN — ICCAD 2026 Problem C (FloorSet Challenge)
 
-**Status date: 2026-07-07. Deadline ≈ 2026-07-13.**
-This document is the authoritative plan from full verification (2026-07-07) to submission.
-It supersedes the navigation sections of `MASTER_PLAYBOOK.md` (whose quality-search
-conclusion — v9 locked, all quality paths exhausted — still stands and is re-confirmed below).
+**Status date: 2026-07-07. Operator directive: no deadline pressure — the only
+goal is to win.** This document covers the submission *mechanics*: the organizer
+format, the verified package, and the rebuild gate. The active plan for winning
+score improvements is **`docs/CAMPAIGN_GOLDEN.md`** — the package documented here
+is the safe floor that campaign work must never regress.
 
 ---
 
@@ -91,16 +92,19 @@ Design decisions:
 | golden-equivalent | 1.108 | 0.776 |
 | theoretical bound | 1.000 | 0.700 |
 
-**Decision:** the goal is NOT "find the best solution" (not reachable in the time left);
-the goal is **bank the verified, feasibility-proof, runtime-floor entry** and spend any
-remaining time only on strictly-gated improvements that cannot regress it.
+**Decision (updated per operator directive):** the verified, feasibility-proof,
+runtime-floor entry is **banked as the floor**; the pursuit of golden-quality
+scores continues without a time limit as **`docs/CAMPAIGN_GOLDEN.md`** (exact-area
+dissection engine), integrated behind per-case best-of gates so the floor can
+only improve.
 
-## 5. Plan to deadline (2026-07-07 → ≈2026-07-13)
+## 5. Path to submission
 
 **P0 — submission logistics (owner: Lawrence; needed from the contest account)**
-1. Confirm the exact deadline, upload channel, and team credentials on the ICCAD
-   contest site (http://iccad-contest.org). The repo cannot verify these.
-2. Upload `submission/iccad2026_submission.tar.gz`. After upload, re-download and
+1. Confirm the upload channel and team credentials on the ICCAD contest site
+   (http://iccad-contest.org); track any format updates in the FloorSet repo/Q&A.
+2. When submitting: upload the current `submission/iccad2026_submission.tar.gz`
+   (rebuild via §7 first if the optimizer changed). After upload, re-download and
    re-run the package once (`--evaluate op_wrapper.py`) as a checksum-level sanity pass.
 
 **P1 — final hardening (done unless noted)**
@@ -112,16 +116,14 @@ remaining time only on strictly-gated improvements that cannot regress it.
    forward-compatible, so this is belt-and-suspenders).
 4. Optional (~30 min): extend `scripts/fuzz_binary.py` to 2,000+ instances overnight.
 
-**P2 — only-if-time, strictly gated experiments (each must beat the runtime-adjusted
-total at median ∈ {1,2,3}s AND keep 100/100; otherwise discard)**
-- None are recommended. The playbook's dead-end list stands; the marginal EV of new
-  quality attempts in <6 days is negative relative to the risk of disturbing a
-  verified artifact. If the field median turns out slow (≥4s — unknowable locally),
-  the hedge `quadratic_v1` exists but switching would require re-running the FULL
-  packaging + equivalence + fuzz pipeline; do not switch without that.
+**P2 — quality improvements (ACTIVE, no time limit)**
+- Run as `docs/CAMPAIGN_GOLDEN.md`. Every candidate must beat the runtime-adjusted
+  total at median ∈ {1,2,3}s AND keep 100/100, via per-case best-of gates, and pass
+  the §7 rebuild gate before becoming the submission. The playbook's dead-end list
+  remains binding.
 
-**P3 — presentation** — `docs/SUMMARY.md` is current; add one slide from §4's
-leverage table (why runtime floor + feasibility, not golden-chasing, is the strategy).
+**P3 — presentation** — `docs/SUMMARY.md` is current; refresh from the campaign's
+leverage table and progress log when the engine lands.
 
 ## 6. Risk register
 
