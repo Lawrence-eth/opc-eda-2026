@@ -1,5 +1,13 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-07 clamp-branch segmented-fill experiment — ❌ REVERTED
+- Hypothesis: rows crossing obstacle edges should fill around obstacles at natural height instead of
+  jumping to the edge (case-70 whitespace). Result: dissect-only 1.9393 -> 1.9797 (n>=100 ag 0.249->0.294),
+  case 70 UNCHANGED (its dead zone forms below py1 through a different path). Reverted via git checkout.
+- Open lead (case 70, n=91, util 0.49): interior fill strands y in [0, py1] region almost empty when
+  preplaced obstacles are scattered low; blocks pile above py1=206 -> H 407 vs ideal ~201. Needs a real
+  trace of fill_region's y-progression, not another guess.
+
 ### 2026-07-07 integrated v10 — cluster edge stacks + band free-width + clamp re-queue
 - Clusters with multiple same-edge boundary members: L/R members now form vertical stacks on the
   cluster's outer side (all touch the edge). Band height re-derived from obstacle-free width.
