@@ -509,7 +509,8 @@ def _row_target(case, row, area, span):
 # connectivity-aware ordering (interior)
 # ---------------------------------------------------------------------------
 
-def order_units(units, b2b, p2b=None, pins=None, H_est=1.0):
+def order_units(units, b2b, p2b=None, pins=None, H_est=1.0, pin_scale=1.0,
+                y_init=None):
     """Vertical ordering by barycenter iteration: each unit is pulled toward
     its connectivity neighbors and (via p2b) toward its pins' absolute y.
     The resulting order fills rows bottom-up, so strongly-connected units and
@@ -535,13 +536,18 @@ def order_units(units, b2b, p2b=None, pins=None, H_est=1.0):
             if ui is None or p >= len(pins):
                 continue
             py = float(pins[p][1])
-            pin_pull[ui][0] += w
-            pin_pull[ui][1] += w * py
-    # initial keys: area-weighted spread (big units early), scaled to H_est
+            pin_pull[ui][0] += w * pin_scale
+            pin_pull[ui][1] += w * pin_scale * py
+    # initial keys: previous-pass y when available, else area-weighted spread
     order0 = sorted(range(m), key=lambda ui: -units[ui].area)
     y = [0.0] * m
     for rank, ui in enumerate(order0):
         y[ui] = H_est * (rank + 0.5) / m
+    if y_init:
+        for ui, u in enumerate(units):
+            vals = [y_init[b] for b in u.blocks if b in y_init]
+            if vals:
+                y[ui] = sum(vals) / len(vals)
     for _ in range(20):
         ny = list(y)
         for ui in range(m):
@@ -569,11 +575,25 @@ def unit_xkey(u, placed_centers, adj_xpull):
 # ---------------------------------------------------------------------------
 
 def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
-                  target_positions, width_factor=1.0):
-    """Frame-of-rows dissection: one full-width bottom row (bottom-required),
-    full-width interior rows with left/right-required units injected at the
-    row ends, one full-width top row (top-required), everything obstacle-aware
-    and exact-fill. Returns positions or None."""
+                  target_positions, width_factor=1.0, pin_scale=1.0,
+                  order_ops=None):
+    """Two-pass frame-of-rows dissection (pass 2 re-orders with pass 1's
+    actual positions — one Gauss-Seidel sweep). Returns positions or None."""
+    p1 = _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
+                       target_positions, width_factor, pin_scale, order_ops,
+                       prev=None)
+    if p1 is None:
+        return None
+    prev = {i: p1[i] for i in range(n)}
+    p2 = _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
+                       target_positions, width_factor, pin_scale, order_ops,
+                       prev=prev)
+    return p2 if p2 is not None else p1
+
+
+def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
+                  target_positions, width_factor=1.0, pin_scale=1.0,
+                  order_ops=None, prev=None):
     case = Case(n, areas, constraints, target_positions)
     out: Dict[int, Rect] = {}
 
@@ -619,8 +639,18 @@ def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
     # order interior for locality; L/R queues largest-first so early (wide)
     # rows take the wide units
     H_est = A / max(W, 1e-9)
+    y_init = ({b: (prev[b][1] + prev[b][3] / 2) for b in prev}
+              if prev else None)
     groups['mid'] = order_units(groups['mid'], b2b_edges, p2b_edges, pins,
-                                H_est=H_est)
+                                H_est=H_est, pin_scale=pin_scale,
+                                y_init=y_init)
+    if order_ops:
+        mid = groups['mid']
+        K = len(mid)
+        if K > 1:
+            for (i, j) in order_ops:
+                a, b = i % K, j % K
+                mid[a], mid[b] = mid[b], mid[a]
     groups['left'].sort(key=lambda u: -u.area)
     groups['right'].sort(key=lambda u: -u.area)
 
@@ -642,6 +672,8 @@ def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
         for blk in u.blocks:
             for nb, w in adjb.get(blk, ()):
                 r = out.get(nb)
+                if r is None and prev is not None:
+                    r = prev.get(nb)
                 if r is not None:
                     wsum += w
                     acc += w * (r[0] + r[2] / 2)

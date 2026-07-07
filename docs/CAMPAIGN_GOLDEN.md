@@ -5,10 +5,11 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-07): dissection engine built and integrated — G4 gate PASSED.
-Official eval: 2.1204 (was 2.7182), 100/100 feasible, 93/100 cases improved,
-runtime-adjusted beats v9 at every median. G5 repackage done (binary verified, 2.120411 parity). Next: G3
-completion (V_rel 0.176 → ≤0.109) and G6 polish.**
+**Status (2026-07-07, round 2): official 1.9352, 100/100, rt avg 0.18s (== v9's
+runtime with 29% better quality). radj@1s 1.451 vs v9's 2.110. Fast-first
+shelf (no-SA reference; full SA only if it wins — it never has), two-pass
+construction, flat band clusters, edge stacks. Package needs a G5 refresh for
+this version. Open: V_rel 0.153→≤0.109, hg 0.85→lower, MIB cross-unit dims.**
 Every milestone below records its real, measured result when it lands —
 nothing in this file is aspirational; if a number is missing, it hasn't run.
 

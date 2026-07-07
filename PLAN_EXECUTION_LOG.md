@@ -1,5 +1,12 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-07 integrated v4-v8 — portfolio/runtime discipline round
+- v4 (15-candidate wf×pin_scale grid): RF=1 1.9409 but radj@1s 1.926 — ❌ REVERTED (runtime > quality; I.3)
+- v5 (+0.25s order-refinement rebuild search): RF=1 1.9460, radj@1s 1.917 — ❌ dormant behind _REFINE_BUDGET=0 (needs ≥10% gain to pay its multiplier; got ~1%)
+- v6 (two-pass construction, pass-2 reorders from pass-1 positions): RF=1 1.9352 — ✅ kept (free quality)
+- v7/v8 (fast-first: no-SA shelf as reference on n≥50; full-SA shelf only if it wins selection — it never did): rt avg 0.27→0.18s, max 0.64s — ✅ kept
+- Net: **RF=1 1.9352, 100/100, rt avg 0.18s; radj@{0.5,1,2,3}s = 1.718/1.451/1.356/1.355** (v9: 2.549/2.110/1.924/1.903)
+
 ### 2026-07-07 dissect_v2 + integration — CAMPAIGN_GOLDEN G2-G4 (see docs/CAMPAIGN_GOLDEN.md)
 - Hypothesis: golden = near-perfect tessellation ⇒ exact-area dissection closes area_gap structurally.
 - Runtime-adjusted Total @ median {0.5,1,2,3,5}s: 2.260 / 1.849 / 1.584 / 1.508 / 1.484  (v9: 2.549 / 2.110 / 1.924 / 1.903 / 1.903)

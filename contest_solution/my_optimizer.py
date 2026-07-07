@@ -114,12 +114,20 @@ class MyOptimizer(FloorplanOptimizer):
         b2b_edges = self._b2b_edges(b2b_connectivity)
         p2b_edges = self._p2b_edges(p2b_connectivity)
 
-        # Shelf path (proven approach from sprint5_v9)
+        # Shelf path (proven approach from sprint5_v9).
+        # For the heavy cases the dissection engine wins ~96% of the time, so
+        # run the shelf WITHOUT its SA first (fast reference/fallback) and
+        # only pay for the full-SA shelf when the fast shelf actually wins
+        # the candidate selection below (see fast_first re-run).
         configs = self._build_portfolio(block_count)
+        fast_first = block_count >= 50
         best_positions = None
         best_cost = float("inf")
 
         for cfg in configs:
+            if fast_first:
+                cfg = dict(cfg)
+                cfg['no_sa'] = True
             try:
                 # Dispatch via _solve_one so cfg['path']/params are actually honored
                 # (the portfolio is a single shelf config today; this keeps the
@@ -177,21 +185,66 @@ class MyOptimizer(FloorplanOptimizer):
             tp_l = (target_positions[:block_count].tolist()
                     if target_positions is not None else None)
             pins_l = pins_pos.tolist() if pins_pos is not None else []
+            dis_args = (block_count, areas_l, b2b_edges, p2b_edges, pins_l,
+                        con_l, tp_l)
+            dis_cands = {}
             for wf in (0.8, 0.9, 1.0, 1.1, 1.2):
                 try:
-                    cand = dissect_solve(block_count, areas_l, b2b_edges,
-                                         p2b_edges, pins_l, con_l, tp_l,
-                                         width_factor=wf)
+                    cand = dissect_solve(*dis_args, width_factor=wf)
                 except Exception:
                     continue
                 if cand and len(cand) == block_count:
                     candidates.append(cand)
+                    dis_cands[wf] = cand
             if len(candidates) > 1:
                 picked = self._select_candidate(
                     candidates, constraints, area_targets, b2b_edges,
                     p2b_edges, pins_pos, target_positions)
                 if picked is not None:
+                    if (fast_first and picked is candidates[0]):
+                        # the fast (no-SA) shelf beat every dissection —
+                        # rare; now invest in the full-SA shelf and re-pick
+                        try:
+                            full = self._solve_one(
+                                self._build_portfolio(block_count)[0],
+                                block_count, area_targets, b2b_connectivity,
+                                p2b_connectivity, pins_pos, constraints,
+                                target_positions, b2b_edges, p2b_edges)
+                            if full:
+                                picked = self._select_candidate(
+                                    [full, picked], constraints, area_targets,
+                                    b2b_edges, p2b_edges, pins_pos,
+                                    target_positions) or picked
+                        except Exception:
+                            pass
                     best_positions = picked
+                # order-refinement local search on the best dissection:
+                # rebuild-based transpositions of the interior order under a
+                # hard time budget (feasible by construction each rebuild;
+                # final choice stays best-of). Budgeted so big cases stay
+                # comfortably under the runtime floor threshold.
+                best_wf = None
+                for wf, cand in dis_cands.items():
+                    if cand is picked:
+                        best_wf = wf
+                        break
+                # Refinement verdict (2026-07-07, results/integrated_v5.json):
+                # +0.25s budget bought only ~1% RF=1 quality but cost ~11%
+                # runtime multiplier on the heavy cases => WORSE at every
+                # median. Disabled by default; re-enable only if the field
+                # median proves large.
+                _REFINE_BUDGET = 0.0
+                if _REFINE_BUDGET > 0 and best_wf is not None and block_count >= 60:
+                    budget = _REFINE_BUDGET if block_count >= 100 else _REFINE_BUDGET * 0.6
+                    refined = self._refine_dissection(
+                        dis_args, best_wf, picked, budget, constraints,
+                        area_targets, b2b_edges, p2b_edges, pins_pos,
+                        target_positions)
+                    if refined is not None:
+                        best_positions = self._select_candidate(
+                            [best_positions, refined], constraints,
+                            area_targets, b2b_edges, p2b_edges, pins_pos,
+                            target_positions) or best_positions
         except Exception as e:
             if getattr(self, "verbose", False):
                 print(f"[WARN] dissection portfolio failed: {e}", file=sys.stderr)
@@ -238,6 +291,64 @@ class MyOptimizer(FloorplanOptimizer):
                 best_key = key
                 best = pos
         return best
+
+    def _refine_dissection(self, dis_args, wf, seed_pos, budget_s,
+                           constraints, area_targets, b2b, p2b, pins_pos,
+                           target_positions):
+        """Greedy transposition search over the dissection's interior order
+        (each trial is a full deterministic rebuild, so every state is a
+        valid exact-fill layout). Hard wall-clock budget."""
+        import random as _random
+        import time as _time
+        from dissect import dissect_solve as _ds
+        rng = _random.Random(1234 + int(dis_args[0]))
+        t0 = _time.time()
+        best_ops = []
+        best_pos = seed_pos
+        best_c = self._norm_cost(seed_pos, constraints, area_targets, b2b,
+                                 p2b, pins_pos, target_positions, seed_pos)
+        while _time.time() - t0 < budget_s:
+            i = rng.randrange(240)
+            j = rng.randrange(240)
+            if i == j:
+                continue
+            try:
+                cand = _ds(*dis_args, width_factor=wf,
+                           order_ops=best_ops + [(i, j)])
+            except Exception:
+                break
+            if not cand or len(cand) != len(seed_pos):
+                continue
+            c = self._norm_cost(cand, constraints, area_targets, b2b, p2b,
+                                pins_pos, target_positions, seed_pos)
+            if c < best_c - 1e-12:
+                best_c = c
+                best_pos = cand
+                best_ops.append((i, j))
+        return best_pos if best_ops else None
+
+    def _norm_cost(self, pos, constraints, area_targets, b2b, p2b, pins_pos,
+                   target_positions, ref_pos):
+        """Feasibility-gated exact-cost shape, normalized against ref_pos
+        when golden baselines are absent (same convention as
+        _select_candidate)."""
+        feas = self._is_feasible(pos, constraints, area_targets,
+                                 target_positions)
+        hpwl = calculate_hpwl_b2b(pos, b2b) + calculate_hpwl_p2b(pos, p2b, pins_pos)
+        bbox = calculate_bbox_area(pos)
+        href = max(calculate_hpwl_b2b(ref_pos, b2b)
+                   + calculate_hpwl_p2b(ref_pos, p2b, pins_pos), 1e-9)
+        aref = max(calculate_bbox_area(ref_pos), 1e-9)
+        if self._hpwl_baseline and self._area_baseline:
+            hg = max(0.0, (hpwl - self._hpwl_baseline) / self._hpwl_baseline)
+            ag = max(0.0, (bbox - self._area_baseline) / self._area_baseline)
+        else:
+            hg = (hpwl - href) / href
+            ag = (bbox - aref) / aref
+        viol = self._soft_violation_count(pos, constraints)
+        ns = max(self._n_soft(constraints, len(pos)), 1)
+        c = (1.0 + 0.5 * (hg + ag)) * math.exp(2.0 * viol / ns)
+        return c + (100.0 if not feas else 0.0)
 
     def _build_portfolio(self, block_count):
         """Build shelf path config. SA for n>=100 only."""

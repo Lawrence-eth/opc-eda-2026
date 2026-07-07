@@ -62,6 +62,7 @@ results/*.json
 !results/golden_scored.json
 !results/retrieval_scan.json
 !results/integrated_v2.json
+!results/integrated_v8.json
 !results/tuned34_official_full.json
 !results/tuned35_official_full.json
 !results/tuned36_official_full.json

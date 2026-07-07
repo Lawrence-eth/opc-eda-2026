@@ -10,15 +10,15 @@ Deterministic heuristic optimizer for data-driven SoC floorplanning (21–120 bl
 
 Current best = **v9 + exact-area dissection portfolio** (CAMPAIGN_GOLDEN G4) —
 `contest_solution/my_optimizer.py` + `contest_solution/dissect.py`; result
-snapshot `results/integrated_v2.json`. Previous locked entry: `sprint5_v9`
+snapshot `results/integrated_v8.json`. Previous locked entry: `sprint5_v9`
 (2.7182, `results/v9_locked.json`) — still the per-case fallback inside solve().
 
 | Metric | Value |
 |--------|-------|
-| Validation score (RF=1.0) | **2.1204** (v9: 2.7182) |
+| Validation score (RF=1.0) | **1.9352** (v9: 2.7182) |
 | Feasible cases | **100 / 100** |
-| Average runtime | **~0.27s/case** (max ~1.4s) |
-| Runtime-adjusted total @ median 1s | **1.85** (v9: 2.11; baseline `quadratic_v1`: 2.65) |
+| Average runtime | **~0.18s/case** (max ~0.6s) |
+| Runtime-adjusted total @ median 1s | **1.45** (v9: 2.11; baseline `quadratic_v1`: 2.65) |
 
 **Note on the score:** the contest cost is *runtime-adjusted* — `cost · max(0.7, (rt/median)^0.3)`. v9 trades a little raw quality for large speed, which dominates at the contest's likely runtime range (it beats every earlier solution for assumed median ≤ ~3.5s). So the raw 2.7182 is *higher* (worse) than older raw scores (e.g. the 2.6326 baseline) but the *runtime-adjusted* score is better. A higher-raw-quality, still-fast alternative (`quadratic_v1`, 2.466 @ 0.69s) is retained as a hedge for high-median scenarios. Full reasoning + history: `MASTER_PLAYBOOK.md`.
 
