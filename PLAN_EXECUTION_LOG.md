@@ -1,5 +1,14 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-07 integrated v9 — MIB forcing + segment L/R injection + edge retouch
+- MIB groups split across units -> forced shared square dims (slack traded for shape consistency)
+- L/R-required units injected into die-edge obstacle segments; final edge-retouch pass (live clash check)
+- BUG caught by full eval: retouch moved PREPLACED blocks toward soft boundary edges -> 9 hard-infeasible
+  cases (dims/position mismatch). Preplaced now excluded (Q&A Q5). Lesson: every retouch/move pass must
+  skip preplaced explicitly.
+- Result: dissect-only 2.0000 (93/100 wins); integrated official **1.8975**, 100/100, rt avg 0.20s;
+  radj@{0.5,1,2,3}s = 1.728/1.444/1.333/1.328 — ✅ kept
+
 ### 2026-07-07 integrated v4-v8 — portfolio/runtime discipline round
 - v4 (15-candidate wf×pin_scale grid): RF=1 1.9409 but radj@1s 1.926 — ❌ REVERTED (runtime > quality; I.3)
 - v5 (+0.25s order-refinement rebuild search): RF=1 1.9460, radj@1s 1.917 — ❌ dormant behind _REFINE_BUDGET=0 (needs ≥10% gain to pay its multiplier; got ~1%)

@@ -58,11 +58,25 @@ class Case:
         self.tp = ([[float(v) for v in target_positions[i]] for i in range(n)]
                    if target_positions is not None else None)
 
+    def __init_forced__(self):
+        pass
+
     def fixed_dims(self, i):
         if self.tp is None:
             return None
         w, h = self.tp[i][2], self.tp[i][3]
         return (w, h) if (w != -1 and h != -1) else None
+
+    def rigid_dims(self, i):
+        """Dims that must be used verbatim: fixed-shape dims, or dims forced
+        for MIB unification (set in dissect_solve for split groups)."""
+        fd = self.fixed_dims(i)
+        if fd:
+            return fd
+        forced = getattr(self, 'forced', None)
+        if forced:
+            return forced.get(i)
+        return None
 
     def pre_rect(self, i):
         if self.tp is None:
@@ -71,7 +85,7 @@ class Case:
         return (x, y, w, h) if -1 not in (x, y, w, h) else None
 
     def block_area(self, i):
-        fd = self.fixed_dims(i)
+        fd = self.rigid_dims(i)
         return fd[0] * fd[1] if fd else self.area[i]
 
 
@@ -89,7 +103,7 @@ class Unit:
         self.boundary = 0
         for b in blocks:
             self.boundary |= case.boundary[b]
-        dims = [case.fixed_dims(b) for b in blocks if case.fixed_dims(b)]
+        dims = [case.rigid_dims(b) for b in blocks if case.rigid_dims(b)]
         self.fixed_h = max((d[1] for d in dims), default=0.0)
         self.fixed_w = sum(d[0] for d in dims)
 
@@ -176,7 +190,7 @@ def _place_unit_in_row(case, u, x, y, h, out, flat=False):
     if u.kind == 'cluster':
         return _place_cluster(case, u, x, y, h, out, flat=flat)
     b = u.blocks[0]
-    fd = case.fixed_dims(b)
+    fd = case.rigid_dims(b)
     if fd:
         out[b] = (x, y, fd[0], fd[1])
         return x + fd[0]
@@ -187,12 +201,12 @@ def _place_unit_in_row(case, u, x, y, h, out, flat=False):
 
 def _place_cluster(case, u, x, y, h, out, flat=False):
     blocks = list(u.blocks)
-    fixed = [b for b in blocks if case.fixed_dims(b)]
-    soft = [b for b in blocks if not case.fixed_dims(b)]
+    fixed = [b for b in blocks if case.rigid_dims(b)]
+    soft = [b for b in blocks if not case.rigid_dims(b)]
     if flat or fixed or len(blocks) <= 2:
         cx = x
-        for b in sorted(fixed, key=lambda b: -case.fixed_dims(b)[1]):
-            w, hh = case.fixed_dims(b)
+        for b in sorted(fixed, key=lambda b: -case.rigid_dims(b)[1]):
+            w, hh = case.rigid_dims(b)
             out[b] = (cx, y, w, hh)
             cx += w
         for b in _edge_order(case, soft):
@@ -258,7 +272,7 @@ def _fill_rows(case, units, x0, W, y0, out, min_h=0.0):
             i += 1
         # realize the row
         soft_a = sum(case.block_area(b) for u in row for b in u.blocks
-                     if not case.fixed_dims(b))
+                     if not case.rigid_dims(b))
         if soft_a <= _EPS:
             h = max(fixh, min_h, 1e-6)
         else:
@@ -311,7 +325,7 @@ def _fill_column(case, blocks, x0, w, y0, y1, obstacles, out, edge_bit):
 
 def _soft_area(case, u):
     return sum(case.block_area(b) for b in u.blocks
-               if not case.fixed_dims(b))
+               if not case.rigid_dims(b))
 
 
 def _unit_ok_at_height(case, u, h, max_aspect=12.0):
@@ -319,7 +333,7 @@ def _unit_ok_at_height(case, u, h, max_aspect=12.0):
     if u.fixed_h > h + 1e-9:
         return False
     for b in u.blocks:
-        if case.fixed_dims(b):
+        if case.rigid_dims(b):
             continue
         w = case.area[b] / h
         if max(w / h, h / w) > max_aspect:
@@ -378,6 +392,27 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
             h = e - y
             if h > 1e-6:
                 segs = _free_intervals(x0, x1, active)
+                # die-edge segments can still host L/R-required units
+                for si, (a, b) in enumerate(segs):
+                    if abs(a - x0) < _EPS and l_queue:
+                        u = l_queue[0]
+                        if _unit_ok_at_height(case, u, h, 30.0):
+                            w_need = u.fixed_w + (_soft_area(case, u) / h
+                                                  if _soft_area(case, u) > 0 else 0.0)
+                            if a + w_need <= b + 1e-9:
+                                l_queue.pop(0)
+                                xx = _place_unit_in_row(case, u, a, y, h, out)
+                                segs[si] = (xx, b)
+                for si, (a, b) in enumerate(segs):
+                    if abs(b - x1) < _EPS and r_queue:
+                        u = r_queue[0]
+                        if _unit_ok_at_height(case, u, h, 30.0):
+                            w_need = u.fixed_w + (_soft_area(case, u) / h
+                                                  if _soft_area(case, u) > 0 else 0.0)
+                            if b - w_need >= a - 1e-9:
+                                r_queue.pop(0)
+                                _place_unit_in_row(case, u, b - w_need, y, h, out)
+                                segs[si] = (a, b - w_need)
                 queue = _segment_fill(case, queue, segs, y, h, out)
             y = e
             continue
@@ -605,6 +640,32 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
     if not movable:
         return [out.get(i, (0.0, 0.0, 1.0, 1.0)) for i in range(n)]
 
+    # MIB unification for groups NOT captured as one unit (split across
+    # clusters/edge groups): force one shared square shape on every member —
+    # a small slack cost that removes the distinct-shape violations.
+    unit_of = {}
+    units0 = build_units(case, movable)
+    for u in units0:
+        for b in u.blocks:
+            unit_of[b] = u
+    forced = {}
+    mgroups = {}
+    for i in movable:
+        if case.mib[i] > 0:
+            mgroups.setdefault(case.mib[i], []).append(i)
+    for gid, grp in mgroups.items():
+        if len(grp) < 2:
+            continue
+        owners = {id(unit_of[b]) for b in grp}
+        amin = min(case.area[b] for b in grp)
+        amax = max(case.area[b] for b in grp)
+        if len(owners) > 1 and amax / amin <= 1.005:
+            anyfixed = any(case.fixed_dims(b) for b in grp)
+            if not anyfixed:
+                s = math.sqrt(amin)
+                for b in grp:
+                    forced[b] = (s, s)
+    case.forced = forced
     units = build_units(case, movable)
     A_mov = sum(u.area for u in units)
     A_pre = sum(r[2] * r[3] for r in obstacles)
@@ -709,6 +770,7 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
         y_hi = max((r[1] + r[3] for r in out.values()), default=0.0)
         fill_region(case, [Unit([i], 'block', case) for i in missing],
                     0.0, W, y_hi, [], out)
+    _retouch_edges(case, out, n)
     return [out[i] for i in range(n)]
 
 
@@ -753,6 +815,48 @@ def _band_row(case, band_units, W, y, obstacles, out, spill):
                              flat=True))
     spill.extend(rem)
     return y + h
+
+
+def _retouch_edges(case, out, n):
+    """Final pass: for every boundary-coded block not on its edge, move it
+    flush if the destination space is empty (checked live). Positions only
+    ever move OUTWARD toward the current bbox edge, so the bbox is stable."""
+    def bbox():
+        xm = min(r[0] for r in out.values()); ym = min(r[1] for r in out.values())
+        xM = max(r[0] + r[2] for r in out.values()); yM = max(r[1] + r[3] for r in out.values())
+        return xm, ym, xM, yM
+    for _ in range(2):
+        xm, ym, xM, yM = bbox()
+        for i in range(n):
+            c = case.boundary[i]
+            if not c or i not in out:
+                continue
+            if case.preplaced[i]:
+                # NEVER move a preplaced block toward a soft boundary edge —
+                # preplaced position is a hard constraint (Q&A Q5)
+                continue
+            x, y, w, h = out[i]
+            nx, ny = x, y
+            if c & 1 and abs(x - xm) > 1e-9:
+                nx = xm
+            if c & 2 and abs(x + w - xM) > 1e-9:
+                nx = xM - w
+            if c & 8 and abs(y - ym) > 1e-9:
+                ny = ym
+            if c & 4 and abs(y + h - yM) > 1e-9:
+                ny = yM - h
+            if nx == x and ny == y:
+                continue
+            clash = False
+            for j, (jx, jy, jw, jh) in out.items():
+                if j == i:
+                    continue
+                if (nx < jx + jw - 1e-9 and nx + w > jx + 1e-9 and
+                        ny < jy + jh - 1e-9 and ny + h > jy + 1e-9):
+                    clash = True
+                    break
+            if not clash:
+                out[i] = (nx, ny, w, h)
 
 
 def _retouch_top(case, top_units, out):
