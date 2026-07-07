@@ -163,7 +163,81 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 pass  # SP-SA failed, keep v9
 
+        # CAMPAIGN_GOLDEN G4 (docs/CAMPAIGN_GOLDEN.md): exact-area dissection
+        # portfolio. Candidates are compared with a feasibility-gated,
+        # self-normalized contest cost (works without golden baselines), so
+        # the committed shelf result can only be replaced by something
+        # strictly better on this case.
+        try:
+            candidates = [best_positions] if best_positions else []
+            from dissect import dissect_solve
+            areas_l = [float(area_targets[i]) for i in range(block_count)]
+            con_l = (constraints[:block_count].tolist()
+                     if constraints is not None else None)
+            tp_l = (target_positions[:block_count].tolist()
+                    if target_positions is not None else None)
+            pins_l = pins_pos.tolist() if pins_pos is not None else []
+            for wf in (0.85, 1.0, 1.15):
+                try:
+                    cand = dissect_solve(block_count, areas_l, b2b_edges,
+                                         p2b_edges, pins_l, con_l, tp_l,
+                                         width_factor=wf)
+                except Exception:
+                    continue
+                if cand and len(cand) == block_count:
+                    candidates.append(cand)
+            if len(candidates) > 1:
+                picked = self._select_candidate(
+                    candidates, constraints, area_targets, b2b_edges,
+                    p2b_edges, pins_pos, target_positions)
+                if picked is not None:
+                    best_positions = picked
+        except Exception as e:
+            if getattr(self, "verbose", False):
+                print(f"[WARN] dissection portfolio failed: {e}", file=sys.stderr)
+
         return best_positions if best_positions is not None else []
+
+    def _select_candidate(self, candidates, constraints, area_targets, b2b,
+                          p2b, pins_pos, target_positions):
+        """Pick the best candidate by the exact contest-cost shape. Gaps are
+        measured against golden baselines when available; otherwise against
+        the FIRST candidate's own metrics (self-normalized) — for same-case
+        comparison this preserves the ranking. Infeasible candidates never
+        win over a feasible one."""
+        href = aref = None
+        best = None
+        best_key = None
+        for pos in candidates:
+            try:
+                feas = self._is_feasible(pos, constraints, area_targets,
+                                         target_positions)
+                hpwl = (calculate_hpwl_b2b(pos, b2b)
+                        + calculate_hpwl_p2b(pos, p2b, pins_pos))
+                bbox = calculate_bbox_area(pos)
+                if href is None:
+                    href = max(hpwl, 1e-9)
+                    aref = max(bbox, 1e-9)
+                if self._hpwl_baseline and self._area_baseline:
+                    # golden baselines available: exact contest semantics
+                    hg = max(0.0, (hpwl - self._hpwl_baseline) / self._hpwl_baseline)
+                    ag = max(0.0, (bbox - self._area_baseline) / self._area_baseline)
+                else:
+                    # self-normalized: gaps must stay SIGNED — clamping against
+                    # a non-golden reference would censor any improvement below
+                    # the first candidate's own metrics
+                    hg = (hpwl - href) / href
+                    ag = (bbox - aref) / aref
+                viol = self._soft_violation_count(pos, constraints)
+                ns = max(self._n_soft(constraints, len(pos)), 1)
+                cost = (1.0 + 0.5 * (hg + ag)) * math.exp(2.0 * viol / ns)
+                key = (0 if feas else 1, cost)
+            except Exception:
+                continue
+            if best_key is None or key < best_key:
+                best_key = key
+                best = pos
+        return best
 
     def _build_portfolio(self, block_count):
         """Build shelf path config. SA for n>=100 only."""

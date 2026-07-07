@@ -126,6 +126,32 @@ class Tensor:
         import copy
         return copy.deepcopy(self._d)
 
+    # --- elementwise comparisons (1-D masks, used by _n_soft etc.) --------
+    def _cmp(self, other, op):
+        if isinstance(other, Tensor):
+            other = other._d
+        if isinstance(self._d, list):
+            return Tensor([1.0 if op(v, other) else 0.0 for v in self._d])
+        return op(self._d, other)
+
+    def __ne__(self, other):
+        return self._cmp(other, lambda a, b: a != b)
+
+    def __eq__(self, other):
+        return self._cmp(other, lambda a, b: a == b)
+
+    def __gt__(self, other):
+        return self._cmp(other, lambda a, b: a > b)
+
+    def __lt__(self, other):
+        return self._cmp(other, lambda a, b: a < b)
+
+    def __ge__(self, other):
+        return self._cmp(other, lambda a, b: a >= b)
+
+    def __le__(self, other):
+        return self._cmp(other, lambda a, b: a <= b)
+
     # torch tensors are hashable by identity; some code may use them in sets
     def __hash__(self):
         return id(self)

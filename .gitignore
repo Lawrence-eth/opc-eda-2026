@@ -61,6 +61,7 @@ results/*.json
 !results/n9_robustness.json
 !results/golden_scored.json
 !results/retrieval_scan.json
+!results/integrated_v2.json
 !results/tuned34_official_full.json
 !results/tuned35_official_full.json
 !results/tuned36_official_full.json

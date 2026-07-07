@@ -1,5 +1,13 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-07 dissect_v2 + integration — CAMPAIGN_GOLDEN G2-G4 (see docs/CAMPAIGN_GOLDEN.md)
+- Hypothesis: golden = near-perfect tessellation ⇒ exact-area dissection closes area_gap structurally.
+- Runtime-adjusted Total @ median {0.5,1,2,3,5}s: 2.260 / 1.849 / 1.584 / 1.508 / 1.484  (v9: 2.549 / 2.110 / 1.924 / 1.903 / 1.903)
+- Local RF=1 Total: 2.1204 | Feasible: 100/100 | runtime avg/max: 0.27s / 1.35s
+- n≥100 hpwl_gap ~0.89, area_gap ~0.21, V_rel ~0.176 (dissect-only stats)
+- Verdict: ✅ kept — integrated behind feasibility-gated best-of (93/100 cases improved)
+- New dead-end: clamped gaps in a self-normalized selector censor improvements (use SIGNED gaps when baselines absent)
+
 > **Purpose:** Complete experiment history, dead-ends, architecture, and strategic assessment.  
 > **Read this before touching code.** Every future agent must read Part I (invariants) and Part II (dead-ends) before acting.  
 > **Last updated:** 2026-05-30, after M4' surgical hybrid (reverted).
