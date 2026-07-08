@@ -1,5 +1,17 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 flat cluster edge-order tie-break probe — ❌ REJECTED
+- Hypothesis: v22 improved non-flat cluster lanes by preserving edge-side
+  priority while using area as the deterministic tie-breaker. Flat clusters
+  in bottom/top bands still use edge-side priority only, leaving same-side
+  members in block-id order. Adding the same descending-area tie-breaker may
+  improve band cluster geometry without adding a portfolio member or runtime.
+- Probe: update `_edge_order()` to sort by side priority then descending area.
+- Result: official validation **1.648337 → 1.649829**, 100/100 feasible.
+  The tie-break helped cases 88/99/89 but lost more on cases 90/97/98/94
+  through HPWL regressions with unchanged area/soft ratios.
+- Verdict: rejected; restore flat-cluster `_edge_order()` to side priority only.
+
 ### 2026-07-08 cluster lane edge-order probe — ✅ KEPT (v22)
 - Hypothesis: current non-flat cluster lane construction sorts cluster members
   only by area before area-balancing them into two stacked equal-width lanes.
