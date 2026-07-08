@@ -1,5 +1,19 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 isolated ps0.75 edge-bary pockets — ❌ REJECTED (NO CODE)
+- Hypothesis: the broad v21 micro-pocket run contained a real case-97
+  `pin_scale=0.75` signal that might pass if isolated and paired with the
+  replay-discovered case-84 pocket.
+- Probe: a tight `wf=1.0`, `pin_scale=0.75`, edge-bary + band-pinx gate hit
+  only the n=105/n=118 structural pockets. Official RF=1 score improved
+  **1.656802 → 1.655817**, 100/100 feasible, with wins on case 84
+  (cost delta **-0.024453**, weighted **-0.000560**) and case 97
+  (cost delta **-0.006279**, weighted **-0.000425**).
+- Final check: the raw gain was too small for the added construction time.
+  Same-window runtime-adjusted medians {1,2,3}s were v20 recheck
+  **1.313/1.176/1.160** vs the ps0.75 probe **1.341/1.185/1.160**.
+  Rejected and restored exact v20 code.
+
 ### 2026-07-08 n=115 boundary edge-slide probe — ❌ REJECTED (NO CODE)
 - Hypothesis: v14's in-bbox boundary edge-slide polish for n=103/119 might
   also capture a narrow n=115 pocket without changing the broader dissection
