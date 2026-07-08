@@ -1,5 +1,25 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 gated narrow-width strong pin-pull candidate — ✅ KEPT (v19)
+- Hypothesis: v18's strong pin-pull hybrid has a second width pocket at
+  `wf=0.85`, but paying it on every n>=100 case is too much runtime. A
+  boundary-heavy structural gate should preserve the quality wins while
+  avoiding the broad-candidate timing loss.
+- Probe: replay showed `width_factor=0.85`, `pin_scale=6.0`,
+  `edge_order_mode="bary"`, `band_order_mode="pinx"` wins concentrated on
+  cases 81, 83, 92, 96, and 98. Broad official integration scored
+  **1.665114**, 100/100, but mixed-window runtime-adjusted score lost at
+  median 1s against the older fast v18 timing sample. Final gate runs the
+  extra candidate only for n>=100 when `31 <= boundary_count <= 34` and
+  (`len(p2b_edges) <= 1200` or `len(b2b_edges) > 6000`).
+- Result: official validation **1.684492 → 1.665114**, 100/100 feasible.
+  Because local host load shifted, keep/revert used a same-window v18 recheck:
+  v18 recheck **1.673/1.368/1.204/1.179** vs v19
+  **1.659/1.357/1.192/1.166** at medians {0.5,1,2,3}s. Package rebuilt;
+  wrapper score **1.665114**, 0/100 position diffs, avg 0.282s in the slow
+  wrapper sample; binary fuzz 400/400 feasible, avg 0.235s, p95 0.463s,
+  max 0.606s.
+
 ### 2026-07-08 strong pin-pull hybrid ordering candidate — ✅ KEPT (v18)
 - Hypothesis: the v16/v17 hybrid ordering still under-pulls high-weight blocks
   toward absolute pin anchors. A stronger pin pull should be cheap if limited

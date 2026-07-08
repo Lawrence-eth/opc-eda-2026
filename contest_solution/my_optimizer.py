@@ -230,15 +230,22 @@ class MyOptimizer(FloorplanOptimizer):
             # High-weight HPWL probe: stronger pin pull in the hybrid ordering
             # is cheap and replay showed wins concentrated in n>=100 cases.
             if block_count >= 100:
-                try:
-                    cand = dissect_solve(*dis_args, width_factor=1.0,
-                                         pin_scale=6.0,
-                                         edge_order_mode="bary",
-                                         band_order_mode="pinx")
-                except Exception:
-                    cand = None
-                if cand and len(cand) == block_count:
-                    candidates.append(cand)
+                strong_pin_wfs = [1.0]
+                if (
+                    31 <= boundary_count <= 34
+                    and (len(p2b_edges) <= 1200 or len(b2b_edges) > 6000)
+                ):
+                    strong_pin_wfs.append(0.85)
+                for hybrid_wf in strong_pin_wfs:
+                    try:
+                        cand = dissect_solve(*dis_args, width_factor=hybrid_wf,
+                                             pin_scale=6.0,
+                                             edge_order_mode="bary",
+                                             band_order_mode="pinx")
+                    except Exception:
+                        cand = None
+                    if cand and len(cand) == block_count:
+                        candidates.append(cand)
             # Case-70-class obstacle layout: the incumbent bottom/top band
             # height iteration can snowball when low preplaced obstacles
             # fragment the band. Keep the capped variant as a single extra

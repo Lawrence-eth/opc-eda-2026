@@ -5,9 +5,10 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-08, round 11): official 1.6845, 100/100, rt avg 0.229s.
-radj@1s 1.317 vs v9's 2.110 (-38%). G3 V_rel gate met (n≥100 vr 0.094).
-Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845.
+**Status (2026-07-08, round 12): official 1.6651, 100/100, rt avg 0.264s
+(host-slow sample). radj@1s 1.357 vs v9's 2.110 (-36%); same-window v18
+recheck was 1.368. G3 V_rel gate met (n≥100 vr 0.090).
+Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651.
 Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
 candidate), hg 0.65 on n≥100 integrated score drivers (ordering), grouping 56 / MIB 123
 residuals. Golden mining says MIB should be exact, clusters should almost
@@ -160,6 +161,11 @@ runtime floor even with the executable spawn overhead (~0.11s).
   (`pin_scale=6.0`, edge-bary, band-pinx) only for n>=100. Official
   **1.6845**, 100/100; radj@{1,2,3}s = **1.317/1.191/1.179**; wrapper
   parity 0 position diffs; fuzz 400/400.
+  Ninth kept polish added a gated `wf=0.85` version of that strong pin-pull
+  candidate for boundary-heavy n>=100 cases with low p2b or dense b2b nets.
+  Official **1.6651**, 100/100; same-window v18 recheck gate passed at
+  radj@{1,2,3}s (**1.357/1.192/1.166** vs **1.368/1.204/1.179**); wrapper
+  parity 0 position diffs; fuzz 400/400.
   Still open: SA over the dissection (sibling swaps, subtree
   transplants, strip re-partitions) under exact cost; aspect-bound tuning;
   fixed/preplaced slack recovery; per-case portfolio.
@@ -265,6 +271,13 @@ runtime floor even with the executable spawn overhead (~0.11s).
   cases. Official **1.6845**, 100/100; radj@{1,2,3}s =
   **1.317/1.191/1.179**. Package rebuilt + parity-verified at 1.684492;
   binary fuzz 400/400 feasible.
+- Round 12: replayed a narrower width pocket for the strong pin-pull hybrid.
+  Broad `wf=0.85` improved RF=1 but lost median-1 against the older fast v18
+  timing sample; final gate runs it only when `31 <= boundary_count <= 34`
+  and (`p2b <= 1200` or `b2b > 6000`). Official **1.6651**, 100/100.
+  Same-window v18 recheck gate passed at radj@{1,2,3}s =
+  **1.357/1.192/1.166** vs **1.368/1.204/1.179**. Package rebuilt +
+  parity-verified at 1.665114; binary fuzz 400/400 feasible.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;
   obstacle slabs; cluster lanes; MIB slots; barycenter ordering. Iterations:

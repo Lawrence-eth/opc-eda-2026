@@ -16,21 +16,22 @@ boundary edge-slide polish + width-adaptive hybrid pin-x/barycentric edge
 ordering candidate + high-weight strong pin-pull hybrid ordering candidate**
 (CAMPAIGN_GOLDEN G6 polish) —
 `contest_solution/my_optimizer.py` + `contest_solution/dissect.py`; result
-snapshot `results/integrated_v18.json`.
+snapshot `results/integrated_v19.json`.
 Previous locked entry: `sprint5_v9` (2.7182, `results/v9_locked.json`) —
 still the per-case fallback inside solve().
 
 | Metric | Value |
 |--------|-------|
-| Validation score (RF=1.0) | **1.6845** (v9: 2.7182) |
+| Validation score (RF=1.0) | **1.6651** (v9: 2.7182) |
 | Feasible cases | **100 / 100** |
-| Average runtime | **~0.229s/case** (max ~0.77s) |
-| Runtime-adjusted total @ median 1s | **1.317** (v9: 2.11; baseline `quadratic_v1`: 2.65) |
+| Average runtime | **~0.264s/case** (max ~0.90s; host-slow sample) |
+| Runtime-adjusted total @ median 1s | **1.357** (same-window v18 recheck: 1.368; v9: 2.11) |
 
 **Note on the score:** the contest cost is *runtime-adjusted* —
 `cost · max(0.7, (rt/median)^0.3)` with a hard 0.7× floor for being ≥~3×
 faster than the field median. The current solver holds v9's speed class with
-38% better raw quality, so it improves at the keep-gate medians {1,2,3}s.
+39% better raw quality, and the kept v19 gate improves a same-window v18
+recheck at medians {1,2,3}s.
 Runtime discipline is a standing rule: changes are judged runtime-adjusted at
 median ∈ {1,2,3}s (`HANDOFF.md` §5.3), never on the raw score alone.
 
@@ -48,7 +49,7 @@ contest_solution/
 packaging/                   # Submission executable sources + build script + organizers' op_wrapper
 scripts/                     # dissect_eval / fuzz_binary / analyze / audit / release-check / retrieval scan
 tests/                       # Regression + unit tests (51)
-results/                     # Curated result artifacts (integrated_v18.json = current)
+results/                     # Curated result artifacts (integrated_v19.json = current)
 external/FloorSet/           # Contest framework + datasets (gitignored; see HANDOFF bootstrap)
 docs/
 ├── CAMPAIGN_GOLDEN.md       # ACTIVE plan: evidence, milestones, open leads
@@ -84,7 +85,7 @@ all workflows: `HANDOFF.md` §5.)
 
 ```bash
 .venv/bin/python -m pytest                          # all tests pass (torch-dependent tests skip if torch absent)
-.venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/integrated_v18.json, --max-score 1.69)
+.venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/integrated_v19.json, --max-score 1.67)
 ```
 
 ## Documentation

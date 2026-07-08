@@ -4,13 +4,13 @@
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v18`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v19`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.6845** | 2.7182 |
+| Score (RF=1) | **1.6651** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.229s / 0.768s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.317 / 1.191 / 1.179** | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.684492, 0 position diffs, avg 0.235s | — |
+| Runtime avg / max | 0.264s / 0.897s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.357 / 1.192 / 1.166** | 2.110 / 1.924 / 1.903 |
+| Packaged binary (official command, incl. spawn) | 1.665114, 0 position diffs, avg 0.282s | — |
 
 ## What the solver is
 
@@ -28,6 +28,8 @@ band ordering for n<118 while preserving v15 width-first bands on n>=118; v17
 uses wf=0.8 for that hybrid candidate on high-boundary, moderate-net 95..117
 block cases, without adding another candidate; v18 adds one high-weight
 strong pin-pull hybrid ordering candidate (`pin_scale=6.0`) only for n>=100.
+v19 adds a gated narrower-width version of that candidate (`wf=0.85`) only for
+boundary-heavy n>=100 cases with low p2b edge count or very dense b2b nets.
 The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -42,7 +44,7 @@ Key structural properties (why it beats everything previous):
 ## Verification state (2026-07-08)
 
 - 51/51 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v18.json`, max-score 1.69).
+  (defaults: `results/integrated_v19.json`, max-score 1.67).
 - Submission package rebuilt + parity-verified (0/100 position diffs through
   the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
@@ -50,8 +52,8 @@ Key structural properties (why it beats everything previous):
 
 ## Where the remaining score is
 
-Current n≥100 averages: hpwl_gap 0.621, area_gap 0.155, V_rel 0.094.
-Weighted worst-case averages: hpwl_gap 0.621, area_gap 0.155, V_rel 0.094.
+Current n≥100 averages: hpwl_gap 0.614, area_gap 0.156, V_rel 0.090.
+Weighted worst-case averages: hpwl_gap 0.614, area_gap 0.156, V_rel 0.090.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
 play would score 1.108 (RF=1) / 0.776 (at the runtime floor). Golden-structure
 mining is now in `results/golden_structure.json`: golden pays boundary misses
