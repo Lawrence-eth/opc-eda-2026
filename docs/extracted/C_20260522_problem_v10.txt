@@ -1,6 +1,3 @@
-
-
---- Page 1 ---
 The FloorSet Challenge: Data-Driven SoC
 Floorplanning
 Organizers
@@ -33,12 +30,9 @@ rently span several days—to automated cycles completed within minutes. We hypo
 that this transition is best achieved through machine learning (ML)-guided optimiza-
 tion. However, the effectiveness of such models depends critically on the availability of
 high-fidelity, labeled datasets. To address this gap, we provide a comprehensive suite
-of benchmark datasets derived from realistic industrial scenarios.
-By releasing these
+of benchmark datasets derived from realistic industrial scenarios. By releasing these
 1
 
-
---- Page 2 ---
 Figure 1: This contest is the catalyst for agentic systems that can solve industrial floor-
 planning problems in seconds.
 datasets (e.g., FloorSet), we challenge the community to develop ML-driven solutions
@@ -54,12 +48,10 @@ Fixed-outline floorplanning [6, 14] under diverse placement constraints [17, 25,
 landscape. While the community has historically relied on legacy benchmarks such as
 MCNC and GSRC [8, 27] to validate a wide array of solvers—ranging from classical meta-
 heuristics to recent hybrid learning frameworks [1, 2, 5, 7, 22, 23, 34, 36, 39, 40]—these
-datasets lack the rigor required for modern machine learning validation.
-Specifically,
+datasets lack the rigor required for modern machine learning validation. Specifically,
 they fail to provide ground-truth optimal solutions, which are standard in the broader
 machine learning field, and often treat constraints in isolation rather than integrating
-them into a holistic design problem.
-In contrast, our proposed dataset FloorSet [26]
+them into a holistic design problem. In contrast, our proposed dataset FloorSet [26]
 bridges this gap by providing millions of layout solutions where area and wirelength are
 demonstrably optimal, and all placement constraints are strictly satisfied. By leveraging
 a reverse-engineering methodology that ensures near-optimality by construction, these
@@ -71,8 +63,6 @@ hard blocks, providing a streamlined yet high-fidelity environment for evaluatin
 generation of machine learning-driven EDA tools.
 2
 
-
---- Page 3 ---
 Proof of Concept
 Our preliminary experiments indicate that traditional heuristic methods, even with mas-
 sive parallelism such as distributed SA [28], struggle with the FloorSet-Lite dataset. Even
@@ -93,12 +83,11 @@ constrained by its predetermined area target from A = {ai | i = 1, 2, . . . , k}
 • T = {t1, t2, . . . , tr} represents r terminals, which are predefined fixed points on the
 2D plane used for external interfacing. Terminal locations are provided in the input
 and remain fixed throughout the contest.
-• Inter-module connectivity: weighted adjacency matrix W (int) ∈Rk×k, where W (int)
+• Inter-module connectivity: weighted adjacency matrix W (int) ∈ Rk×k, where W (int)
 ij
-is the weight of the net connecting bi to bj. A weight of zero indicates no connection.
-• External connectivity: weighted adjacency matrix W (ext) ∈Rk×r, where W (ext)
-ij
-is
+is the weight of the net connectingbi to bj. A weight of zero indicates no connection.
+• External connectivity: weighted adjacency matrix W (ext) ∈ Rk×r, where W (ext)
+ij is
 the weight of the net connecting bi to terminal tj. A weight of zero indicates no
 connection.
 • Soft constraints (for the purpose of this contest, violations incur a penalty but do
@@ -110,8 +99,7 @@ gap). A group is satisfied if all its blocks form a single connected component
 through shared edges.
 – Multi-Instantiation Blocks (MIB): BQ
 mib defines Q groups where blocks
-should share identical dimensions (width and height).
-These represent in-
+should share identical dimensions (width and height). These represent in-
 stances of the same master cell that must have uniform shape.
 – Boundary constraints: Bboundary specifies blocks that should be placed such
 that at least one edge touches the bounding-box boundary (for edge con-
@@ -120,16 +108,6 @@ constraints). The specific edge or corner requirement is provided per block in
 the input.
 3
 
-
---- Page 4 ---
-– Preplaced blocks: Bpreplaced specifies blocks with predetermined optimal
-locations (xi, yi) and dimensions (wi, hi). For these blocks, the area target ai
-is ignored—only the specified width and height matter. Deviating from either
-the location or dimensions incurs a penalty.
-– Fixed-shape blocks: Bfixed specifies blocks with predetermined dimensions
-(wi, hi) only; their locations are flexible. For these blocks, the area target ai
-is ignored—only the specified width and height matter. Deviating from the
-specified dimensions incurs a penalty.
 • Hard constraints (violations that make the solution infeasible for that test case):
 – Area Targets and Dimensionality: The dimensions of all blocks must
 strictly adhere to their specified requirements. For preplaced and fixed-shape
@@ -137,42 +115,56 @@ blocks, the input dimensions wi and hi are immutable. For all other blocks
 (soft blocks), the realized width wi and height hi must satisfy the target area
 ai within a 1% relative error threshold:
 
-wihi −ai
+wihi − ai
 ai
- ≤0.01
-(1)
+ ≤ 0.01 (1)
 Any solution that deviates from the fixed dimensions (for preplaced and fixed-
 shape blocks) or exceeds the 1% area tolerance for soft blocks is classified as
 infeasible.
 – Overlap-Free Constraint: The solution must be strictly overlap-free. For
 any two distinct blocks bi and bj (i ̸= j), the area of their intersection must
 be zero:
-Area(bi ∩bj) = 0
+Area(bi ∩ bj) = 0
 Any intersection between block geometries, regardless of magnitude, renders
-the solution infeasible.
-Note: Blocks may share an edge (touch) without
+the solution infeasible. Note: Blocks may share an edge (touch) without
 overlapping.
+– Fixed-Shape Immutability: 1 For each block b ∈ Bfixed, the solution di-
+mensions must exactly match the input specification. The target area ab is
+ignored—only the specified width and height matter. A solution is infeasible
+if, for any fixed-shape block:
+wb ̸= winput
+b or hb ̸= hinput
+b
+– Preplaced Immutability: 2 For each block b ∈ Bpreplaced, both the location
+and dimensions must exactly match the input specification. The target area ab
+is ignored—only the specified location, width, and height matter. A solution
+is infeasible if, for any preplaced block:
+(xb, yb) ̸= (xinput
+b , yinput
+b ) or ( wb, hb) ̸= (winput
+b , hinput
+b )
 Infeasible solutions receive a fixed penalty cost of M = 10 for that test case, as
-defined in the Objective Function (Equation 2).
-This ensures that any feasible
+defined in the Objective Function (Equation 2). This ensures that any feasible
 solution, regardless of quality, scores better than an infeasible one.
 Expected Output
 • Overlap-free block locations:
 L = {(xi, yi) | i = 1, 2, . . . , k}
-where (xi, yi) are the coordinates of the lower-left corner of block bi. The co-
-ordinate system has its origin (0, 0) at the lower-left corner of the canvas, with x
+1Previously treated as a soft constraint; updated to hard constraint in both the documentation and
+the evaluation code.
+2Previously treated as a soft constraint; updated to hard constraint in both the documentation and
+the evaluation code.
+4
+
+where ( xi, yi) are the coordinates of the lower-left corner of block bi. The co-
+ordinate system has its origin (0 , 0) at the lower-left corner of the canvas, with x
 increasing to the right and y increasing upward. For preplaced blocks, the coordi-
 nates (xi, yi) are immutable and must match the input specification exactly.
 • Block dimensions:
 D = {(wi, hi) | i = 1, 2, . . . , k}
 where wi is the width (extent in the x direction) and hi is the height (extent
-in the y direction) of block bi.
-Thus, block bi occupies the rectangular region
+in the y direction) of block bi. Thus, block bi occupies the rectangular region
 [xi, xi + wi] × [yi, yi + hi].
-4
-
-
---- Page 5 ---
 • Output format: Solutions must be submitted in the format specified in the
 FloorSet repository. See the repository documentation for file format details and
 submission instructions.
@@ -180,22 +172,26 @@ Objective Function
 We use the following multi-objective cost function:
 Cost =
 
-
-
-
-
-
+
+
+min
+ 
 1 + α · (HPWLgap + Areagap
 bbox)
 
-× eβ·Violationsrelative × max(0.7, RuntimeFactorγ),
-if feasible
-M,
-if infeasible
+× eβ·Violationsrelative
+× max(0.7, RuntimeFactorγ) , M − 10−6
+!
+, if feasible
+M, if infeasible
 (2)
 where:
-• A solution is infeasible if it violates any hard constraint (block overlap or area
-tolerance violation). Infeasible solutions receive a fixed penalty cost M = 10.
+• A solution is infeasible if it violates any hard constraint (block overlap, area tol-
+erance violation, fixed-shape dimension mismatch, or preplaced location/dimension
+mismatch). Infeasible solutions receive a fixed penalty cost of M = 10 for that test
+case, as defined in the Objective Function (Equation 2). Feasible costs are capped
+at M − 10−6, to guarantee that any feasible solution, regardless of quality, always
+scores strictly better than an infeasible one.
 • α = 0.5 weights the quality metrics (HPWL and bounding-box area gaps).
 • β = 2.0 controls the exponential violation penalty.
 • γ = 0.3 dampens the runtime factor.
@@ -205,215 +201,156 @@ tolerance violation). Infeasible solutions receive a fixed penalty cost M = 10.
 • Areagap
 bbox is the relative gap between the achieved bounding-box area and the
 baseline (optimal) area.
-• Violationsrelative ∈[0, 1] quantifies soft-constraint violations.
-• RuntimeFactor1 =
-Your Runtime
-Median Runtime of All Submissions.
-Interpretation:
-• Feasible solutions have costs typically in the range [0.7, 7.4]:
-– Best case: perfect quality, 0 violations, fast →≈0.7
-– Worst feasible case: poor quality, 100% soft violations, slow →≈7.4×1.5 ≈11
-• Infeasible solutions receive M = 10, which is:
-– Higher than any reasonable feasible solution
-– But not so extreme that a single failure dominates the entire score
-• Example impact on Total Score: With 100 test cases and exponential weighting:
-1This metric is computed independently for each test design, using that individual test case’s median
+• Violationsrelative ∈ [0, 1] quantifies soft-constraint violations.
+• RuntimeFactor3 = Your Runtime
+Median Runtime of All Submissions .
+3This metric is computed independently for each test design, using that individual test case’s median
 runtime as the sole reference point.
 5
 
-
---- Page 6 ---
+Interpretation:
+• Feasible solutions have costs typically in the range [0 .7, 7.4]:
+– Best case: perfect quality, 0 violations, fast → ≈ 0.7
+– Worst feasible case: poor quality, 100% soft violations, slow → capped at
+M − 10−6 < 10
+• Infeasible solutions receive M = 10, which is:
+– Higher than any reasonable feasible solution
+– But not so extreme that a single failure dominates the entire score
+• Example impact on Total Score:With 100 test cases and exponential weighting:
 – A participant who fails 1 large test case (e.g., 120 blocks) will be significantly
 penalized due to the high weight of larger instances.
 – A participant who fails 1 small test case (e.g., 21 blocks) will be penalized less
 severely.
 • Exponential violation penalty: The eβV term creates rapidly increasing penal-
 ties:
-Violationsrelative
-Cost multiplier
-0.0
-×1.00
-0.25
-×1.65
-0.5
-×2.72
-1.0
-×7.39
-• Capped runtime factor2:
-RuntimeFactor
-Effect (negative is better)
-≤0.31 (≈3×+ or more faster)
-−30% (capped)
-0.5 (2× faster)
-−19%
-1.0 (median)
-baseline
-2.0 (2× slower)
-+23%
-4.0 (4× slower)
-+51%
+Violationsrelative Cost multiplier
+0.0 ×1.00
+0.25 ×1.65
+0.5 ×2.72
+1.0 ×7.39
+• Capped runtime factor 4:
+RuntimeFactor Effect (negative is better)
+≤ 0.31 (≈ 3×+ or more faster) −30% (capped)
+0.5 (2× faster) −19%
+1.0 (median) baseline
+2.0 (2× slower) +23%
+4.0 (4× slower) +51%
 • Example scores:
-Scenario
-Cost
-Perfect solution, 10× faster
-0.70
-Perfect solution, ≈3× faster
-0.70
-Perfect solution, median runtime
-1.00
-10% gaps, 25% violations, 10× faster
-1.24
-50% soft violations, median runtime
-2.72
-100% soft violations, 2× slower
-9.09
-Infeasible (overlap or area violation)
-10.00
+Scenario Cost
+Perfect solution, 10× faster 0.70
+Perfect solution, ≈ 3× faster 0.70
+Perfect solution, median runtime 1.00
+10% gaps, 25% violations, 10 × faster 1.24
+50% soft violations, median runtime 2.72
+100% soft violations, 2 × slower 9.09
+Infeasible (any hard constraint violation) 10.00
 Lower cost is better. Hard constraint violations result in a fixed penalty of M = 10,
 ensuring infeasible solutions are always worse than feasible ones while allowing partial
 credit across the 100 test cases.
-Half-Perimeter Wirelength (HPWL):
-HPWL sums the half-perimeters of bound-
-ing boxes enclosing connected blocks and terminals, weighted by connection weights.
-Inter-module HPWL (computed using the bounding box of two connected blocks):
+4Runtime penalties for slowness are uncapped, while the benefit for speed are subject to a fixed upper
+limit.
+6
+
+Half-Perimeter Wirelength (HPWL): HPWL sums the weighted Manhattan dis-
+tances between centroids of connected blocks and terminals. Inter-module HPWL (com-
+puted using Manhattan distance between block centroids):
 HPWLint =
-k
-X
+kX
 i=1
-k
 X
 j>i
 W (int)
 ij
-(max(xi + wi, xj + wj) −min(xi, xj) + max(yi + hi, yj + hj) −min(yi, yj)) .
-2Runtime penalties for slowness are uncapped, while the benefit for speed are subject to a fixed upper
-limit.
-6
-
-
---- Page 7 ---
+ cx
+i − cx
+j
+ +
+cy
+i − cy
+j
+
+, (3)
+where cx
+i = xi + wi/2 and cy
+i = yi + hi/2 are the centroid coordinates of block bi.
 External connections (computed using Manhattan distance from block center to ter-
 minal):
 HPWLext =
-k
-X
+kX
 i=1
-r
-X
+rX
 j=1
 W (ext)
 ij
- |xi + wi/2 −xtj| + |yi + hi/2 −ytj|
+ 
+|xi + wi/2 − xtj | + |yi + hi/2 − ytj |
 
 .
-where (xtj, ytj) denotes the coordinates of terminal tj.
+where (xtj , ytj ) denotes the coordinates of terminal tj.
 Gap-based normalization:
-HPWLgap = (HPWLint + HPWLext) −HPWLbaseline
+HPWLgap = (HPWLint + HPWLext) − HPWLbaseline
 HPWLbaseline
 A value of 0 means the solution matches the baseline wirelength exactly. A value of
 0.15 means the solution is 15% worse than baseline.
-Bounding-Box Area:
-For floorplan M = {(xi, yi, wi, hi) | i = 1, . . . , k}:
+Bounding-Box Area: For floorplan M = {(xi, yi, wi, hi) | i = 1, . . . , k}:
 Lower-left corner of bounding box: xmin = mini xi, ymin = mini yi.
 Upper-right corner of bounding box: xmax = maxi(xi + wi), ymax = maxi(yi + hi).
-Let Areabbox = (xmax −xmin) × (ymax −ymin).
+Let Areabbox = (xmax − xmin) × (ymax − ymin).
 Gap-based normalization:
 Areagap
-bbox = Areabbox −Areabaseline
+bbox = Areabbox − Areabaseline
 bbox
 Areabaseline
 bbox
 A value of 0 means the solution matches the baseline area exactly. A value of 0.05
 means the solution uses 5% more area than baseline.
-Violation Cost:
-Violations are computed differently depending on the constraint type:
-• Per-block constraints (Fixed-shape, Preplaced, Boundary): Each block either
-satisfies (0) or violates (1) its constraint.
+Violation Cost: Violations are computed differently depending on the constraint type:5
+• Per-block constraints (Boundary) : Each block either satisfies (0) or violates
+(1) its constraint.
 • Per-group constraints (Grouping, MIB): Violations are counted per group based
-on the degree of fragmentation (connected components −1) or shape inconsistency
-(distinct shapes −1).
-Violationsrelative = Vfixed + Vpreplaced + Vgrouping + Vboundary + Vmib
+on the degree of fragmentation (connected components − 1) or shape inconsistency
+(distinct shapes − 1).
+Violationsrelative = Vgrouping + Vboundary + Vmib
 Nsoft
-(3)
+(4)
 Where Nsoft is the normalization factor computed as:
-Nsoft = |Bfixed| + |Bpreplaced| + |Bboundary| +
-P
-X
+Nsoft = |Bboundary| +
+PX
 p=1
 (|Gp| −1) +
-Q
-X
+QX
 q=1
 (|Mq| −1)
-Here, |Gp| is the number of blocks in grouping group p, and |Mq| is the number of blocks
-in MIB group q. This normalization ensures that Violationsrelative ∈[0, 1].
-Fixed-shape violations (block dimensions do not match the specified width and height):
-Vfixed =
-X
-b∈Bfixed
-1b,
-1b =
-(
-1,
-if wb ̸= winput
-b
-or hb ̸= hinput
-b
-0,
-otherwise.
+5Updated to exclude fixed and preplaced from soft constraints.
 7
 
-
---- Page 8 ---
-Preplaced violations (block dimensions or location do not match the specification):
-Vpreplaced =
-X
-b∈Bpreplaced
-1b,
-1b =
-(
-1,
-if (xb, yb) ̸= (xinput
-b
-, yinput
-b
-) or (wb, hb) ̸= (winput
-b
-, hinput
-b
-)
-0,
-otherwise.
+Here, |Gp| is the number of blocks in grouping group p, and |Mq| is the number of blocks
+in MIB group q. This normalization ensures that Violations relative ∈ [0, 1].
 Boundary violations (block does not touch the required edge or corner of the bounding
 box):
 Vboundary =
 X
 b∈Bboundary
-1b,
-1b =
+1 b, 1 b =
 (
-1,
-if b does not touch its specified edge or corner
-0,
-otherwise.
+1, if b does not touch its specified edge or corner
+0, otherwise.
 Grouping violations: Let P be the number of groups, Gp the set of blocks in group p,
-and cp the number of connected components formed by blocks in Gp (where two blocks are
+and cp the number of connected components formed by blocks inGp (where two blocks are
 connected if they share an edge). A perfectly satisfied group has cp = 1. The maximum
 violation for a group of |Gp| blocks is |Gp| −1 (when all blocks are isolated):
 Vgrouping =
-P
-X
+PX
 p=1
-(cp −1).
-Multi-instantiation violations: Let Q be the number of MIB groups, and sq the number
-of distinct (w, h) pairs among blocks in group q. A perfectly satisfied MIB group has
+(cp − 1).
+Multi-instantiation violations: Let Q be the number of MIB groups, andsq the number
+of distinct ( w, h) pairs among blocks in group q. A perfectly satisfied MIB group has
 sq = 1. The maximum violation for a group of |Mq| blocks is |Mq| −1 (when all blocks
 have different shapes):
 Vmib =
-Q
-X
+QX
 q=1
-(sq −1).
+(sq − 1).
 Dataset
 Machine learning has advanced rapidly with scalable transformers leveraging large pre-
 trained datasets. However, SoC floorplanning lacks such datasets for supervised learning.
@@ -432,45 +369,39 @@ Used for final submission evaluation.
 • The repository includes PyTorch DataLoaders, score evaluators, infeasibility checks,
 and plotting utilities. We strongly recommend using the provided evaluator
 to verify solutions before submission.
-• Baseline values (HPWLbaseline, Areabaseline
-bbox
-) for each test case are provided in the
+• Baseline values (HPWL baseline, Area baseline
+bbox ) for each test case are provided in the
 dataset.
 8
 
-
---- Page 9 ---
 Total Score (Cost)
 The total score is the weighted average of benchmark costs over 100 test examples (hidden
 from the candidates), with exponentially increasing weight for larger instances:
 Total Score =
-120
-X
+120X
 i=21
-Cost[i] ·
-eni
+Cost[i] · eni/12
 P120
-j=21 enj ,
+j=21 enj /12 ,
 where:
 • Cost[i] is the cost (computed using Equation 2) for test case i.
 • ni is the number of blocks in test case i (i.e., ni = i for this dataset).
-• Equivalently, we are multiplying the cost of each testcase i with a normalized weight
-λi = eni
+• Equivalently, we are multiplying the cost of each testcasei with a normalized weight
+λi = eni/12
 Z , where Z = P120
-j=21 enj is the normalization constant and P120
+j=21 enj /12 is the normalization constant and P120
 i=21 λi = 1:
 Total Score =
-120
-X
+120X
 i=21
 λi · Cost[i]
 This exponential weighting scheme ensures that larger, more challenging instances
 contribute more heavily to the final score.
 • Lower Total Score is better. A perfect solution achieving baseline metrics on
-all test cases with median runtime would have a Total Score close to 0.1.
+all test cases with median runtime would have a Total Score close to 1.0.
 Baseline metrics and a live leaderboard are provided on the leaderboard page.
 Incentivizing Machine Learning Solutions
-In this contest, we incentivize data-driven ML-guided solutions in the following ways3:
+In this contest, we incentivize data-driven ML-guided solutions in the following ways 6:
 • Efficiency-Focused Scoring: Runtime is explicitly integrated into the scoring
 function, and the exponential weighting by block count penalizes methods that
 scale poorly with problem size.
@@ -479,206 +410,152 @@ cal methods, which struggle to scale efficiently as runtime penalties increase. 
 methods that learn from training data can potentially generalize to larger instances
 more efficiently.
 References
-[1]
-S.N. Adya and I.L. Markov. “Fixed-outline floorplanning: enabling hierarchical de-
+[1] S.N. Adya and I.L. Markov. “Fixed-outline floorplanning: enabling hierarchical de-
 sign”. In: IEEE Transactions on Very Large Scale Integration (VLSI) Systems 11.6
 (2003), pp. 1120–1135.
-[2]
-Mohammad Amini et al. “Generalizable Floorplanner through Corner Block List
+[2] Mohammad Amini et al. “Generalizable Floorplanner through Corner Block List
 Representation and Hypergraph Embedding”. In: KDD ’22. Association for Com-
 puting Machinery, 2022, pp. 2692–2702. isbn: 9781450393850.
-3Submissions found to be reverse-engineering the dataset generator rather than developing genuine
+6Submissions found to be reverse-engineering the dataset generator rather than developing genuine
 algorithmic solutions will be disqualified.
 9
 
-
---- Page 10 ---
-[3]
-Suchandra Banerjee, Anand Ratna, and Suchismita Roy. “Satisfiability modulo
+[3] Suchandra Banerjee, Anand Ratna, and Suchismita Roy. “Satisfiability modulo
 theory based methodology for floorplanning in VLSI circuits”. In: 2016 Sixth In-
-ternational Symposium on Embedded Computing and System Design (ISED). 2016,
+ternational Symposium on Embedded Computing and System Design (ISED) . 2016,
 pp. 91–95.
-[4]
-Hayward H. Chan, Saurabh N. Adya, and Igor L. Markov. “Are floorplan repre-
+[4] Hayward H. Chan, Saurabh N. Adya, and Igor L. Markov. “Are floorplan repre-
 sentations important in digital design?” In: Proceedings of the 2005 International
-Symposium on Physical Design. ISPD ’05. San Francisco, California, USA: Associ-
+Symposium on Physical Design . ISPD ’05. San Francisco, California, USA: Associ-
 ation for Computing Machinery, 2005, pp. 129–136. isbn: 1595930213.
-[5]
-Guolong Chen et al. “VLSI floorplanning based on Particle Swarm Optimization”.
+[5] Guolong Chen et al. “VLSI floorplanning based on Particle Swarm Optimization”.
 In: 2008 3rd International Conference on Intelligent System and Knowledge Engi-
 neering. Vol. 1. 2008, pp. 1020–1025.
-[6]
-Tung-Chieh Chen and Yao-Wen Chang. “Modern floorplanning based on B/sup
+[6] Tung-Chieh Chen and Yao-Wen Chang. “Modern floorplanning based on B/sup
 */-tree and fast simulated annealing”. In: IEEE Transactions on Computer-Aided
 Design of Integrated Circuits and Systems 25.4 (2006), pp. 637–650.
-[7]
-Chuan-Wen Chiang. “ANT COLONY OPTIMIZATION FOR VLSI FLOORPLAN-
+[7] Chuan-Wen Chiang. “ANT COLONY OPTIMIZATION FOR VLSI FLOORPLAN-
 NING WITH CLUSTERING CONSTRAINTS”. In: Journal of the Chinese Insti-
 tute of Industrial Engineers 26.6 (2009), pp. 440–448.
-[8]
-“GSRC”. url: http://vlsicad.eecs.umich.edu/BK/GSRCbench.
-[9]
-Zhuolun He et al. “Learn to Floorplan through Acquisition of Effective Local Search
+[8] “GSRC”. url: http://vlsicad.eecs.umich.edu/BK/GSRCbench.
+[9] Zhuolun He et al. “Learn to Floorplan through Acquisition of Effective Local Search
 Heuristics”. In: 2020 IEEE 38th International Conference on Computer Design
 (ICCD). 2020, pp. 324–331.
-[10]
-Xianlong Hong et al. “Corner block list: an effective and efficient topological rep-
+[10] Xianlong Hong et al. “Corner block list: an effective and efficient topological rep-
 resentation of non-slicing floorplan”. In: IEEE/ACM International Conference on
 Computer Aided Design. ICCAD - 2000. IEEE/ACM Digest of Technical Papers
-(Cat. No.00CH37140). 2000, pp. 8–12.
-[11]
-Chyi-Shiang Hoo et al. “Variable-Order Ant System for VLSI multiobjective floor-
+(Cat. No.00CH37140) . 2000, pp. 8–12.
+[11] Chyi-Shiang Hoo et al. “Variable-Order Ant System for VLSI multiobjective floor-
 planning”. In: Applied Soft Computing 13.7 (2013), pp. 3285–3297. issn: 1568-4946.
-[12]
-R. Jeyarohini, K. R. Aravind Britto, and M. P. Ramkumar. “Optimization and
+[12] R. Jeyarohini, K. R. Aravind Britto, and M. P. Ramkumar. “Optimization and
 Representation of Non-Slicing VLSI Floorplanning”. In: 2023 4th International
-Conference on Smart Electronics and Communication (ICOSEC). 2023, pp. 26–
+Conference on Smart Electronics and Communication (ICOSEC) . 2023, pp. 26–
 31.
-[13]
-Pengli Ji et al. “A Quasi-Newton-based Floorplanner for fixed-outline floorplan-
+[13] Pengli Ji et al. “A Quasi-Newton-based Floorplanner for fixed-outline floorplan-
 ning”. In: Computers & Operations Research 129 (2021), p. 105225.
-[14]
-Andrew B. Kahng. “Classical floorplanning harmful?” In: ISPD ’00 (2000), pp. 207–
+[14] Andrew B. Kahng. “Classical floorplanning harmful?” In: ISPD ’00 (2000), pp. 207–
 213.
-[15]
-Andrew B. Kahng. “Machine Learning for CAD/EDA: The Road Ahead”. In: IEEE
+[15] Andrew B. Kahng. “Machine Learning for CAD/EDA: The Road Ahead”. In: IEEE
 Design & Test 40.1 (2023), pp. 8–16.
-[16]
-Jae-Gon Kim and Yeong-Dae Kim. “A linear programming-based algorithm for
+[16] Jae-Gon Kim and Yeong-Dae Kim. “A linear programming-based algorithm for
 floorplanning in VLSI design”. In: IEEE Transactions on Computer-Aided Design
 of Integrated Circuits and Systems 22.5 (2003), pp. 584–592.
-[17]
-Jianbang Lai et al. “Module placement with boundary constraints using the sequence-
+[17] Jianbang Lai et al. “Module placement with boundary constraints using the sequence-
 pair representation”. In: Proceedings of the ASP-DAC 2001. Asia and South Pacific
-Design Automation Conference 2001 (Cat. No.01EX455). 2001, pp. 515–520.
+Design Automation Conference 2001 (Cat. No.01EX455) . 2001, pp. 515–520.
 10
 
-
---- Page 11 ---
-[18]
-Ximeng Li et al. “PeF: Poisson’s Equation-Based Large-Scale Fixed-Outline Floor-
+[18] Ximeng Li et al. “PeF: Poisson’s Equation-Based Large-Scale Fixed-Outline Floor-
 planning”. In: IEEE Transactions on Computer-Aided Design of Integrated Circuits
 and Systems 42.6 (2023), pp. 2002–2015.
-[19]
-Zhu Lichen et al. “An Efficient Simulated Annealing Based VLSI Floorplanning
+[19] Zhu Lichen et al. “An Efficient Simulated Annealing Based VLSI Floorplanning
 Algorithm for Slicing Structure”. In: 2012 International Conference on Computer
-Science and Service System. 2012, pp. 326–330.
-[20]
-Jai-Ming Lin and Yao-Wen Chang. “TCG-S: orthogonal coupling of P*-admissible
+Science and Service System . 2012, pp. 326–330.
+[20] Jai-Ming Lin and Yao-Wen Chang. “TCG-S: orthogonal coupling of P*-admissible
 representations for general floorplans”. In: Proceedings 2002 Design Automation
-Conference (IEEE Cat. No.02CH37324). 2002, pp. 842–847.
-[21]
-Jai-Ming Lin and Yao-Wen Chang. “TCG: a transitive closure graph-based repre-
+Conference (IEEE Cat. No.02CH37324) . 2002, pp. 842–847.
+[21] Jai-Ming Lin and Yao-Wen Chang. “TCG: a transitive closure graph-based repre-
 sentation for non-slicing floorplans”. In: Proceedings of the 38th Design Automation
-Conference (IEEE Cat. No.01CH37232). 2001, pp. 764–769.
-[22]
-Ke Liu et al. “A Hybrid Reinforcement Learning and Genetic Algorithm for VLSI
+Conference (IEEE Cat. No.01CH37232) . 2001, pp. 764–769.
+[22] Ke Liu et al. “A Hybrid Reinforcement Learning and Genetic Algorithm for VLSI
 Floorplanning”. In: Proceedings of the 2023 15th International Conference on Ma-
-chine Learning and Computing. ICMLC ’23. New York, NY, USA: Association for
+chine Learning and Computing . ICMLC ’23. New York, NY, USA: Association for
 Computing Machinery, 2023, pp. 412–418. isbn: 9781450398411.
-[23]
-Yiting Liu et al. “GraphPlanner: Floorplanning with Graph Neural Network”. In:
+[23] Yiting Liu et al. “GraphPlanner: Floorplanning with Graph Neural Network”. In:
 ACM Trans. Des. Autom. Electron. Syst. 28.2 (Dec. 2022).
-[24]
-Chaomin Luo, Miguel F. Anjos, and Anthony Vannelli. “Large-scale fixed-outline
+[24] Chaomin Luo, Miguel F. Anjos, and Anthony Vannelli. “Large-scale fixed-outline
 floorplanning design using convex optimization techniques”. In: Proceedings of the
-2008 Asia and South Pacific Design Automation Conference. ASP-DAC ’08. Seoul,
+2008 Asia and South Pacific Design Automation Conference . ASP-DAC ’08. Seoul,
 Korea: IEEE Computer Society Press, 2008, pp. 198–203. isbn: 9781424419227.
-[25]
-Yuchun Ma et al. “VLSI floorplanning with boundary constraints based on corner
+[25] Yuchun Ma et al. “VLSI floorplanning with boundary constraints based on corner
 block list”. In: Proceedings of the ASP-DAC 2001. Asia and South Pacific Design
-Automation Conference 2001 (Cat. No.01EX455). 2001, pp. 509–514.
-[26]
-Uday Mallappa et al. “FloorSet - a VLSI Floorplanning Dataset with Design Con-
-straints of Real-World SOCs.” In: Proceedings of the 43rd IEEE/ACM International
+Automation Conference 2001 (Cat. No.01EX455) . 2001, pp. 509–514.
+[26] Uday Mallappa et al. “FloorSet - a VLSI Floorplanning Dataset with Design Con-
+straints of Real-World SOCs.” In:Proceedings of the 43rd IEEE/ACM International
 Conference on Computer-Aided Design. New York, NY, USA: Association for Com-
 puting Machinery, 2025. isbn: 9798400710773.
-[27]
-“MCNC”. url: http://vlsicad.eecs.umich.edu/BK/MCNCbench.
-[28]
-Hesham Mostafa et al. PARSAC: Fast, Human-quality Floorplanning for Modern
-SoCs with Complex Design Constraints. 2024. arXiv: 2405.05495 [cs.OH]. url:
+[27] “MCNC”. url: http://vlsicad.eecs.umich.edu/BK/MCNCbench.
+[28] Hesham Mostafa et al. PARSAC: Fast, Human-quality Floorplanning for Modern
+SoCs with Complex Design Constraints . 2024. arXiv: 2405.05495 [cs.OH]. url:
 https://arxiv.org/abs/2405.05495.
-[29]
-Hiroshi Murata and Ernest S. Kuh. “Sequence-pair based placement method for
+[29] Hiroshi Murata and Ernest S. Kuh. “Sequence-pair based placement method for
 hard/soft/pre-placed modules”. In: ISPD ’98. Monterey, California, USA: Associa-
 tion for Computing Machinery, 1998, pp. 167–172. isbn: 158113021X.
-[30]
-David Z. Pan. “Closing the Virtuous Cycle of AI for IC and IC for AI”. The Council
-on Electronic Design Automation (CEDA), IEEE. 2021. url: https://ieee-
+[30] David Z. Pan. “Closing the Virtuous Cycle of AI for IC and IC for AI”. The Council
+on Electronic Design Automation (CEDA), IEEE. 2021. url: https : / / ieee -
 ceda.org/presentation/webinar/closing-virtuous-cycle-ai-ic-and-ic-
 ai.
 11
 
-
---- Page 12 ---
-[31]
-Yingxin Pang, Chung-Kuan Cheng, and Takeshi Yoshimura. “An enhanced perturb-
+[31] Yingxin Pang, Chung-Kuan Cheng, and Takeshi Yoshimura. “An enhanced perturb-
 ing algorithm for floorplan design using the O-tree representation”. In: Proceedings
-of the 2000 International Symposium on Physical Design. ISPD ’00. San Diego,
+of the 2000 International Symposium on Physical Design . ISPD ’00. San Diego,
 California, USA: Association for Computing Machinery, 2000, pp. 168–173. isbn:
 1581131917.
-[32]
-Martin Rapp et al. “MLCAD: A Survey of Research in Machine Learning for CAD
+[32] Martin Rapp et al. “MLCAD: A Survey of Research in Machine Learning for CAD
 Keynote Paper”. In: IEEE Transactions on Computer-Aided Design of Integrated
 Circuits and Systems 41.10 (2022), pp. 3162–3181.
-[33]
-T. Singha, H.S. Dutta, and M. De. “Optimization of Floor-Planning using Genetic
+[33] T. Singha, H.S. Dutta, and M. De. “Optimization of Floor-Planning using Genetic
 Algorithm”. In: Procedia Technology 4 (2012). 2nd International Conference on
 Computer, Communication, Control and Information Technology( C3IT-2012) on
 February 25 - 26, 2012, pp. 825–829. issn: 2212-0173.
-[34]
-Jian Sun et al. Floorplanning of VLSI by Mixed-Variable Optimization. 2024. arXiv:
+[34] Jian Sun et al. Floorplanning of VLSI by Mixed-Variable Optimization. 2024. arXiv:
 2401.15317 [cs.NE].
-[35]
-S. Sutanthavibul, E. Shragowitz, and J.B. Rosen. “An analytical approach to floor-
+[35] S. Sutanthavibul, E. Shragowitz, and J.B. Rosen. “An analytical approach to floor-
 plan design and optimization”. In: IEEE Transactions on Computer-Aided Design
 of Integrated Circuits and Systems 10.6 (1991), pp. 761–769.
-[36]
-Christine L. Valenzuela and Pearl Y. Wang. “A Genetic Algorithm for VLSI Floor-
-planning”. In: Parallel Problem Solving from Nature PPSN VI. Ed. by Marc Schoe-
+[36] Christine L. Valenzuela and Pearl Y. Wang. “A Genetic Algorithm for VLSI Floor-
+planning”. In: Parallel Problem Solving from Nature PPSN VI . Ed. by Marc Schoe-
 nauer et al. Berlin, Heidelberg: Springer Berlin Heidelberg, 2000, pp. 671–680.
-[37]
-D.F. Wong and C.L. Liu. “A New Algorithm for Floorplan Design”. In: 23rd
-ACM/IEEE Design Automation Conference. 1986, pp. 101–107.
-[38]
-Qi Xu, Song Chen, and Bin Li. “Combining the ant system algorithm and sim-
+[37] D.F. Wong and C.L. Liu. “A New Algorithm for Floorplan Design”. In: 23rd
+ACM/IEEE Design Automation Conference . 1986, pp. 101–107.
+[38] Qi Xu, Song Chen, and Bin Li. “Combining the ant system algorithm and sim-
 ulated annealing for 3D/2D fixed-outline floorplanning”. In: Appl. Soft Comput.
 40.C (Mar. 2016), pp. 150–160.
-[39]
-Qi Xu et al. “GoodFloorplan: Graph Convolutional Network and Reinforcement
+[39] Qi Xu et al. “GoodFloorplan: Graph Convolutional Network and Reinforcement
 Learning-Based Floorplanning”. In: Trans. Comp.-Aided Des. Integ. Cir. Sys. 41.10
 (Oct. 2022), pp. 3492–3502.
-[40]
-Jackey Z. Yan and Chris Chu. “DeFer: Deferred decision making enabled fixed-
-outline floorplanner”. In: 2008 45th ACM/IEEE Design Automation Conference.
+[40] Jackey Z. Yan and Chris Chu. “DeFer: Deferred decision making enabled fixed-
+outline floorplanner”. In: 2008 45th ACM/IEEE Design Automation Conference .
 2008, pp. 161–166.
-[41]
-E.F.Y. Young, C.C.N. Chu, and M.L. Ho. “Placement constraints in floorplan de-
+[41] E.F.Y. Young, C.C.N. Chu, and M.L. Ho. “Placement constraints in floorplan de-
 sign”. In: IEEE Transactions on Very Large Scale Integration (VLSI) Systems 12.7
 (2004), pp. 735–745.
-[42]
-F.Y. Young and D.F. Wong. “Slicing floorplans with boundary constraint”. In:
+[42] F.Y. Young and D.F. Wong. “Slicing floorplans with boundary constraint”. In:
 Proceedings of the ASP-DAC ’99 Asia and South Pacific Design Automation Con-
-ference 1999 (Cat. No.99EX198). 1999, 17–20 vol.1.
-[43]
-F.Y. Young and D.F. Wong. “Slicing floorplans with pre-placed modules”. In: 1998
+ference 1999 (Cat. No.99EX198) . 1999, 17–20 vol.1.
+[43] F.Y. Young and D.F. Wong. “Slicing floorplans with pre-placed modules”. In: 1998
 IEEE/ACM International Conference on Computer-Aided Design. Digest of Tech-
-nical Papers (IEEE Cat. No.98CB36287). 1998, pp. 252–258.
-[44]
-Yong Zhan, Yan Feng, and S.S. Sapatnekar. “A fixed-die floorplanning algorithm
+nical Papers (IEEE Cat. No.98CB36287) . 1998, pp. 252–258.
+[44] Yong Zhan, Yan Feng, and S.S. Sapatnekar. “A fixed-die floorplanning algorithm
 using an analytical approach”. In: Asia and South Pacific Conference on Design
 Automation, 2006. 2006, 6 pp.-.
 12
 
-
---- Page 13 ---
-[45]
-Hang Zhao et al. “Online 3D Bin Packing with Constrained Deep Reinforcement
+[45] Hang Zhao et al. “Online 3D Bin Packing with Constrained Deep Reinforcement
 Learning”. In: Thirty-Fifth AAAI Conference on Artificial Intelligence, AAAI 2021.
 AAAI Press, 2021, pp. 741–749.
-[46]
-Hai Zhou and Jia Wang. “ACG-adjacent constraint graph for general floorplans”.
+[46] Hai Zhou and Jia Wang. “ACG-adjacent constraint graph for general floorplans”.
 In: IEEE International Conference on Computer Design: VLSI in Computers and
 Processors, 2004. ICCD 2004. Proceedings. 2004, pp. 572–575.
 13

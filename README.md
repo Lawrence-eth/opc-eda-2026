@@ -4,7 +4,9 @@ Deterministic heuristic optimizer for data-driven SoC floorplanning (21–120 bl
 
 > **📊 Presentation / overview: [`docs/SUMMARY.md`](docs/SUMMARY.md)** — problem, solution, results, methodology, key insights, and honest assessment (each section ≈ one slide). Start here.
 >
-> **📦 Submission: [`SUBMISSION_PLAN.md`](SUBMISSION_PLAN.md)** — the June-2026 organizer requirements (PyInstaller executable via `op_wrapper.py`), the verified torch-free package (`packaging/`, build with `packaging/build_submission.sh`), full verification results, and the plan to the ≈2026-07-13 deadline.
+> **📦 Submission: [`SUBMISSION_PLAN.md`](SUBMISSION_PLAN.md)** — organizer requirements (PyInstaller executable via `op_wrapper.py`), the verified torch-free package (`packaging/`, build with `packaging/build_submission.sh`), and the rebuild gate.
+>
+> **🤝 Handoff: [`HANDOFF.md`](HANDOFF.md)** — complete state, workflows, and ranked open leads for whoever continues the work. **🏁 Active plan: [`docs/CAMPAIGN_GOLDEN.md`](docs/CAMPAIGN_GOLDEN.md).**
 
 ## Current Result (submission candidate)
 
@@ -20,7 +22,7 @@ snapshot `results/integrated_v10.json`. Previous locked entry: `sprint5_v9`
 | Average runtime | **~0.18s/case** (max ~0.6s) |
 | Runtime-adjusted total @ median 1s | **1.35** (v9: 2.11; baseline `quadratic_v1`: 2.65) |
 
-**Note on the score:** the contest cost is *runtime-adjusted* — `cost · max(0.7, (rt/median)^0.3)`. v9 trades a little raw quality for large speed, which dominates at the contest's likely runtime range (it beats every earlier solution for assumed median ≤ ~3.5s). So the raw 2.7182 is *higher* (worse) than older raw scores (e.g. the 2.6326 baseline) but the *runtime-adjusted* score is better. A higher-raw-quality, still-fast alternative (`quadratic_v1`, 2.466 @ 0.69s) is retained as a hedge for high-median scenarios. Full reasoning + history: `MASTER_PLAYBOOK.md`.
+**Note on the score:** the contest cost is *runtime-adjusted* — `cost · max(0.7, (rt/median)^0.3)` with a hard 0.7× floor for being ≥~3× faster than the field median. The current solver holds v9's speed (0.18s avg) with 33% better raw quality, so it improves at every plausible median. Runtime discipline is a standing rule: changes are judged runtime-adjusted at median ∈ {1,2,3}s (`HANDOFF.md` §5.3), never on the raw score alone.
 
 *Validation-set results only. Final ranking uses hidden test data.*
 
@@ -28,22 +30,27 @@ snapshot `results/integrated_v10.json`. Previous locked entry: `sprint5_v9`
 
 ```
 contest_solution/
-├── my_optimizer.py          # Optimizer — THE submission source
-├── sequence_pair_sa.py      # Experimental SP-SA floorplanner (dormant; see playbook)
+├── my_optimizer.py          # THE solver: shelf + dissection portfolio + selector
+├── dissect.py               # Exact-area dissection engine (CAMPAIGN_GOLDEN)
+├── sequence_pair_sa.py      # Dormant SP-SA floorplanner (historical)
 ├── iccad2026_evaluate.py    # Official evaluator (working copy)
 └── *dataset*.py             # Dataset loaders + tests
-scripts/                     # analyze / audit / compare / release-check / benchmark
-tests/                       # Regression + unit tests
-results/                     # Result artifacts (v9_locked.json = current; others gitignored)
-external/FloorSet/           # Contest dataset + official evaluator
+packaging/                   # Submission executable sources + build script + organizers' op_wrapper
+scripts/                     # dissect_eval / fuzz_binary / analyze / audit / release-check / retrieval scan
+tests/                       # Regression + unit tests (51)
+results/                     # Curated result artifacts (integrated_v10.json = current)
+external/FloorSet/           # Contest framework + datasets (gitignored; see HANDOFF bootstrap)
 docs/
-├── extracted/               # Contest problem statement + Q&A
+├── CAMPAIGN_GOLDEN.md       # ACTIVE plan: evidence, milestones, open leads
+├── extracted/               # Problem statement v10 + Q&A 2026-06-18 + submission guidelines
 └── archive/                 # Superseded plans/reports (history)
-logs/                        # Per-session execution logs
 
-MASTER_PLAYBOOK.md           # Strategy & decision playbook (authoritative current state at top)
-PLAN_EXECUTION_LOG.md        # Chronological experiment log
-PROJECT_STATUS.md            # Status summary
+HANDOFF.md                   # Complete handoff: state, workflows, ranked open leads
+CLAUDE.md                    # Agent onboarding + hard rules
+SUBMISSION_PLAN.md           # Submission mechanics + package verification + rebuild gate
+MASTER_PLAYBOOK.md           # Historical strategy (dead-end list still binding)
+PLAN_EXECUTION_LOG.md        # Chronological experiment log (newest at top)
+PROJECT_STATUS.md            # One-page status summary
 ```
 
 ## Quick Start
@@ -52,27 +59,31 @@ PROJECT_STATUS.md            # Status summary
 
 ```bash
 # Validate
-cp contest_solution/my_optimizer.py /path/to/FloorSet/iccad2026contest/
+cp contest_solution/my_optimizer.py contest_solution/dissect.py /path/to/FloorSet/iccad2026contest/
 cd /path/to/FloorSet/iccad2026contest
 PYTHONPATH=.. python iccad2026_evaluate.py --validate my_optimizer.py --quick
 
 # Evaluate
 PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py
 ```
-(The submission is self-contained as the single file `my_optimizer.py`; `sequence_pair_sa.py` is only needed if the dormant SP-SA path is re-enabled.)
+(The solver is `my_optimizer.py` + `dissect.py`; `sequence_pair_sa.py` is only
+needed if the dormant SP-SA path is re-enabled. Full environment bootstrap and
+all workflows: `HANDOFF.md` §5.)
 
 ## Release Checks
 
 ```bash
 .venv/bin/python -m pytest                          # all tests pass (torch-dependent tests skip if torch absent)
-.venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/v9_locked.json, --max-score 2.72)
+.venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/integrated_v10.json, --max-score 1.81)
 ```
 
 ## Documentation
 
 | Doc | Purpose |
 |-----|---------|
-| [`docs/SUMMARY.md`](docs/SUMMARY.md) | **Presentation overview** — problem, solution, results, insights (start here) |
+| [`HANDOFF.md`](HANDOFF.md) | **Complete handoff** — state, workflows, ranked open leads (start here) |
+| [`docs/CAMPAIGN_GOLDEN.md`](docs/CAMPAIGN_GOLDEN.md) | Active campaign — evidence, measured milestones |
+| [`docs/SUMMARY.md`](docs/SUMMARY.md) | Presentation overview — problem, solution, results, insights |
 | [`MASTER_PLAYBOOK.md`](MASTER_PLAYBOOK.md) | Full strategy & decision trail (authoritative current state at top) |
 | [`PLAN_EXECUTION_LOG.md`](PLAN_EXECUTION_LOG.md) | Chronological experiment log |
 | [`PROJECT_STATUS.md`](PROJECT_STATUS.md) | Status summary |

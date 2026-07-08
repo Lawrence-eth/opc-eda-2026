@@ -53,7 +53,9 @@ Exactly the `solve()` schema of `optimizer_template.py`, transported as JSON
 ## Source fallback
 
 If the executable cannot be used, `source_fallback/solver_main.py` is the
-same solver as plain Python (reads the same JSON on stdin). It can also be
+same solver as plain Python (reads the same JSON on stdin; `my_optimizer.py`
++ `dissect.py` are the algorithm, `torch.py`/`iccad2026_evaluate.py` are
+self-contained stand-ins for the imports). It can also be
 adapted to the import-based interface: `source_fallback/my_optimizer.py`
 contains the `MyOptimizer(FloorplanOptimizer)` class with the standard
 `solve()` signature and works unmodified against the official

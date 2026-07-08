@@ -107,11 +107,10 @@ runtime floor even with the executable spawn overhead (~0.11s).
   (util n≥100 ≈ 0.80 with fixed/preplaced slack; movable regions fill exactly).
   Note: gate was re-scoped from standalone util to measured area_gap, which is
   what actually scores.
-- **G3 — Constraints** ◐ (2026-07-07): feasibility part PASSED (100/100 hard-
-  feasible: exact-fill rows, obstacle carving, one-row bands, L/R row-end
-  injection, cluster lanes, MIB slots). V_rel part OPEN: 0.176 vs target
-  ≤0.109 (worst on small n: L/R queues exceed row count; some cluster lanes).
-  util n≥100 0.80 vs 0.90 target (obstacle-segment remainders + fixed slack).
+- **G3 — Constraints** ✅ (2026-07-07, round 3): feasibility 100/100; V_rel
+  gate MET — n≥100 vr 0.110 vs target ≤0.109 (edge stacks, flat band clusters,
+  cluster-edge stacks, MIB forcing). util subtarget stays open (0.79 vs 0.90;
+  obstacle-segment remainders + fixed slack + case-70 lead → HANDOFF §6).
 - **G4 — HPWL ordering + best-of integration** ✅ (2026-07-07): barycenter
   vertical ordering (b2b + pin anchors) + within-row x-pull; die width matched
   to obstacle-forced height; wf∈{0.85,1.0,1.15} portfolio; integrated into
@@ -144,6 +143,16 @@ runtime floor even with the executable spawn overhead (~0.11s).
 ## 7. Progress log
 
 - 2026-07-07: campaign opened. Evidence base gathered and verified (§2).
+- Round 1 (G2–G5): engine built and integrated — official 2.1204; package
+  parity-verified.
+- Round 2: flat band clusters + edge stacks + MIB lanes (1.9573) → two-pass
+  construction + fast-first shelf (1.9352 @ 0.18s avg; two runtime-negative
+  experiments reverted — see PLAN_EXECUTION_LOG).
+- Round 3: MIB forcing + segment edge injection + preplaced-safe retouch
+  (1.8975; preplaced-moving retouch bug caught by full-eval gate) → cluster
+  edge stacks + band free-width + clamp re-queue (**1.8074**, V_rel gate met).
+  Clamp-branch segmented-fill experiment reverted (regressed ag; case 70
+  unchanged). Package rebuilt + parity-verified at 1.807413.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;
   obstacle slabs; cluster lanes; MIB slots; barycenter ordering. Iterations:

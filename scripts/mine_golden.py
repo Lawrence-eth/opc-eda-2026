@@ -12,7 +12,8 @@ Usage:
     python3 scripts/mine_golden.py
 """
 import sys
-sys.path.insert(0, '/home/ubuntu/EDA/external/FloorSet/iccad2026contest')
+import pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'external' / 'FloorSet' / 'iccad2026contest'))
 
 import math
 import json
