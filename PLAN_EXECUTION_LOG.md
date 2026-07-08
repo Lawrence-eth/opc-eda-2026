@@ -1,5 +1,22 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 local MIB shape-copy upper bound — ❌ REJECTED (NO CODE)
+- Hypothesis: some of v20's 122 MIB soft violations may be cheap local shape
+  mismatches in already legal placements. Copying an existing same-group
+  shape onto free, non-preplaced group members, while preserving hard
+  feasibility and selecting by exact cost, might remove MIB violations without
+  changing the dissection portfolio or adding construction-time branches.
+- Probe: offline local shape-copy enumeration found 12 feasible raw wins,
+  total weighted delta **-0.003167**, dominated by case 89. The deployable
+  n=110 majority-shape gate copied the repeated MIB shape in case 89 and
+  scored **1.654230**, 100/100 feasible; case 89 improved
+  **1.996675 → 1.922652** by removing its MIB violation
+  (soft 8/53 → 7/53), weighted delta **-0.002573**.
+- Final check: the local move added enough runtime on case 89 to fail the
+  strict runtime-adjusted keep gate. Same-window medians {1,2,3}s were v20
+  recheck **1.318/1.177/1.160** vs the final MIB-copy probe
+  **1.352/1.191/1.160**. Rejected and restored exact v20 code.
+
 ### 2026-07-08 strong6_wf1 pruning attribution — ❌ REJECTED (NO CODE)
 - Hypothesis: v18's broad `pin_scale=6.0`, edge-bary + band-pinx candidate
   may be overpaying runtime on n>=100 cases where it never wins; a tighter
