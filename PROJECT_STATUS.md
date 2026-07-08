@@ -4,13 +4,13 @@
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v21`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v22`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.6507** | 2.7182 |
+| Score (RF=1) | **1.6483** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.238s / 0.875s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.311 / 1.172 / 1.156** | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.650715, 0 position diffs, avg 0.240s | — |
+| Runtime avg / max | 0.262s / 0.957s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.338 / 1.180 / 1.155** | 2.110 / 1.924 / 1.903 |
+| Packaged binary (official command, incl. spawn) | 1.648337, 0 position diffs, avg 0.238s | — |
 
 ## What the solver is
 
@@ -35,6 +35,9 @@ v20 adds one narrow case-99-class tail candidate (`wf=1.15`,
 b2b/p2b cases. v21 adds an external-y anchor to the second dissection pass:
 b2b edges to blocks outside the current queue pull row ordering toward those
 blocks' previous y centers, improving HPWL without adding a portfolio member.
+v22 changes non-flat cluster lane seeding from pure area order to left-boundary,
+interior, right-boundary priority before area, improving grouping/boundary
+interactions without adding a portfolio member.
 The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -49,7 +52,7 @@ Key structural properties (why it beats everything previous):
 ## Verification state (2026-07-08)
 
 - 51/51 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v21.json`, max-score 1.655).
+  (defaults: `results/integrated_v22.json`, max-score 1.65).
 - Submission package rebuilt + parity-verified (0/100 position diffs through
   the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
@@ -57,11 +60,11 @@ Key structural properties (why it beats everything previous):
 
 ## Where the remaining score is
 
-Current n≥100 averages: hpwl_gap 0.597, area_gap 0.161, V_rel 0.090.
-Score-weighted averages: hpwl_gap 0.583, area_gap 0.153, V_rel 0.089.
-Exact v21 soft ledger: boundary 332, grouping 58, MIB 126, total 516/4478
+Current n≥100 averages: hpwl_gap 0.597, area_gap 0.161, V_rel 0.089.
+Score-weighted averages: hpwl_gap 0.583, area_gap 0.153, V_rel 0.088.
+Exact v22 soft ledger: boundary 326, grouping 58, MIB 126, total 510/4478
 (`results/enriched_diagnostics.json`). Score-weighted soft counts in the
-top-20 focus band are boundary 3.167, MIB 1.095, grouping 0.961.
+top-20 focus band are boundary 3.137, MIB 1.095, grouping 0.961.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
 play would score 1.108 (RF=1) / 0.776 (at the runtime floor). Golden-structure
 mining is now in `results/golden_structure.json`: golden pays boundary misses

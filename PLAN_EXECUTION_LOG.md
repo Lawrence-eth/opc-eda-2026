@@ -1,5 +1,23 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 cluster lane edge-order probe — ✅ KEPT (v22)
+- Hypothesis: current non-flat cluster lane construction sorts cluster members
+  only by area before area-balancing them into two stacked equal-width lanes.
+  Prioritizing left/right boundary-coded cluster members before area may
+  improve grouping/boundary interactions as a no-candidate construction
+  replacement, without post-hoc movement.
+- Probe: replace the non-flat cluster lane seed order with boundary-side
+  priority (`left`, interior, `right`) then area. This changes only the
+  existing cluster tiler; it adds no portfolio member.
+- Result: official validation **1.650715 → 1.648337**, 100/100 feasible.
+  The largest weighted wins were cases 85, 66, and 72, mostly by removing one
+  soft violation or improving HPWL; only material regression was tiny
+  (case 21, weighted +0.000001).
+- Final check: a same-window v21 recheck scored **1.650715**, avg **0.262s**.
+  The second v22 timing sample scored **1.648337**, avg **0.262s**.
+  Runtime-adjusted medians {1,2,3}s improved from v21
+  **1.344/1.185/1.159** to v22 **1.338/1.180/1.155**.
+
 ### 2026-07-08 barycenter iteration-count probe — ❌ REJECTED (NO CODE)
 - Hypothesis: after v21 added external-y anchors, the old 20 barycenter
   smoothing iterations may over-propagate row-order pulls. Reducing the

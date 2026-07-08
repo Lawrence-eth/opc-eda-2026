@@ -2,7 +2,7 @@
 
 > Single-source overview: problem, solution, results, methodology, honest
 > assessment. Each section ≈ one slide. Numbers verified against
-> `results/integrated_v21.json` (current) and `results/v9_locked.json`
+> `results/integrated_v22.json` (current) and `results/v9_locked.json`
 > (pre-campaign baseline). Updated 2026-07-08.
 
 ---
@@ -61,11 +61,11 @@ from the structure (w = area/height). Then:
 
 | Metric | Pre-campaign (v9) | **Current** |
 |---|---|---|
-| Official score (RF=1) | 2.7182 | **1.6507** (-39%) |
+| Official score (RF=1) | 2.7182 | **1.6483** (-39%) |
 | Feasible | 100/100 | **100/100** |
-| Runtime | 0.18s avg | **0.238s avg** (same speed class) |
-| Runtime-adjusted @ median 1s | 2.110 | **1.311** (-38%; same-window v20: 1.342) |
-| Packaged binary, official command | — | 1.650715, 0 position diffs, 0.240s incl. spawn |
+| Runtime | 0.18s avg | **0.262s avg** (same speed class) |
+| Runtime-adjusted @ median 1s | 2.110 | **1.338** (-37%; same-window v21: 1.344) |
+| Packaged binary, official command | — | 1.648337, 0 position diffs, 0.238s incl. spawn |
 
 Calibration: golden-equivalent play = 1.108 (RF=1) / 0.776 (at the runtime
 floor); theoretical bound 0.70. Golden itself violates soft constraints on
@@ -111,7 +111,7 @@ cp contest_solution/my_optimizer.py contest_solution/dissect.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
-# -> Total Score: 1.6507, Feasible: 100
+# -> Total Score: 1.6483, Feasible: 100
 python -m pytest                                    # 51/51
 python scripts/check_public_release.py              # PASS
 ```

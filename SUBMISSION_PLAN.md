@@ -35,7 +35,7 @@ floor that v9's whole strategy banks on. The package therefore had to be torch-f
 | **Packaged binary** via the official command (`--evaluate op_wrapper.py`) | **2.718225, 100/100, 0 position differences**; runtime avg 0.244s/case, n≥100 avg 0.475s, max 0.759s (79× headroom under the 60s wrapper timeout) |
 | Binary fuzz on 400 random training instances (exact wrapper protocol) | **400/400 hard-feasible**, avg 0.205s, max 0.705s |
 | **Re-verified after CAMPAIGN_GOLDEN G4 engine** (2026-07-07): wrapper + rebuilt binary | **2.120411, 100/100, 0 position diffs** vs in-process; avg 0.33s/case incl. spawn (max 0.96s); fuzz 400/400 feasible (max 1.15s) |
-| **CURRENT (2026-07-08, integrated v21)**: wrapper + rebuilt binary | **1.650715, 100/100, 0 position diffs** vs `results/integrated_v21.json`; avg 0.240s/case incl. spawn (max 0.668s); fuzz 400/400 feasible (avg 0.234s, p95 0.443s, max 0.605s) |
+| **CURRENT (2026-07-08, integrated v22)**: wrapper + rebuilt binary | **1.648337, 100/100, 0 position diffs** vs `results/integrated_v22.json`; avg 0.238s/case incl. spawn (max 0.665s); fuzz 400/400 feasible (avg 0.234s, p95 0.453s, max 0.589s) |
 
 Fixed during packaging: `torch_stub.py` originally aliased `float`, shadowing the
 builtin inside the stub (all cases silently fell back → score 9.98). Caught by the
@@ -146,6 +146,6 @@ cp -r submission/dist packaging/op_wrapper.py external/FloorSet/iccad2026contest
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate op_wrapper.py \
     --output ../../../results/wrapper_check.json
-# REQUIRED: Total Score 1.6507, Feasible 100, and 0 position diffs vs results/integrated_v21.json
+# REQUIRED: Total Score 1.6483, Feasible 100, and 0 position diffs vs results/integrated_v22.json
 cd ../../.. && .venv/bin/python scripts/fuzz_binary.py --num 400   # REQUIRED: 0 failures
 ```

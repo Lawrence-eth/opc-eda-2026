@@ -274,7 +274,9 @@ def _place_cluster(case, u, x, y, h, out, flat=False):
             cx += w
         return cx
     # two stacked lanes of equal width => connected tiling, milder aspects
-    blocks.sort(key=lambda b: -case.area[b])
+    blocks.sort(key=lambda b: (0 if case.boundary[b] & 1 else
+                               (2 if case.boundary[b] & 2 else 1),
+                               -case.area[b]))
     lane, la = [[], []], [0.0, 0.0]
     for b in blocks:
         k = 0 if la[0] <= la[1] else 1
