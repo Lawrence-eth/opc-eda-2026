@@ -97,7 +97,7 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 - **Strengths:** 100% feasible, deterministic, fast (runtime-floor-friendly
   even through the per-case-spawn harness), structurally sound constraint
   handling, 38% quality improvement banked in the same speed class.
-- **Remaining gap:** weighted heavy-case hpwl_gap 0.614 / area_gap 0.156 —
+- **Remaining gap:** weighted heavy-case hpwl_gap 0.635 / area_gap 0.162 —
   ~0.54 runtime-adjusted points above golden-equivalent play at median 1s. Ranked leads
   with evidence: `HANDOFF.md` §6.
 - **Risk:** field median runtime unknown; if the field is slow, dormant

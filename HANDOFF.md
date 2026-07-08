@@ -204,8 +204,8 @@ beat it).
 ## 6. Open leads, ranked (with the evidence)
 
 Current integrated v19 decomposition (n≥100): **hg 0.614, ag 0.156,
-vr 0.090**. Score-weighted heavy-case averages: **hg 0.614, ag 0.156,
-vr 0.090**. Violation ledger across 100 cases: boundary 332, grouping 56,
+vr 0.090**. Score-weighted heavy-case averages: **hg 0.635, ag 0.162,
+vr 0.094**. Violation ledger across 100 cases: boundary 332, grouping 56,
 MIB 123. A chunk of boundary violations are preplaced-with-boundary-codes,
 which are UNFIXABLE by rule and golden pays them too.
 

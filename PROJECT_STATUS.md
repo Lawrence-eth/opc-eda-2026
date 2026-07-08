@@ -53,7 +53,7 @@ Key structural properties (why it beats everything previous):
 ## Where the remaining score is
 
 Current n≥100 averages: hpwl_gap 0.614, area_gap 0.156, V_rel 0.090.
-Weighted worst-case averages: hpwl_gap 0.614, area_gap 0.156, V_rel 0.090.
+Weighted worst-case averages: hpwl_gap 0.635, area_gap 0.162, V_rel 0.094.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
 play would score 1.108 (RF=1) / 0.776 (at the runtime floor). Golden-structure
 mining is now in `results/golden_structure.json`: golden pays boundary misses
