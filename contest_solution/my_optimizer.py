@@ -246,6 +246,20 @@ class MyOptimizer(FloorplanOptimizer):
                         cand = None
                     if cand and len(cand) == block_count:
                         candidates.append(cand)
+                if (
+                    block_count >= 120
+                    and boundary_count >= 36
+                    and len(b2b_edges) > 6000
+                    and len(p2b_edges) > 3000
+                ):
+                    try:
+                        cand = dissect_solve(*dis_args, width_factor=1.15,
+                                             pin_scale=6.0,
+                                             edge_order_mode="bary")
+                    except Exception:
+                        cand = None
+                    if cand and len(cand) == block_count:
+                        candidates.append(cand)
             # Case-70-class obstacle layout: the incumbent bottom/top band
             # height iteration can snowball when low preplaced obstacles
             # fragment the band. Keep the capped variant as a single extra

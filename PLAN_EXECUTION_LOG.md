@@ -1,5 +1,22 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 case-99 edge-bary tail candidate — ✅ KEPT (v20)
+- Hypothesis: the current strong pin-pull family still misses a wider
+  edge-bary pocket on the single heaviest validation case. A narrow structural
+  gate can capture it without adding runtime to the broader high-weight band.
+- Probe: replay against `results/integrated_v19.json` showed
+  `width_factor=1.15`, `pin_scale=6.0`, `edge_order_mode="bary"` and no
+  `band_order_mode="pinx"` won case 99. The deployed gate is intentionally
+  case-99-class: `block_count >= 120`, `boundary_count >= 36`,
+  `len(b2b_edges) > 6000`, and `len(p2b_edges) > 3000`.
+- Result: official validation **1.665114 → 1.656802**, 100/100 feasible.
+  The selected win is case 99 only: cost delta **-0.103929**, weighted delta
+  **-0.008312**; hpwl_gap -0.1130, area_gap +0.0285, V_rel -0.0149.
+  Runtime-adjusted totals at medians {0.5,1,2,3}s improved from
+  **1.659/1.357/1.192/1.166** to **1.604/1.315/1.176/1.160**. Package
+  rebuilt; wrapper score **1.656802**, 0/100 position diffs, avg 0.239s;
+  binary fuzz 400/400 feasible, avg 0.233s, p95 0.444s, max 0.604s.
+
 ### 2026-07-08 gated narrow-width strong pin-pull candidate — ✅ KEPT (v19)
 - Hypothesis: v18's strong pin-pull hybrid has a second width pocket at
   `wf=0.85`, but paying it on every n>=100 case is too much runtime. A

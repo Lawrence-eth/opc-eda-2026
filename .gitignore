@@ -75,6 +75,7 @@ results/*.json
 !results/integrated_v17.json
 !results/integrated_v18.json
 !results/integrated_v19.json
+!results/integrated_v20.json
 !results/wrapper_v10.json
 !results/wrapper_v11.json
 !results/wrapper_v12.json
@@ -85,6 +86,7 @@ results/*.json
 !results/wrapper_v17.json
 !results/wrapper_v18.json
 !results/wrapper_v19.json
+!results/wrapper_v20.json
 !results/tuned34_official_full.json
 !results/tuned35_official_full.json
 !results/tuned36_official_full.json

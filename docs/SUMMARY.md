@@ -2,7 +2,7 @@
 
 > Single-source overview: problem, solution, results, methodology, honest
 > assessment. Each section ≈ one slide. Numbers verified against
-> `results/integrated_v19.json` (current) and `results/v9_locked.json`
+> `results/integrated_v20.json` (current) and `results/v9_locked.json`
 > (pre-campaign baseline). Updated 2026-07-08.
 
 ---
@@ -61,11 +61,11 @@ from the structure (w = area/height). Then:
 
 | Metric | Pre-campaign (v9) | **Current** |
 |---|---|---|
-| Official score (RF=1) | 2.7182 | **1.6651** (-39%) |
+| Official score (RF=1) | 2.7182 | **1.6568** (-39%) |
 | Feasible | 100/100 | **100/100** |
-| Runtime | 0.18s avg | **0.264s avg** (same speed class; host-slow sample) |
-| Runtime-adjusted @ median 1s | 2.110 | **1.357** (-36%; same-window v18 recheck: 1.368) |
-| Packaged binary, official command | — | 1.665114, 0 position diffs, 0.282s incl. spawn |
+| Runtime | 0.18s avg | **0.240s avg** (same speed class) |
+| Runtime-adjusted @ median 1s | 2.110 | **1.315** (-38%; v19: 1.357) |
+| Packaged binary, official command | — | 1.656802, 0 position diffs, 0.239s incl. spawn |
 
 Calibration: golden-equivalent play = 1.108 (RF=1) / 0.776 (at the runtime
 floor); theoretical bound 0.70. Golden itself violates soft constraints on
@@ -97,7 +97,7 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 - **Strengths:** 100% feasible, deterministic, fast (runtime-floor-friendly
   even through the per-case-spawn harness), structurally sound constraint
   handling, 38% quality improvement banked in the same speed class.
-- **Remaining gap:** weighted heavy-case hpwl_gap 0.635 / area_gap 0.162 —
+- **Remaining gap:** weighted heavy-case hpwl_gap 0.630 / area_gap 0.164 —
   ~0.54 runtime-adjusted points above golden-equivalent play at median 1s. Ranked leads
   with evidence: `HANDOFF.md` §6.
 - **Risk:** field median runtime unknown; if the field is slow, dormant
@@ -111,7 +111,7 @@ cp contest_solution/my_optimizer.py contest_solution/dissect.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
-# -> Total Score: 1.6651, Feasible: 100
+# -> Total Score: 1.6568, Feasible: 100
 python -m pytest                                    # 51/51
 python scripts/check_public_release.py              # PASS
 ```
