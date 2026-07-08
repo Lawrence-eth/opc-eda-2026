@@ -734,8 +734,10 @@ def order_units(units, b2b, p2b=None, pins=None, H_est=1.0, pin_scale=1.0,
                 y_init=None):
     """Vertical ordering by barycenter iteration: each unit is pulled toward
     its connectivity neighbors and (via p2b) toward its pins' absolute y.
-    The resulting order fills rows bottom-up, so strongly-connected units and
-    pin-tied units land at the right height. Deterministic."""
+    On the second pass, b2b edges to blocks outside this queue also pull
+    toward those blocks' previous y centers. The resulting order fills rows
+    bottom-up, so strongly-connected units and pin-tied units land at the
+    right height. Deterministic."""
     m = len(units)
     if m <= 2:
         return list(units)
@@ -744,12 +746,20 @@ def order_units(units, b2b, p2b=None, pins=None, H_est=1.0, pin_scale=1.0,
         for b in u.blocks:
             idx_of[b] = ui
     adj = [dict() for _ in range(m)]
+    external_y = [[0.0, 0.0] for _ in range(m)]
     for a, b, w in b2b:
         ua, ub = idx_of.get(a), idx_of.get(b)
-        if ua is None or ub is None or ua == ub:
+        if ua is not None and ub is not None and ua != ub:
+            adj[ua][ub] = adj[ua].get(ub, 0.0) + w
+            adj[ub][ua] = adj[ub].get(ua, 0.0) + w
             continue
-        adj[ua][ub] = adj[ua].get(ub, 0.0) + w
-        adj[ub][ua] = adj[ub].get(ua, 0.0) + w
+        if y_init:
+            if ua is not None and ub is None and b in y_init:
+                external_y[ua][0] += w
+                external_y[ua][1] += w * y_init[b]
+            elif ub is not None and ua is None and a in y_init:
+                external_y[ub][0] += w
+                external_y[ub][1] += w * y_init[a]
     pin_pull = [[0.0, 0.0] for _ in range(m)]   # [weight, weighted-y]
     if p2b and pins is not None:
         for p, b, w in p2b:
@@ -772,8 +782,8 @@ def order_units(units, b2b, p2b=None, pins=None, H_est=1.0, pin_scale=1.0,
     for _ in range(20):
         ny = list(y)
         for ui in range(m):
-            wsum = pin_pull[ui][0]
-            acc = pin_pull[ui][1]
+            wsum = pin_pull[ui][0] + external_y[ui][0]
+            acc = pin_pull[ui][1] + external_y[ui][1]
             for nb, w in adj[ui].items():
                 wsum += w
                 acc += w * y[nb]

@@ -4,13 +4,13 @@
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v20`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v21`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.6568** | 2.7182 |
+| Score (RF=1) | **1.6507** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.240s / 0.871s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.315 / 1.176 / 1.160** | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.656802, 0 position diffs, avg 0.239s | — |
+| Runtime avg / max | 0.238s / 0.875s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.311 / 1.172 / 1.156** | 2.110 / 1.924 / 1.903 |
+| Packaged binary (official command, incl. spawn) | 1.650715, 0 position diffs, avg 0.240s | — |
 
 ## What the solver is
 
@@ -32,7 +32,9 @@ v19 adds a gated narrower-width version of that candidate (`wf=0.85`) only for
 boundary-heavy n>=100 cases with low p2b edge count or very dense b2b nets.
 v20 adds one narrow case-99-class tail candidate (`wf=1.15`,
 `pin_scale=6.0`, `edge_order_mode="bary"`) for n>=120, boundary-heavy, dense
-b2b/p2b cases.
+b2b/p2b cases. v21 adds an external-y anchor to the second dissection pass:
+b2b edges to blocks outside the current queue pull row ordering toward those
+blocks' previous y centers, improving HPWL without adding a portfolio member.
 The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -47,7 +49,7 @@ Key structural properties (why it beats everything previous):
 ## Verification state (2026-07-08)
 
 - 51/51 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v20.json`, max-score 1.66).
+  (defaults: `results/integrated_v21.json`, max-score 1.655).
 - Submission package rebuilt + parity-verified (0/100 position diffs through
   the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
@@ -55,11 +57,11 @@ Key structural properties (why it beats everything previous):
 
 ## Where the remaining score is
 
-Current n≥100 averages: hpwl_gap 0.609, area_gap 0.157, V_rel 0.089.
-Weighted worst-case averages: hpwl_gap 0.630, area_gap 0.164, V_rel 0.093.
-Exact v20 soft ledger: boundary 327, grouping 57, MIB 122, total 506/4478
+Current n≥100 averages: hpwl_gap 0.597, area_gap 0.161, V_rel 0.090.
+Score-weighted averages: hpwl_gap 0.583, area_gap 0.153, V_rel 0.089.
+Exact v21 soft ledger: boundary 332, grouping 58, MIB 126, total 516/4478
 (`results/enriched_diagnostics.json`). Score-weighted soft counts in the
-top-20 focus band are boundary 3.221, MIB 1.055, grouping 0.910.
+top-20 focus band are boundary 3.167, MIB 1.095, grouping 0.961.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
 play would score 1.108 (RF=1) / 0.776 (at the runtime floor). Golden-structure
 mining is now in `results/golden_structure.json`: golden pays boundary misses

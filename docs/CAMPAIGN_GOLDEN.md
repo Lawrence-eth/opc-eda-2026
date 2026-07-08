@@ -5,14 +5,14 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-08, round 13): official 1.6568, 100/100, rt avg 0.240s.
-radj@1s 1.315 vs v9's 2.110 (-38%); v19 was 1.357. G3 V_rel gate met
-(n≥100 vr 0.089).
-Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568.
+**Status (2026-07-08, round 14): official 1.6507, 100/100, rt avg 0.238s.
+radj@1s 1.311 vs v9's 2.110 (-38%); same-window v20 was 1.342. G3 V_rel
+gate met (n≥100 vr 0.090).
+Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507.
 Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
-candidate), hg 0.65 on n≥100 integrated score drivers (ordering),
-grouping 57 / MIB 122 residuals. Exact v20 soft ledger is boundary 327,
-grouping 57, MIB 122, total 506/4478 (`results/enriched_diagnostics.json`).
+candidate), hg 0.60 on n≥100 integrated score drivers (ordering),
+grouping 58 / MIB 126 residuals. Exact v21 soft ledger is boundary 332,
+grouping 58, MIB 126, total 516/4478 (`results/enriched_diagnostics.json`).
 Golden mining says MIB should be exact, clusters should almost always connect,
 and some boundary misses are inherent or cost-optimal (including 13
 preplaced-boundary misses). Package refreshed after each engine change (§G5).**
@@ -172,6 +172,11 @@ runtime floor even with the executable spawn overhead (~0.11s).
   boundary count and dense b2b/p2b nets. Official **1.6568**, 100/100;
   radj@{1,2,3}s = **1.315/1.176/1.160**; wrapper parity 0 position diffs;
   fuzz 400/400.
+  Eleventh kept polish made pass-2 row ordering aware of b2b edges to
+  external previous-position anchors (preplaced, fixed, and edge-routed
+  blocks). Official **1.6507**, 100/100; same-window v20 recheck gate passed
+  at radj@{1,2,3}s (**1.311/1.172/1.156** vs
+  **1.342/1.187/1.163**); wrapper parity 0 position diffs; fuzz 400/400.
   Still open: SA over the dissection (sibling swaps, subtree
   transplants, strip re-partitions) under exact cost; aspect-bound tuning;
   fixed/preplaced slack recovery; per-case portfolio.
@@ -289,6 +294,13 @@ runtime floor even with the executable spawn overhead (~0.11s).
   without band-pinx only for case-99-class features (`n>=120`, boundary>=36,
   b2b>6000, p2b>3000). Official **1.6568**, 100/100; radj@{1,2,3}s =
   **1.315/1.176/1.160**. Package rebuilt + parity-verified at 1.656802;
+  binary fuzz 400/400 feasible.
+- Round 14: added external-y anchors to the paid second dissection pass. B2B
+  edges to blocks outside the current row-ordering queue now pull toward those
+  blocks' previous y centers, improving row coherence without adding a
+  portfolio candidate. Official **1.6507**, 100/100. Same-window v20 recheck
+  gate passed at radj@{1,2,3}s = **1.311/1.172/1.156** vs
+  **1.342/1.187/1.163**. Package rebuilt + parity-verified at 1.650715;
   binary fuzz 400/400 feasible.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;

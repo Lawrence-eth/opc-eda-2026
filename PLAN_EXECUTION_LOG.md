@@ -1,5 +1,24 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 external-y anchored ordering probe — ✅ KEPT (v21)
+- Hypothesis: the paid second dissection pass already has previous positions
+  for preplaced, fixed, and edge-routed blocks, but `order_units()` ignores
+  b2b edges from the current queue to those external anchors. Adding a cheap
+  y-pull toward connected blocks outside the current queue may improve HPWL
+  and fixed/preplaced cut reuse without adding portfolio candidates or runtime.
+- Probe: add an `external_y` accumulator inside `order_units()` for pass-2
+  b2b edges whose opposite endpoint is outside the current queue but has a
+  previous y center. This changes already-paid dissection variants in place;
+  it does not add a portfolio member.
+- Result: official validation **1.656802 → 1.650715**, 100/100 feasible, avg
+  runtime **0.238s**. Largest weighted improvements came from cases 95, 81,
+  98, 93, and 94; largest regressions were cases 92, 88, 89, 99, and 90.
+- Final check: same-window v20 recheck scored **1.656802**, avg **0.257s**.
+  Runtime-adjusted medians {1,2,3}s were v20 recheck
+  **1.342/1.187/1.163** vs v21 **1.311/1.172/1.156**. Package rebuilt;
+  wrapper score **1.650715**, 0/100 position diffs, avg **0.240s**; binary
+  fuzz 400/400 feasible, avg **0.234s**, p95 **0.443s**, max **0.605s**.
+
 ### 2026-07-08 local MIB shape-copy upper bound — ❌ REJECTED (NO CODE)
 - Hypothesis: some of v20's 122 MIB soft violations may be cheap local shape
   mismatches in already legal placements. Copying an existing same-group
