@@ -1,5 +1,22 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 v21 high-weight pin-pull micro-pockets — ❌ REVERTED
+- Hypothesis: after v20, smaller local pockets remained in the same
+  high-weight dissection family: case 99 preferred `wf=1.125` over v20's
+  `wf=1.15`; case 98 preferred `wf=0.85`, `pin_scale=4.0`,
+  edge-bary+band-pinx; case 97 preferred `wf=1.0`, `pin_scale=0.75`,
+  edge-bary+band-pinx.
+- Probe: adding all three scored **1.653858**, 100/100, with raw wins on
+  cases 98/99/97 plus case 81, but the added candidate count raised runtime
+  enough to lose the keep gate at medians 1s and 2s. Replacing the existing
+  `wf=0.85`, `pin_scale=6.0` narrow candidate with `pin_scale=4.0` was also
+  worse outright (**1.6574**), so the case-98 pocket is not a safe
+  replacement.
+- Final check: isolating only the case-99 width swap scored **1.656309**,
+  100/100, but same-window v20 recheck was faster. Runtime-adjusted
+  medians {1,2,3}s were v20 recheck **1.310/1.175/1.160** vs the
+  `wf=1.125` probe **1.336/1.182/1.160**. Code reverted to v20.
+
 ### 2026-07-08 case-99 edge-bary tail candidate — ✅ KEPT (v20)
 - Hypothesis: the current strong pin-pull family still misses a wider
   edge-bary pocket on the single heaviest validation case. A narrow structural
