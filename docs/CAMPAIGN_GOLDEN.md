@@ -5,13 +5,15 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-07, round 3): official 1.8074, 100/100, rt avg 0.18s.
-radj@1s 1.353 vs v9's 2.110 (−36%). G3 V_rel gate met (n≥100 vr 0.110).
-Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074.
-Open leads: ag 0.25 (band free-width heights; case 70 outlier), hg 0.86
-(ordering), util 0.79→0.90, cluster 58 / MIB 117 residuals, preplaced-with-
-boundary codes are inherent violations (golden pays them too). Package
-refreshed after each engine change (§G5).**
+**Status (2026-07-08, round 9): official 1.7027, 100/100, rt avg 0.228s.
+radj@1s 1.316 vs v9's 2.110 (-38%). G3 V_rel gate met (n≥100 vr 0.095).
+Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027.
+Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
+candidate), hg 0.65 on n≥100 integrated score drivers (ordering), grouping 55 / MIB 123
+residuals. Golden mining says MIB should be exact, clusters should almost
+always connect, and some boundary misses are inherent or cost-optimal
+(including 13 preplaced-boundary misses). Package refreshed after each engine
+change (§G5).**
 Every milestone below records its real, measured result when it lands —
 nothing in this file is aspirational; if a number is missing, it hasn't run.
 
@@ -35,21 +37,22 @@ The two quality gaps are worth ~1.0 runtime-adjusted; V_rel alone ~0.38.
 Winning requires attacking hpwl_gap AND area_gap together without giving up
 feasibility or (much) runtime.
 
-## 2. Evidence that reframes the problem (new, 2026-07-07)
+## 2. Evidence that reframes the problem (updated 2026-07-08)
 
 Mined from the golden data (validation labels + 1M training layouts):
 
 1. **Golden layouts are near-perfect tessellations**: utilization ≈0.97,
    soft-block areas equal their targets **exactly** (not ±1%), all dims and
-   coordinates are integers. The ~3% whitespace comes from a few "floating"
-   blocks (golden y above the compacted contour), not from uniform slack.
+   coordinates are integers. The ~3% whitespace is structured slack around
+   fixed/preplaced/boundary geometry; validation re-mining found zero
+   unsupported-above-floor blocks.
 2. **`tree_sol` in the training labels is a B\*-tree over blocks**
    (side 0 = child right-adjacent: x_c = x_p + w_p; side 1 = child stacked:
    x_c = x_p). Verified against golden coordinates: x-relations hold 100%.
    It appears to be *derived from* the layout, not the generative order —
    replaying it through standard contour packing reproduces x exactly but not
-   every y (the floaters), and gives util 0.50–0.88, so **the tree alone is
-   not the secret; the dims+layout structure is.**
+   every y, and gives util 0.50–0.88, so **the tree alone is not the secret;
+   the dims+layout structure is.**
 3. **Retrieval is impossible**: all 1,008,000 training instances scanned — zero
    overlap with validation (area-multiset signature). The hidden set must be
    *solved*, not looked up. (`results/retrieval_scan.json`)
@@ -99,9 +102,11 @@ runtime floor even with the executable spawn overhead (~0.11s).
 
 ## 5. Milestones and gates (each committed; engine stays dormant until it wins)
 
-- **G1 — Mine golden structure**: cluster-as-subtree conventions, boundary
-  placement, preplaced embedding, aspect distributions, floater statistics.
-  Artifact: `results/golden_structure.json` + findings recorded in §6.
+- **G1 — Mine golden structure** ✅ (2026-07-08): cluster connectivity,
+  boundary placement, preplaced/fixed embedding, aspect distributions, and
+  support statistics mined from validation labels. Artifact:
+  `results/golden_structure.json`; violation-ratio check matches
+  `results/golden_scored.json` exactly.
 - **G2 — Exact dissector** ✅ (2026-07-07): strip-of-rows exact-fill engine
   (`contest_solution/dissect.py`). Area gap collapsed: weighted ag 1.03 → ~0.2
   (util n≥100 ≈ 0.80 with fixed/preplaced slack; movable regions fill exactly).
@@ -121,11 +126,34 @@ runtime floor even with the executable spawn overhead (~0.11s).
   1.849/1.584/1.508 vs v9's 2.110/1.924/1.903; 93/100 improved; 51/51 tests.
 - **G5 — Repackage + verify** ✅ (2026-07-07): dissect.py bundled; stub gained
   elementwise comparisons; wrapper+binary = **2.120411, 100/100, 0 position
-  diffs**, avg 0.33s/case incl. spawn; fuzz 400/400. Package current.
-- **G6 — Polish (open-ended, gated)**: SA over the dissection (sibling swaps,
-  subtree transplants, strip re-partitions) under exact cost; aspect-bound
-  tuning; floater insertion for fixed-block slack recovery; per-case portfolio
-  (dissection vs v9 — already the integration form).
+  diffs**, avg 0.33s/case incl. spawn; fuzz 400/400. Later G6 packages were
+  refreshed after each kept polish.
+- **G6 — Polish (open-ended, gated)**: first kept polish landed 2026-07-08:
+  a case-70/90 obstacle-band snowball trace led to a **single gated
+  `band_edge_cap` candidate** (fires only when incumbent/capped bottom-band
+  height ratio ≥5×). Official 1.7978, 100/100; radj@{1,2,3}s =
+  1.350/1.260/1.258; wrapper parity 0 position diffs; fuzz 400/400. Second
+  kept polish added two gated wf=1.0 `pin_scale` candidates (0.5, 4.0) only for
+  50≤n≤103. Official **1.7952**, 100/100; radj@{1,2,3}s =
+  **1.348/1.257/1.257**; wrapper parity 0 position diffs; fuzz 400/400. Third
+  kept polish added a high-weight same-area boundary reshape candidate for
+  free non-cluster/non-MIB n≥118 blocks. Official **1.7903**, 100/100;
+  radj@{1,2,3}s = **1.343/1.254/1.253**; wrapper parity 0 position diffs;
+  fuzz 400/400. Fourth kept polish added a tightly gated same-bbox boundary
+  edge-slide candidate using obstacle-clearance endpoints for n∈{103,119}.
+  Official **1.7827**, 100/100; radj@{1,2,3}s =
+  **1.342/1.249/1.248**; wrapper parity 0 position diffs; fuzz 400/400. Fifth
+  kept polish added one wf=1.0 barycentric edge-queue candidate for L/R boundary
+  units. Official **1.7368**, 100/100; radj@{1,2,3}s =
+  **1.329/1.220/1.216**; wrapper parity 0 position diffs; fuzz 400/400.
+  Sixth kept polish changed that extra candidate into a hybrid: n<118 also
+  sorts bottom/top band units by pin/net-x pull, while n>=118 preserves the
+  v15 width-first band order that won cases 98/99. Official **1.7027**,
+  100/100; radj@{1,2,3}s = **1.316/1.201/1.192**; wrapper parity 0
+  position diffs; fuzz 400/400.
+  Still open: SA over the dissection (sibling swaps, subtree
+  transplants, strip re-partitions) under exact cost; aspect-bound tuning;
+  fixed/preplaced slack recovery; per-case portfolio.
 - **G7 — ML ordering (optional, needs GPU)**: learn the recursive partition
   order / strip assignment from the 1M golden trees (supervision exists!);
   inference is a permutation prior, decode stays exact. Revisit after G6.
@@ -134,11 +162,32 @@ runtime floor even with the executable spawn overhead (~0.11s).
 
 (recorded here as they are measured — see `results/golden_structure.json`)
 
-- Aspect ratios (prior mining, `PLAN_EXECUTION_LOG.md` Part IV): golden median
-  1.45, p90 2.5, max 3.0; utilization 0.966–0.977.
-- tree_sol semantics verified (§2.2). Remaining to mine: cluster-subtree
-  contiguity rates, boundary-block tree positions, preplaced cut alignment,
-  fixed-block slack absorption, floater statistics.
+- `scripts/mine_golden.py` now writes `results/golden_structure.json`; mined
+  `violations_relative` matches `results/golden_scored.json` exactly
+  (`max_abs_vr_diff=0`).
+- Utilization: median 0.971, p10 0.963, p90 0.978, range 0.954–0.987.
+  Soft-block aspect ratios: median 1.45, p90 2.50, p95 2.75, max 3.0.
+- Golden soft violations: 229 / 4478 across 90/100 cases. Split: boundary
+  219, grouping 10, MIB 0. Do not spend slack chasing zero boundary at all
+  costs; golden itself pays boundary misses.
+- Boundary: 2184/2403 satisfied (90.9%). Left, bottom, and bottom-left codes
+  are perfect; most misses are right/top/top-right/bottom-right. Preplaced
+  boundary misses are 13/122 and are unfixable by rule; fixed boundary misses
+  are 32/247 and remain movable tradeoffs.
+- Clusters: 350/360 connected (97.2%); only ten groups split, all into two
+  components. Preplaced clusters: 68/70 connected, and every preplaced member
+  touches a same-cluster member (74/74). A bridge can be real, but the
+  deployable selector still needs a hidden-safe ranking signal.
+- MIB: 100/100 groups are shape-uniform in golden. Keep treating MIB
+  equality as a first-class structure, but global-square forcing was already
+  measured and reverted.
+- Preplaced/fixed embedding: median case has 33% of non-preplaced blocks
+  aligned to a preplaced x/y cut and 13% adjacent to a preplaced block; fixed
+  cut reuse is stronger (median 67% aligned, 32% adjacent). This points to
+  fixed/preplaced cut reuse, not generic floater insertion.
+- Support: every golden block touches another block edge, and zero blocks are
+  unsupported above the bbox floor under the simple support test. Do not chase
+  "floater insertion" as a primary prior.
 
 ## 7. Progress log
 
@@ -153,6 +202,45 @@ runtime floor even with the executable spawn overhead (~0.11s).
   edge stacks + band free-width + clamp re-queue (**1.8074**, V_rel gate met).
   Clamp-branch segmented-fill experiment reverted (regressed ag; case 70
   unchanged). Package rebuilt + parity-verified at 1.807413.
+- Round 4: traced case 70 and found bottom-band height snowball (y≈202 before
+  mid fill, one block placed, five units spilled). Replacing incumbent band
+  behavior globally fixed case 70 but regressed integrated score to 1.8436.
+  Kept it only as a gated extra candidate for ≥5× band-height snowball cases
+  (validation hits 16/70/90): **official 1.7978**, 100/100, radj@{1,2,3}s =
+  1.350/1.260/1.258. Package rebuilt + parity-verified at 1.797786.
+- Round 5: swept existing dissection `pin_scale` ordering. Standalone variants
+  were worse, but as gated best-of candidates `pin_scale` 0.5 and 4.0 improved
+  mid/large validation cases. The first broad gate hurt runtime on 104–120
+  where no case selected the variants; final gate 50≤n≤103 kept the material
+  wins: **official 1.7952**, 100/100, radj@{1,2,3}s =
+  1.348/1.257/1.257. Package rebuilt + parity-verified at 1.795152.
+- Round 6: no-code upper bound for same-area boundary reshaping found a
+  deployable case-98 win. Broad reshape gates failed the median-1 runtime
+  keep gate; final gate only tries free non-cluster/non-MIB blocks for n≥118
+  and requires the reshaped rectangle to satisfy its full current-bbox boundary
+  code. Kept as v13: **official 1.7903**, 100/100, radj@{1,2,3}s =
+  1.343/1.254/1.253. Package rebuilt + parity-verified at 1.790330.
+- Round 7: in-bbox boundary slide upper bound found public wins on cases 82
+  and 98, but broad and n≥100 gates failed the median-1 runtime gate. Final
+  v14 gate only runs for n∈{103,119}, uses obstacle-clearance endpoint
+  candidates instead of log-grid sampling, and keeps only free non-cluster,
+  non-MIB blocks while preserving the current bbox. Official **1.7827**,
+  100/100, radj@{1,2,3}s = **1.342/1.249/1.248**. Package rebuilt +
+  parity-verified at 1.782689.
+- Round 8: left/right boundary queues were still area-sorted vertically. Added
+  one extra wf=1.0 candidate that uses barycenter ordering for those edge
+  queues, then keeps it behind the existing selector. Gated and replacement
+  variants were measured but lost either quality or reliable runtime-adjusted
+  margin. Official **1.7368**, 100/100, radj@{1,2,3}s =
+  **1.329/1.220/1.216**. Package rebuilt + parity-verified at 1.736800;
+  binary fuzz 400/400 feasible.
+- Round 9: bottom/top band rows still sorted most units by width. Broad pin-x
+  band-row ordering and an `lr_boundary>=27` gate lost runtime-adjusted margin,
+  and a global replacement regressed cases 98/99. Final v16 hybrid uses
+  edge-bary+band-pinx only below 118 blocks and preserves v15 width-first bands
+  on 118+ blocks. Official **1.7027**, 100/100, radj@{1,2,3}s =
+  **1.316/1.201/1.192**. Package rebuilt + parity-verified at 1.702727;
+  binary fuzz 400/400 feasible.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;
   obstacle slabs; cluster lanes; MIB slots; barycenter ordering. Iterations:

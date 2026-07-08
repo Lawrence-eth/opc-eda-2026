@@ -1,5 +1,360 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 wf=0.8 hybrid pin-x candidate — ❌ REVERTED
+- Hypothesis: v16's edge-bary+band-pinx candidate at wf=1.0 exposes a second
+  cheap ordering pocket at narrower die width. Replay of one extra
+  `width_factor=0.8, edge_order_mode="bary", band_order_mode="pinx"` candidate
+  had a strong oracle upper bound (**1.7027 → 1.6891**), led by cases 93, 85,
+  83, 74, and 96.
+- Probe: broad official integration scored **1.6891**, 100/100 feasible, but
+  avg runtime rose to **0.271s** and median-1 runtime-adjusted score regressed
+  (**1.355** vs v16 **1.316**). A hidden-safer structural gate
+  (`95≤n<118`, moderate b2b/p2b edge counts, boundary≥31, preplaced≤4) kept
+  RF=1 at **1.6920**, 100/100, but still lost median 1s.
+- Same-window timing check: rechecked v16 at avg **0.244s** and the gated probe
+  at **0.251s**. Runtime-adjusted @{0.5,1,2,3}s: v16 recheck
+  **1.620/1.332/1.204/1.192** vs gated probe
+  **1.630/1.337/1.199/1.184**. It wins only at medians 2/3, so it fails the
+  keep gate. Code removed; do not add a second hybrid width-factor candidate
+  without a much cheaper or stronger selector.
+
+### 2026-07-08 hybrid pin-x band-row ordering — ✅ KEPT (v16)
+- Hypothesis: bottom/top band rows still sort most units by width, not by
+  horizontal pin/net pull. A `band_order_mode=pinx` variant, especially
+  combined with v15's barycentric L/R edge queues, might improve HPWL and soft
+  counts without post-placement search.
+- Probe: optional dissection parameter tested against `results/integrated_v15`.
+  The combined wf=1.0 edge-bary+band-pinx candidate had a strong neutral
+  replay upper bound (**1.7368 → 1.7034**, 64 selected wins). A broad official
+  integration scored **1.7088**, 100/100 feasible, but avg runtime rose to
+  0.244s and runtime-adjusted totals regressed at medians 0.5 and 1s
+  (**1.634/1.341/1.210/1.196** vs v15 **1.603/1.329/1.220/1.216**).
+- Gated probe: `lr_boundary>=27` selected one public win (case 95), raw
+  **1.7332**, but measured runtime for that case jumped enough that medians
+  0.5/1/2 all regressed. A global replacement scored **1.7154** and improved
+  medians 1/2/3, but regressed high-weight cases 98/99.
+- Kept implementation: replace v15's extra wf=1.0 edge-bary candidate with
+  edge-bary+band-pinx only for `block_count < 118`; keep v15 width-first bands
+  for 118+ blocks to preserve the 98/99 wins.
+- Result: official validation **1.736800 → 1.702727**, 100/100 feasible, avg
+  runtime **0.219s → 0.228s** in the kept in-process artifact. Runtime-adjusted
+  totals at medians {0.5,1,2,3}s moved from **1.603/1.329/1.220/1.216** to
+  **1.592/1.316/1.201/1.192**. Package rebuilt; wrapper score **1.702727**,
+  0/100 position diffs, avg 0.230s; binary fuzz 400/400 feasible, avg 0.226s,
+  p95 0.422s, max 0.535s.
+
+### 2026-07-08 barycentric edge-queue dissection candidate — ✅ KEPT (v15)
+- Hypothesis: left/right boundary queues were still area-sorted vertically,
+  even though their row assignment controls HPWL for edge-required blocks.
+  Reusing the dissection barycenter ordering for those queues should place
+  L/R units nearer their net/pin y without post-placement search.
+- Probe: added an optional `edge_order_mode="bary"` to `dissect_solve` and
+  tested it as a single extra wf=1.0 candidate behind the existing selector.
+  No-code replay against v14 showed **37 raw wins, no selected losses** for
+  wf=1.0, and a full width-grid upper bound reached **1.7101** but was too
+  expensive to ship.
+- Kept implementation: keep the existing wf∈{0.8,0.9,1.0,1.1,1.2} portfolio
+  unchanged and add one extra wf=1.0 bary-edge candidate. A gated
+  `n>=90 && L/R>=20` version and a replacement-for-wf=1.0 version were both
+  measured; replacement caused quality regressions, and gating lost too much
+  quality without reliable runtime savings under local timing noise.
+- Result: official validation **1.782689 → 1.736800**, 100/100 feasible,
+  avg runtime **0.198s → 0.219s** in the kept in-process artifact. Runtime
+  adjusted totals at medians {0.5,1,2,3}s moved from
+  **1.597/1.342/1.249/1.248** to **1.603/1.329/1.220/1.216**. Package
+  rebuilt; wrapper score **1.736800**, 0/100 position diffs, avg 0.230s;
+  binary fuzz 400/400 feasible, avg 0.229s, max 0.537s.
+  Local reruns showed runtime noise large enough to flip median-1 comparisons
+  for the same positions, so keep judging future changes on repeated or
+  same-window timing when runtime is close.
+
+### 2026-07-08 free-block slide HPWL polish — ❌ REVERTED
+- Hypothesis: unconstrained interior soft blocks can slide within existing
+  same-bbox gaps to reduce HPWL while preserving area, boundary, cluster, and
+  MIB counts.
+- Probe: no-code upper bound over n≥100 cases, skipping fixed, preplaced,
+  boundary, MIB, and cluster blocks. Single-block same-size x/y slides that
+  preserved the current bbox and avoided overlap improved raw validation
+  **1.782689 → 1.779021** with 20/21 heavy-case wins. A deployable top-5
+  incident-net-weight version improved raw to **1.780962**, 100/100 feasible.
+- Verdict: rejected. The top-5 implementation raised avg runtime
+  **0.198s → 0.212s** and failed the runtime-adjusted keep gate:
+  radj@{0.5,1,2,3}s moved from **1.597/1.342/1.249/1.248** to
+  **1.654/1.371/1.254/1.247**. The raw HPWL upper bound is real, but the
+  candidate search needs a much cheaper ranking/index before it can ship.
+
+### 2026-07-08 dynamic pin-cloud width-factor candidate — ❌ REJECTED (NO CODE)
+- Hypothesis: one extra dissection width factor derived from the pin/fixed
+  anchor cloud could recover HPWL/area misses without a full width-factor grid.
+- Probe: for each case, computed `wf=sqrt(pin_span_x/pin_span_y)` clamped to
+  [0.65,1.45], skipped values close to the existing wf grid, and added at
+  most one extra dissection candidate behind the selector.
+- Result: 43 cases tried, 5 selected, no raw losses, but raw weighted gain was
+  only **-0.000196** and broad runtime-adjusted median-1 score regressed
+  **1.342 → 1.349**. The selected-only public gain is too small to justify a
+  block-count gate, so no code was kept.
+
+### 2026-07-08 in-bbox boundary edge-slide polish — ✅ KEPT (v14)
+- Hypothesis: v13's reshape-only boundary polish misses some free boundary
+  blocks that need a same-area move along the current bbox edge, not just a
+  dimension change at the old coordinate.
+- Probe: no-code upper bound over free, non-cluster, non-MIB boundary misses
+  inside the current bbox. Broad edge-slide generation found two public wins
+  (cases 82 and 98) and no quality losses, but broad/n≥100 gates failed the
+  median-1 runtime-adjusted keep gate because no-win cases still paid geometry
+  search cost.
+- Kept implementation: after v13 polish, only for **n∈{103,119}**, generate
+  obstacle-clearance endpoint candidates that preserve the current bbox and
+  satisfy the block's full boundary code. Candidate scoring uses incremental
+  single-block HPWL and the known one-violation soft reduction; MIB, cluster,
+  fixed, and preplaced blocks are skipped.
+- Result: official validation **1.790330 → 1.782689**, 100/100 feasible,
+  avg runtime **0.199s → 0.198s**, max **0.638s → 0.640s**. Runtime-adjusted
+  totals at medians {0.5,1,2,3}s improve from
+  **1.600/1.343/1.254/1.253** to **1.597/1.342/1.249/1.248**. Package rebuilt;
+  wrapper score **1.782689**, 0/100 position diffs, avg 0.214s; binary fuzz
+  400/400 feasible, max 0.500s.
+
+### 2026-07-08 high-weight boundary reshape candidate — ✅ KEPT (v13)
+- Hypothesis: remaining boundary violations are dominated by edge misses, and
+  some can be fixed without outward bbox expansion by reshaping a movable soft
+  block at the same target area so it touches the current bbox edge.
+- Probe: external scorer on `results/integrated_v12.json`. Broad same-area
+  reshape generated 182 candidates in 91 cases; the deployable selector picked
+  the same 4 wins as the oracle (single/greedy oracle delta **-0.00484**), led
+  by case 98. However broad and n≥110 gates failed the runtime-adjusted keep
+  gate at median 1s.
+- Kept implementation: after portfolio selection, only for **n≥118**, generate
+  reshapes for free non-cluster, non-MIB boundary blocks; keep only candidates
+  that satisfy the block's full current-bbox boundary code and pass the usual
+  selector. This keeps the case-98 soft win and avoids cluster/MIB side effects
+  and lower-weight runtime cost.
+- Result: official validation **1.795152 → 1.790330**, 100/100 feasible,
+  avg runtime **0.203s → 0.199s**, max **0.607s → 0.638s**. Runtime-adjusted
+  totals at medians {0.5,1,2,3}s improve from
+  **1.606/1.348/1.257/1.257** to **1.600/1.343/1.254/1.253**. Package rebuilt;
+  wrapper score **1.790330**, 0/100 position diffs, avg 0.213s; binary fuzz
+  400/400 feasible, max 0.483s.
+
+### 2026-07-08 gated pin-scale ordering candidates — ✅ KEPT (v12)
+- Hypothesis: the dissection engine already supports `pin_scale` in vertical
+  barycenter ordering, but v11 only used the default. Alternate pin pull
+  strengths might improve HPWL/area on pin-dominated cases if kept behind the
+  existing feasibility-gated selector.
+- Probe: swept `pin_scale` ∈ {0, 0.25, 0.5, 1.5, 2, 4} at wf=1.0. Standalone
+  variants were worse than the current portfolio, but the deployed
+  self-normalized selector picked `pin_scale=0.5` and `4.0` as extra best-of
+  candidates. A broad n≥50 gate scored **1.7950** RF=1 but hurt
+  runtime-adjusted score because it spent time on 104–120 block cases where no
+  validation case selected the variants.
+- Kept implementation: add only two extra wf=1.0 dissection candidates,
+  `pin_scale=0.5` and `pin_scale=4.0`, and only for **50≤n≤103**. This keeps
+  the material wins (cases 30/34/37/39/40/50/52/61/74/82) and avoids runtime
+  cost on the highest-weight cases.
+- Result: official validation **1.797786 → 1.795152**, 100/100 feasible,
+  avg runtime **0.186s → 0.203s**, max **0.635s → 0.607s**. Runtime-adjusted
+  totals at medians {0.5,1,2,3}s improve from
+  **1.607/1.350/1.260/1.258** to **1.606/1.348/1.257/1.257**. Package rebuilt;
+  wrapper score **1.795152**, 0/100 position diffs, avg 0.213s; binary fuzz
+  400/400 feasible, max 0.481s.
+
+### 2026-07-08 rigid cluster-component bridge upper bound — ❌ REJECTED (NO CODE)
+- Hypothesis: the earlier one-block preplaced bridge may have been too weak.
+  When a same-cluster preplaced component is isolated from the movable
+  component, translate the whole non-preplaced connected component as a rigid
+  group so one member abuts the preplaced component. This preserves internal
+  cluster contacts and soft-block dimensions.
+- Probe: external scorer only, starting from `results/integrated_v11.json`.
+  Enumerated pairwise edge contacts between disconnected non-preplaced cluster
+  components and preplaced cluster components, skipped overlaps, and evaluated
+  each candidate with RF=1 (`runtime=1.0`). Also simulated the deployed
+  self-normalized `_select_candidate` gate.
+- Result: 46 relevant split groups, 3,072 contact attempts, 309 overlap-free
+  candidates, 24 cases with at least one candidate. A perfect single-move
+  oracle gives **1.7978 -> 1.7925** (6 wins, weighted delta **-0.0053**);
+  a greedy sequential oracle gives **1.7899** (delta **-0.0079**), mainly case
+  88. Always replacing with the best generated candidate regresses to
+  **1.9389** (delta **+0.1411**), and the deployable self-normalized selector
+  picked **0/305** overlap-free candidates. This remains an oracle-only
+  validation lead; do not integrate post-hoc rigid cluster movement without a
+  hidden-safe ranking signal.
+
+### 2026-07-08 obstacle segment best-fit probe — ❌ REVERTED
+- Hypothesis: residual area gap may come from fixed-height obstacle slabs
+  leaving segment remainders because `_segment_fill` scans units in queue
+  order. A best-fit selector inside each free segment might improve local
+  utilization without changing bands or free-row construction.
+- Prototype: optional `segment_best_fit` mode in `_segment_fill` plus
+  temporary `scripts/dissect_eval.py --segment-best-fit`; it picked the
+  widest currently fitting unit repeatedly for each obstacle-cut segment.
+- Result: standalone wf=1.0 dissection regressed **1.9393 → 1.9884**; n≥100
+  util 0.788→0.782, hpwl 0.860→0.940, area 0.249→0.259, V_rel 0.110→0.111.
+  Compared with integrated v11, replacement delta was **+0.1906** weighted;
+  oracle best-of had 10 wins worth only **−0.0003** before runtime. Removed
+  the optional mode and CLI flag.
+
+### 2026-07-08 outward boundary retouch upper bound — ❌ REJECTED (NO CODE)
+- Hypothesis: remaining movable boundary misses might be worth satisfying by
+  moving blocks just outside the current bbox so they become the new left/
+  right/top/bottom edge. This is overlap-safe if moved blocks are deconflicted,
+  but it increases area and HPWL.
+- Probe: external scorer only, starting from `results/integrated_v11.json`
+  positions. For each non-preplaced boundary miss, move outward to the current
+  bbox edge extension and skip only clashes with earlier outward moves.
+- Result with RF=1 scoring (`runtime=1.0`): 284 blocks moved, 100/100
+  feasible, **0 wins**, replacement delta **+1.6336** weighted, total score
+  **3.4314**. Large losses came from V_rel/area blowups on cases 88, 15, 43,
+  14, 31, 69, 98, and others. Do not add outward boundary expansion; the
+  current in-bbox retouch is the right safety boundary.
+
+### 2026-07-08 MIB anchor-force probe — ❌ REVERTED
+- Hypothesis: the reverted global-square MIB candidate was too blunt because
+  56/80 current MIB-violating groups have a unique fixed/preplaced hard shape
+  with compatible soft-member areas. Force only soft siblings in those groups
+  to the hard anchor shape, leaving no-anchor groups on the incumbent square
+  fallback.
+- Prototype: optional `mib_anchor_force` mode in `_force_split_mib` plus
+  temporary `scripts/dissect_eval.py --mib-anchor-force`.
+- Result: standalone wf=1.0 dissection regressed **1.9393 → 2.3770** and
+  produced one infeasible case (95); n≥100 util fell 0.788→0.751. Compared
+  with integrated v11, replacement delta was **+0.5793** weighted. Oracle
+  best-of had 14 feasible wins worth only **−0.0050** before runtime, too
+  small to pay for an extra candidate and with no hidden-safe gate. Removed
+  the optional path and CLI flag.
+- Useful anatomy: current MIB violations are not same-cluster lane splits
+  (0/80 all in one cluster); most span multiple route groups, and 56/80 have
+  hard anchors. Future MIB work needs a real global shape/placement planner,
+  not local shape forcing.
+
+### 2026-07-08 recursive-bisection ordering probe — ❌ REVERTED
+- Hypothesis: the HPWL lead calls for recursive min-cut ordering. A cheap
+  stdlib version may improve vertical row order without touching placement
+  semantics: seed with incumbent barycenter order, split by area balance, then
+  do deterministic local swaps that reduce b2b cut before recursing.
+- Prototype: optional `order_mode="bisect"` in `dissect.py` plus temporary
+  `scripts/dissect_eval.py --order-mode bisect`.
+- Result: standalone wf=1.0 dissection regressed **1.9393 → 1.9557**; n≥100
+  hpwl 0.860→0.877, area 0.249→0.256, util 0.788→0.784, V_rel 0.110→0.112.
+  Compared with integrated v11, replacement delta was **+0.1580** weighted;
+  oracle best-of had 17 wins worth only **−0.0021** before runtime. Removed
+  the optional mode and CLI flag. This measured variant is dead; a learned
+  tree/order prior is still a separate G7 lead.
+
+### 2026-07-08 graph-chain ordering probe — ❌ REVERTED
+- Hypothesis: HPWL is the largest remaining lever; after the incumbent
+  barycenter vertical order, greedily chaining strongly connected mid units
+  might keep nets shorter without changing placement semantics.
+- Prototype: optional `order_mode="chain"` in `dissect.py` plus temporary
+  `scripts/dissect_eval.py --order-mode chain`. The mode started from the
+  incumbent barycenter order and repeatedly pulled the unplaced unit with the
+  strongest connection to the recent chain.
+- Result: standalone wf=1.0 dissection regressed **1.9393 → 2.0388**; n≥100
+  hpwl 0.860→1.007, area 0.249→0.259, util 0.788→0.781, V_rel unchanged.
+  Compared with integrated v11, replacement delta was **+0.2410** weighted;
+  oracle best-of had 12 wins worth only **−0.0019** before runtime. Removed
+  the optional mode and CLI flag. This does not rule out a real recursive
+  min-cut/spectral order, but the greedy graph-chain variant is dead.
+
+### 2026-07-08 fixed-height grouping probe — ❌ REVERTED
+- Hypothesis from G1 mining and the handoff: fixed-shape blocks may inflate
+  separate rows; pulling similar-height fixed units together in the mid queue
+  could reuse one row's slack and improve area gap.
+- Prototype: optional `fixed_height_grouping` dissection mode plus temporary
+  `scripts/dissect_eval.py --fixed-height-grouping`. The reorder preserved
+  the first fixed unit's approximate vertical position and pulled at most two
+  later fixed units with height ratio ≤1.25 beside it.
+- Result: standalone wf=1.0 dissection regressed **1.9393 → 1.9535**; n≥100
+  util 0.788→0.782, hpwl 0.860→0.900, area 0.249→0.258, V_rel unchanged.
+  Compared with integrated v11, replacement delta was **+0.1557** weighted;
+  oracle best-of had five small wins worth only **−0.00034** before runtime.
+  Removed the optional path and CLI flag.
+
+### 2026-07-08 relaxed top/right boundary routing — ❌ REVERTED
+- Hypothesis from golden mining: golden pays many top/right boundary misses,
+  so pure top/right boundary units might be better routed through the interior
+  while preserving the more stable left/bottom structure.
+- Prototype: optional `relax_top_right` dissection mode plus a temporary
+  `scripts/dissect_eval.py --relax-top-right` probe. It routed all
+  top/right-only boundary units to `mid` and relied on `_retouch_edges` for
+  opportunistic free snaps.
+- Result: standalone wf=1.0 dissection regressed badly: **2.3351** vs default
+  **1.9393**, with n≥100 V_rel 0.218 vs 0.110. Compared with integrated v11,
+  replacement delta was **+0.5373** weighted. Oracle best-of had only four
+  small wins (cases 82, 23, 2, 69), worth **−0.0045** before runtime and with
+  no hidden-safe gate. Removed the optional path and CLI flag.
+
+### 2026-07-08 golden-structure mining — ✅ ARTIFACT KEPT
+- Replaced the old print-only `scripts/mine_golden.py` with a deterministic
+  validation-label miner that mirrors evaluator semantics for boundary,
+  grouping, and MIB soft violations. Output:
+  `results/golden_structure.json`.
+- Validation check: mined `violations_relative` matches
+  `results/golden_scored.json` exactly (`max_abs_vr_diff=0`). Summary:
+  golden soft violations = 229 / 4478 across 90 cases, split as boundary 219,
+  grouping 10, MIB 0; boundary satisfaction 2184/2403 (90.9%); clusters
+  connected 350/360; preplaced cluster members touching same-cluster members
+  74/74; MIB groups uniform 100/100; unsupported-above-floor blocks 0.
+- Solver implication: keep MIB uniformity and cluster connectivity as primary
+  structure; boundary is a weighted tradeoff, not a zero-violation target
+  (golden pays 13 preplaced-boundary misses); fixed/preplaced cut reuse is a
+  better lead than generic floater insertion.
+
+### 2026-07-08 preplaced-cluster bridge probe — ❌ REVERTED
+- Hypothesis: many residual cluster violations are not unequal soft lanes but
+  preplaced or fixed cluster members isolated from the movable cluster run.
+  Prototype a post-layout bridge that moves one non-preplaced same-cluster
+  member to abut an isolated preplaced/fixed component, then judge by official
+  cost before considering integration.
+- Result: official-label greedy upper bound improved 6 cases (weighted delta
+  −0.0070 RF; wins on 88/87/82/72 plus small 20/2), but the deployable
+  self-normalized selector picked **0/142** generated bridge candidates.
+  The wins require golden-baseline/clamped semantics to identify; forcing them
+  would be validation overfit. Do not integrate without a hidden-safe bridge
+  ranking rule.
+
+### 2026-07-08 width-tail probe — ❌ REVERTED
+- Hypothesis: the current wf∈{0.8,0.9,1.0,1.1,1.2} portfolio may miss a few
+  cheap HPWL/area wins at the tails. This is a probe only, not a return to the
+  rejected 15-candidate grid: test sparse tail widths and keep at most one
+  gated/dynamic candidate if it beats v11 runtime-adjusted.
+- Result: sparse tails had isolated wins, but fixed replacements were very
+  negative (e.g. wf=1.3 replacement delta +0.196 weighted; all-tail best-of
+  only −0.004 RF before runtime). Pin-cloud dynamic widths fired on 4–27 cases
+  but replacement deltas stayed +0.08 to +0.16 except a negligible wide-only
+  probe. No defensible runtime-cheap gate; do not add tail candidates.
+
+### 2026-07-08 global-MIB square candidate — ❌ REVERTED
+- Hypothesis: remaining MIB violations are partly from equal-area MIB groups
+  that stay inside one cluster/lane unit, so v11's split-unit forcing never
+  normalizes them. Add an optional dissection candidate that forces every
+  all-movable, equal-area MIB group to one shared square shape; keep only if
+  the existing best-of selector shows runtime-adjusted improvement.
+- Result: global-MIB dissect-only wf=1.0 was worse (1.985 vs default 1.939);
+  compared against integrated v11 it won only cases 16 and 31, while large
+  losses included 70, 90, 99, 79, 76, and others. Replacement-all weighted
+  delta was +0.187, and there was no defensible cheap gate beyond validation
+  overfit. Removed the optional path; split-unit MIB forcing remains.
+
+### 2026-07-08 integrated v11 — gated obstacle-band cap candidate
+- Hypothesis: case-70 whitespace is caused by the obstacle-aware interior fill
+  advancing through low-y slabs with very low placed-area/free-area ratios,
+  leaving the y∈[0, py1] region mostly empty before the main flexible rows
+  start. First step is diagnostic only: instrument `fill_region`'s y
+  progression and placed area before attempting another filler change.
+- Trace finding: the mid fill is not the primary culprit for wf≤1.0; the
+  bottom band grows to y≈202 because `_band_row` re-derives height after
+  intersecting every low preplaced obstacle, then places only 1 block and
+  spills the rest. Follow-up hypothesis: cap an obstacle-crossing band at the
+  next obstacle edge and spill overflow instead of letting the band snowball.
+- Result: default dissection unchanged (1.9393); uncapped replacement fixed
+  case 70 but regressed RF=1 to 1.8436. Kept as a **single gated extra
+  candidate** only when incumbent/capped bottom-band height ratio ≥5×
+  (validation hits cases 16,70,90). Integrated official **1.7978**, 100/100,
+  avg rt 0.186s; radj@{0.5,1,2,3}s = 1.607/1.350/1.260/1.258 (beats v10 at
+  median 1/2/3s; loses at 0.5s, outside the keep gate). Wrapper parity:
+  **1.797786**, 0 position diffs, avg 0.200s incl. spawn; fuzz 400/400
+  feasible (max 0.448s). ✅ kept
+
 ### 2026-07-07 clamp-branch segmented-fill experiment — ❌ REVERTED
 - Hypothesis: rows crossing obstacle edges should fill around obstacles at natural height instead of
   jumping to the edge (case-70 whitespace). Result: dissect-only 1.9393 -> 1.9797 (n>=100 ag 0.249->0.294),

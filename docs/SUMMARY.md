@@ -2,8 +2,8 @@
 
 > Single-source overview: problem, solution, results, methodology, honest
 > assessment. Each section ≈ one slide. Numbers verified against
-> `results/integrated_v10.json` (current) and `results/v9_locked.json`
-> (pre-campaign baseline). Updated 2026-07-07.
+> `results/integrated_v16.json` (current) and `results/v9_locked.json`
+> (pre-campaign baseline). Updated 2026-07-08.
 
 ---
 
@@ -38,8 +38,9 @@ cost = (1 + 0.5·(HPWL_gap + Area_gap)) · exp(2·V_rel) · max(0.7, (rt/median)
 ## 3. The Key Insight (1 slide — the breakthrough)
 
 Mining the golden data showed: **golden layouts are near-perfect tessellations**
-— utilization ≈ 0.97, soft-block areas equal targets *exactly*, ~3% whitespace
-from a few floaters. Every previously tried method (shelf/skyline packers,
+— utilization ≈ 0.97, soft-block areas equal targets *exactly*, ~3% structured
+slack around fixed/preplaced/boundary geometry, and no unsupported blocks in
+the validation labels. Every previously tried method (shelf/skyline packers,
 sequence-pair SA, ML prediction) packed *rigid* rectangles and capped at
 0.5–0.8 utilization, or broke the cluster-abutment rule when packing tight.
 
@@ -60,11 +61,11 @@ from the structure (w = area/height). Then:
 
 | Metric | Pre-campaign (v9) | **Current** |
 |---|---|---|
-| Official score (RF=1) | 2.7182 | **1.8074** (−33%) |
+| Official score (RF=1) | 2.7182 | **1.7027** (-37%) |
 | Feasible | 100/100 | **100/100** |
-| Runtime | 0.18s avg | **0.18s avg** (same speed) |
-| Runtime-adjusted @ median 1s | 2.110 | **1.353** (−36%) |
-| Packaged binary, official command | — | 1.807413, 0 position diffs, 0.198s incl. spawn |
+| Runtime | 0.18s avg | **0.228s avg** (same speed class) |
+| Runtime-adjusted @ median 1s | 2.110 | **1.316** (-38%) |
+| Packaged binary, official command | — | 1.702727, 0 position diffs, 0.230s incl. spawn |
 
 Calibration: golden-equivalent play = 1.108 (RF=1) / 0.776 (at the runtime
 floor); theoretical bound 0.70. Golden itself violates soft constraints on
@@ -78,7 +79,7 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
   command after every engine change: identical positions, 400/400
   training-instance feasibility fuzz.
 - 51 regression tests + result audit + release gate on every commit; every
-  experiment (including 4 reverted ones) logged with verdicts.
+  experiment, including reverted probes, logged with verdicts.
 
 ## 6. Methodology / rigor (1 slide)
 
@@ -95,9 +96,9 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 
 - **Strengths:** 100% feasible, deterministic, fast (runtime-floor-friendly
   even through the per-case-spawn harness), structurally sound constraint
-  handling, 33% quality improvement banked with zero runtime cost.
-- **Remaining gap:** hpwl_gap 0.86 / area_gap 0.25 on the heavy cases —
-  ~0.7 runtime-adjusted points above golden-equivalent play. Ranked leads
+  handling, 37% quality improvement banked in the same speed class.
+- **Remaining gap:** weighted heavy-case hpwl_gap 0.650 / area_gap 0.160 —
+  ~0.54 runtime-adjusted points above golden-equivalent play at median 1s. Ranked leads
   with evidence: `HANDOFF.md` §6.
 - **Risk:** field median runtime unknown; if the field is slow, dormant
   budgeted-search machinery can be re-enabled to spend the headroom.
@@ -110,7 +111,7 @@ cp contest_solution/my_optimizer.py contest_solution/dissect.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
-# -> Total Score: 1.8074, Feasible: 100
+# -> Total Score: 1.7027, Feasible: 100
 python -m pytest                                    # 51/51
 python scripts/check_public_release.py              # PASS
 ```

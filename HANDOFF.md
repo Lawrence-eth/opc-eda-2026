@@ -1,7 +1,7 @@
 # HANDOFF — ICCAD 2026 Problem C (FloorSet Challenge)
 
-> For the next agent taking over this project. Everything here was measured on
-> 2026-07-07 at commit `91ceb64` (+ this handoff commit). Nothing is aspirational.
+> For the next agent taking over this project. Current head was measured on
+> 2026-07-08 after integrated v16. Nothing is aspirational.
 > Operator's standing orders: **the only goal is to WIN. No time limit. Never
 > regress the verified state.**
 
@@ -11,19 +11,19 @@
 
 | Metric | Value | Artifact |
 |---|---|---|
-| Official validation score (RF=1) | **1.8074** | `results/integrated_v10.json` |
+| Official validation score (RF=1) | **1.7027** | `results/integrated_v16.json` |
 | Feasible | **100 / 100** | same |
-| Runtime | avg 0.18s/case, max 0.68s (in-process) | same |
-| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.602 / **1.353** / 1.266 / 1.265 | recompute per §5.3 |
-| Packaged binary via official command | **1.807413, 0/100 position diffs**, avg 0.198s incl. spawn | `results/wrapper_v10.json` |
-| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible | rerun per §5.5 |
+| Runtime | avg 0.228s/case, max 0.717s (in-process) | same |
+| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.592 / **1.316** / 1.201 / 1.192 | recompute per §5.3 |
+| Packaged binary via official command | **1.702727, 0/100 position diffs**, avg 0.230s incl. spawn | `results/wrapper_v16.json` |
+| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible, avg 0.226s, p95 0.422s, max 0.535s | rerun per §5.5 |
 | Tests / audit / release gate | 51/51 PASS / PASS / PASS | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
 Golden-equivalent play = 1.108 RF=1 / 0.776 at the runtime floor (the golden
 layouts themselves violate soft constraints on 90/100 cases —
 `results/golden_scored.json`). Absolute bound 0.70. **Distance travelled:
-2.718 → 1.807; distance remaining to golden-equivalent: 1.807 → 1.108.**
+2.718 → 1.703; distance remaining to golden-equivalent: 1.703 → 1.108.**
 
 ## 2. Read these, in order
 
@@ -45,13 +45,36 @@ layouts themselves violate soft constraints on 90/100 cases —
    the reference/fallback candidate, ~0.03–0.1s.
 2. **Dissection portfolio**: `contest_solution/dissect.py::dissect_solve()`
    for width_factor ∈ {0.8, 0.9, 1.0, 1.1, 1.2} (~0.01–0.03s each).
-3. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
+3. **Gated band-cap candidate** (v11): one extra `band_edge_cap=True`
+   dissection at wf=1.0 only when `should_try_band_edge_cap()` sees a ≥5×
+   incumbent/capped bottom-band height ratio. This targets the case-70/90
+   obstacle snowball without paying a candidate on every case.
+4. **Gated pin-scale candidates** (v12): two extra wf=1.0 dissection
+   candidates with `pin_scale` 0.5 and 4.0 only for 50≤n≤103. They are
+   HPWL/area ordering variants and are kept behind the same selector; the
+   upper block-count gate avoids spending runtime on 104–120 where validation
+   selected none and runtime dominates.
+5. **Hybrid edge-ordering candidate** (v16): one extra wf=1.0 dissection
+   candidate orders left/right boundary queues by the barycenter signal
+   instead of area. For n<118 it also sorts bottom/top band units by pin/net-x
+   pull; for n>=118 it preserves v15 width-first band ordering to keep the
+   measured case-98/99 wins. It is kept behind the same selector and captures
+   HPWL/soft wins without post-placement search.
+6. **High-weight boundary reshape candidate** (v13): after portfolio
+   selection, only for n≥118, try same-area reshapes of free non-cluster,
+   non-MIB boundary blocks that satisfy their full current-bbox boundary code.
+   This is also selector-gated; measured validation win is case 98.
+7. **Boundary edge-slide polish** (v14): only for n∈{103,119}, try same-area
+   in-bbox placements for free non-cluster, non-MIB boundary misses using
+   obstacle-clearance endpoints. It is cost-gated and keeps the current bbox;
+   measured wins are validation cases 82 and 98.
+8. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
    With golden baselines absent (deployment) it normalizes against the first
    candidate and uses **SIGNED gaps** (clamping against a non-golden reference
    censors improvements — this bug cost a day; don't reintroduce it).
-4. If the fast shelf won (rare — 9/100 cases), the **full-SA shelf** is run
-   and the selection redone. Dissection currently wins 91/100.
-5. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
+9. If the fast shelf won, the **full-SA shelf** is run and the selection
+   redone. The dissection family wins most cases; shelf remains the fallback.
+10. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
    local search (`_REFINE_BUDGET=0.0` — see §6 for why).
 
 `dissect.py` — the campaign engine (exact-area dissection):
@@ -74,7 +97,9 @@ layouts themselves violate soft constraints on 90/100 cases —
   consistency).
 - **Ordering** (HPWL): vertical = barycenter iteration over b2b + absolute
   pin-y anchors; horizontal = within-row sort by pull toward placed neighbors
-  + pin-x. **Two passes**: pass 2 re-orders using pass 1's actual positions.
+  + pin-x. The v16 hybrid candidate can also sort bottom/top band units by
+  pin/net-x pull. **Two passes**: pass 2 re-orders using pass 1's actual
+  positions.
 - Final `_retouch_edges`: flush boundary-coded blocks to the bbox edge when
   the destination is empty — **never moves preplaced** (hard constraint,
   Q&A Q5; violating this cost 9 infeasible cases before it was caught).
@@ -141,7 +166,7 @@ def radj(path, med):
         tot+=c*w
     return tot/Z
 for m in (0.5,1,2,3):
-    print(m, radj('results/<candidate>.json', m), radj('results/integrated_v10.json', m))
+    print(m, radj('results/<candidate>.json', m), radj('results/integrated_v16.json', m))
 EOF
 ```
 KEEP iff it beats the incumbent at median ∈ {1,2,3}s AND stays 100/100.
@@ -160,41 +185,53 @@ PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
 
 5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (51 tests) and
 `.venv/bin/python scripts/check_public_release.py` (defaults now point at
-`results/integrated_v10.json`, max-score 1.81 — bump the threshold when you
+`results/integrated_v16.json`, max-score 1.71 — bump the threshold when you
 beat it).
 
 ## 6. Open leads, ranked (with the evidence)
 
-Current dissect-only decomposition (n≥100): **hg 0.860, ag 0.249, vr 0.110,
-util 0.788**. Violation ledger across 100 cases: boundary ~458 (L 175 /
-R 181 / B 57 / T 32 — a chunk are preplaced-with-boundary-codes, which are
-UNFIXABLE by rule and golden pays them too), cluster 58, MIB 117.
+Current integrated v16 decomposition (n≥100): **hg 0.650, ag 0.160,
+vr 0.095**. Score-weighted heavy-case averages: **hg 0.650, ag 0.160,
+vr 0.095**. Violation ledger across 100 cases: boundary 337, grouping 55,
+MIB 123. A chunk of boundary violations are preplaced-with-boundary-codes,
+which are UNFIXABLE by rule and golden pays them too.
 
-1. **Case-70-class whitespace (ag lever, ~0.05–0.1 total).** n=91: util 0.49,
-   H=407 vs ideal ~201 — the y∈[0, py1] region ends up almost empty when
-   preplaced obstacles are scattered low; blocks pile above py1. A
-   segmented-natural-height-row fix was tried and REVERTED (made ag worse
-   overall, case 70 unchanged — see log). **Trace `fill_region`'s y-progression
-   on case 70 before coding anything.** Bands y[0,50)=27%, [50,102)=19%,
-   [102,153)=0.2%, [153,204)=9%.
-2. **hg 0.86 (the biggest single lever, worth ~0.3 at the floor if halved).**
-   Ideas not yet tried: recursive min-cut bisection ordering (FM-style, maps
-   naturally to the row structure; cheap at n≤120); better within-row second
-   pass; die-aspect selection by pin-cloud shape rather than fixed wf grid.
+Golden-structure mining is now measured in `results/golden_structure.json`
+(`scripts/mine_golden.py`; exact `violations_relative` match to
+`results/golden_scored.json`). Golden itself has boundary 219, grouping 10,
+MIB 0; clusters are connected on 350/360 groups; MIB groups are 100/100
+uniform; every preplaced cluster member touches a same-cluster member; and no
+validation golden block is unsupported above the floor. Implication: keep MIB
+and cluster structure strict, but don't force boundary to zero at the expense
+of area/HPWL, and don't chase generic "floater" insertion as a primary lead.
+
+1. **Residual area-gap / obstacle-band generalization.** Case 70 was traced
+   and mitigated in v11: the bottom band grew to y≈202 before mid fill,
+   placing one block and spilling the rest; the kept fix is a single gated
+   `band_edge_cap` candidate when incumbent/capped bottom-band height ratio
+   is ≥5× (validation hits 16/70/90). Do not make capped bands the default:
+   that regressed integrated score to 1.8436. Next useful work is a broader
+   but still runtime-cheap predictor or a segmented band layout that improves
+   the remaining ag residuals without firing on the large-case regressions
+   (88/98/99 were red flags in the broad attempt).
+2. **hg 0.65 (still the biggest single lever).** Recursive bisection and
+   graph-chain ordering were already rejected; do not retry them. Remaining
+   ordering ideas need to be construction-cheap: better within-row second pass,
+   safer edge/interior co-ordering, or a learned/golden-derived row assignment.
    REMEMBER: must be runtime-free (construction is ~10–30ms; keep it there).
-3. **ag 0.249 residuals**: band heights from the free-width iteration can
+3. **ag 0.16 residuals**: band heights from the free-width iteration can
    overshoot; fixed blocks are not grouped by height into shared rows
    (each tall fixed block inflates its row); obstacle-segment remainders.
-4. **MIB 117**: forced-square unification only triggers for groups split
-   across units with equal areas and no fixed members; the in-cluster lane
-   grouping covers same-lane members only. A global "MIB shape planner"
-   (pick one (w,h) per group, place all members as rigid leaves) would cut
-   most of the rest — at a small slack cost (same trade as the current
-   forcing, measured net-positive).
-5. **Cluster 58**: mostly two-lane clusters whose lanes disconnect when a
-   lane is a single wide block stacked against a multi-block lane of unequal
-   width — verify with the ledger script in §5 of the log, then consider
-   equal-width lane enforcement.
+4. **MIB 123**: golden has 0 MIB violations, so equality is not optional.
+   The reverted global-square candidate proves that a blunt extra candidate is
+   worse; the useful version is a hidden-safe shape planner that selects one
+   (w,h) per group without exploding area or width on large cases.
+5. **Grouping 55**: golden connects 350/360 groups and every preplaced cluster
+   member touches its cluster. The reverted preplaced-bridge probe found real
+   upper-bound wins but no deployable selector; a stronger rigid-component
+   bridge oracle also improved only -0.0079 weighted and the deployable
+   selector again picked 0 candidates. Next cluster work should be a ranking
+   signal/equal-width lane rule, not forced post-hoc movement.
 6. **G7 — learn the ordering from the 1M golden trees** (`tree_sol` is a
    B*-tree: side 0 = right-adjacent, side 1 = stacked-above; semantics
    verified). A model that predicts the vertical order / row assignment
@@ -207,7 +244,13 @@ UNFIXABLE by rule and golden pays them too), cluster 58, MIB 117.
 **Do NOT retry** (measured dead ends this session): candidate-grid blowups
 (pin_scale × wf), flat +0.25s refinement budgets at median≤3s, clamped gaps in
 the selector, any retouch/move pass that can touch preplaced blocks, and
-everything in `MASTER_PLAYBOOK.md` Part II.6.
+the blunt relaxed top/right boundary-routing candidate, naive fixed-height
+grouping in the mid queue, greedy graph-chain mid ordering, the area-balanced
+recursive bisection mid-ordering probe, local MIB anchor-shape forcing, and
+outward boundary expansion/retouch, obstacle-segment best-fit unit selection,
+post-hoc rigid cluster-component bridge movement without a hidden-safe ranker,
+and broad/global pin-x band ordering without the v16 high-weight preservation,
+and everything in `MASTER_PLAYBOOK.md` Part II.6.
 
 ## 7. Submission logistics (operator-owned)
 
@@ -235,10 +278,21 @@ everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `scripts/fuzz_binary.py` | wrapper-protocol feasibility fuzz on training data |
 | `scripts/match_validation_in_training.py` | retrieval scan (result: 0/1,008,000 — don't redo) |
 | `scripts/check_public_release.py` | release gate (audit + docs scan) |
-| `results/integrated_v10.json` | CURRENT official result (1.8074) |
-| `results/wrapper_v10.json` | packaged-binary parity run (1.807413) |
+| `results/integrated_v16.json` | CURRENT official result (1.7027) |
+| `results/wrapper_v16.json` | packaged-binary parity run (1.702727) |
+| `results/integrated_v15.json` | previous official result (1.7368) |
+| `results/wrapper_v15.json` | previous packaged-binary parity run (1.736800) |
+| `results/integrated_v14.json` | previous official result (1.7827) |
+| `results/wrapper_v14.json` | previous packaged-binary parity run (1.782689) |
+| `results/integrated_v13.json` | previous official result (1.7903) |
+| `results/wrapper_v13.json` | previous packaged-binary parity run (1.790330) |
+| `results/integrated_v12.json` | previous official result (1.7952) |
+| `results/integrated_v11.json` | previous official result (1.7978) |
+| `results/integrated_v10.json` | previous official result (1.8074) |
+| `results/wrapper_v10.json` | previous packaged-binary parity run (1.807413) |
 | `results/v9_locked.json` | pre-campaign locked result (2.7182) |
 | `results/golden_scored.json` | golden layouts scored officially (the target) |
+| `results/golden_structure.json` | mined golden structure priors + scorer cross-check |
 | `results/retrieval_scan.json` | proof hidden set can't be looked up |
 | `docs/CAMPAIGN_GOLDEN.md` | campaign plan + measured milestones |
 | `docs/extracted/` | problem v10 + Q&A 06-18 + submission guidelines (text) |

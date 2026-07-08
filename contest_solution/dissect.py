@@ -136,6 +136,34 @@ def build_units(case, movable):
     return units
 
 
+def _force_split_mib(case, movable):
+    # MIB unification for groups NOT captured as one unit (split across
+    # clusters/edge groups): force one shared square shape on every member.
+    unit_of = {}
+    units0 = build_units(case, movable)
+    for u in units0:
+        for b in u.blocks:
+            unit_of[b] = u
+    forced = {}
+    mgroups = {}
+    for i in movable:
+        if case.mib[i] > 0:
+            mgroups.setdefault(case.mib[i], []).append(i)
+    for grp in mgroups.values():
+        if len(grp) < 2:
+            continue
+        owners = {id(unit_of[b]) for b in grp}
+        amin = min(case.area[b] for b in grp)
+        amax = max(case.area[b] for b in grp)
+        if len(owners) > 1 and amax / amin <= 1.005:
+            anyfixed = any(case.fixed_dims(b) for b in grp)
+            if not anyfixed:
+                s = math.sqrt(amin)
+                for b in grp:
+                    forced[b] = (s, s)
+    case.forced = forced
+
+
 # ---------------------------------------------------------------------------
 # geometric helpers
 # ---------------------------------------------------------------------------
@@ -394,8 +422,21 @@ def _segment_fill(case, units, segs, y, h, out, max_aspect=12.0, flat=False):
     return rem
 
 
+def _trace_append(trace, event, **fields):
+    if trace is None:
+        return
+    row = {"event": event}
+    row.update(fields)
+    trace.append(row)
+
+
+def _unit_block_count(units):
+    return sum(len(u.blocks) for u in units)
+
+
 def fill_region(case, units, x0, x1, y0, obstacles, out,
-                l_queue=None, r_queue=None, xkey=None):
+                l_queue=None, r_queue=None, xkey=None,
+                trace=None, trace_label="region"):
     """Fill the vertical strip [x0, x1) upward from y0, around obstacles.
     Free spans get flexible exact rows; slabs crossed by obstacles get
     segmented fixed-height fills. One unit from l_queue starts each flexible
@@ -409,6 +450,10 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
     r_queue = r_queue if r_queue is not None else []
     y = y0
     guard = 0
+    _trace_append(trace, "fill_start", label=trace_label, x0=x0, x1=x1, y=y,
+                  units=len(queue), unit_blocks=_unit_block_count(queue),
+                  left=len(l_queue), right=len(r_queue),
+                  obstacles=len(obstacles))
     while (queue or l_queue or r_queue) and guard < 10000:
         guard += 1
         active = [(ox, ox + ow) for (ox, oy, ow, oh) in obstacles
@@ -423,6 +468,11 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
             h = e - y
             if h > 1e-6:
                 segs = _free_intervals(x0, x1, active)
+                segs0 = list(segs)
+                q_before = len(queue)
+                l_before = len(l_queue)
+                r_before = len(r_queue)
+                before = set(out)
                 # die-edge segments can still host L/R-required units
                 for si, (a, b) in enumerate(segs):
                     if abs(a - x0) < _EPS and l_queue:
@@ -445,6 +495,18 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
                                 _place_unit_in_row(case, u, b - w_need, y, h, out)
                                 segs[si] = (a, b - w_need)
                 queue = _segment_fill(case, queue, segs, y, h, out)
+                placed = set(out) - before
+                free_area = sum((b - a) for a, b in segs0) * h
+                placed_area = sum(out[b][2] * out[b][3] for b in placed)
+                _trace_append(
+                    trace, "active_slab", label=trace_label, guard=guard,
+                    y=y, e=e, h=h, active=len(active), segs=len(segs0),
+                    free_area=free_area, placed_blocks=len(placed),
+                    placed_area=placed_area,
+                    fill_ratio=(placed_area / free_area if free_area > _EPS else 0.0),
+                    q_before=q_before, q_after=len(queue),
+                    l_before=l_before, l_after=len(l_queue),
+                    r_before=r_before, r_after=len(r_queue))
             y = e
             continue
         # free span: flexible exact rows up to the next obstacle edge
@@ -487,6 +549,10 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
             queue.pop(i)
             _admit(u)
         if not row:
+            _trace_append(trace, "empty_free_span", label=trace_label,
+                          guard=guard, y=y,
+                          e=None if e == float('inf') else e,
+                          q=len(queue), left=len(l_queue), right=len(r_queue))
             y = e if e != float('inf') else y
             continue
         soft_a = _soft_area_list(case, row)
@@ -498,6 +564,7 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
             h = max(e - y, 1e-6)
             back = []
             x = x0
+            before = set(out)
             for u in row:
                 if u is head:
                     l_queue.insert(0, u)
@@ -513,8 +580,19 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
                 else:
                     back.append(u)
             queue = back + queue
+            placed = set(out) - before
+            placed_area = sum(out[b][2] * out[b][3] for b in placed)
+            _trace_append(
+                trace, "free_row_clamped", label=trace_label, guard=guard,
+                y=y, e=e, h=h, row_units=len(row),
+                row_blocks=_unit_block_count(row), placed_blocks=len(placed),
+                placed_area=placed_area, span_area=span * h,
+                fill_ratio=(placed_area / (span * h) if span * h > _EPS else 0.0),
+                q_after=len(queue), left=len(l_queue), right=len(r_queue),
+                back_units=len(back))
             y = e
             continue
+        before = set(out)
         x = x0
         mids = [u for u in row if u is not head and u is not tail]
         if xkey is not None:
@@ -529,7 +607,22 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
                 _place_unit_in_row(case, tail, xt, y, h, out)
             else:
                 _place_unit_in_row(case, tail, x, y, h, out)
+        placed = set(out) - before
+        placed_area = sum(out[b][2] * out[b][3] for b in placed)
+        _trace_append(
+            trace, "free_row", label=trace_label, guard=guard, y=y,
+            e=None if e == float('inf') else e, h=h,
+            row_units=len(row), row_blocks=_unit_block_count(row),
+            placed_blocks=len(placed), placed_area=placed_area,
+            span_area=span * h,
+            fill_ratio=(placed_area / (span * h) if span * h > _EPS else 0.0),
+            q_after=len(queue), left=len(l_queue), right=len(r_queue),
+            head_blocks=(len(head.blocks) if head else 0),
+            tail_blocks=(len(tail.blocks) if tail else 0))
         y += h
+    _trace_append(trace, "fill_end", label=trace_label, y=y,
+                  guards=guard, units=len(queue), left=len(l_queue),
+                  right=len(r_queue))
     return y
 
 
@@ -571,6 +664,66 @@ def _row_target(case, row, area, span):
     per = [u.area / max(len(u.blocks), 1) for u in row]
     per.sort()
     return math.sqrt(max(per[len(per) // 2], 1.0))
+
+
+def _band_snowball_ratio(case, band_units, W, y, obstacles):
+    if not band_units or not obstacles or W <= 1e-6:
+        return 0.0
+    fixw = sum(u.fixed_w for u in band_units)
+    soft_a = sum(_soft_area(case, u) for u in band_units)
+    fixh = max((u.fixed_h for u in band_units), default=0.0)
+    if soft_a <= _EPS:
+        return 0.0
+
+    h = max(soft_a / max(W - fixw, W * 0.15), fixh, 1e-6)
+    for _ in range(3):
+        blocked = [(ox, ox + ow) for (ox, oy, ow, oh) in obstacles
+                   if oy < y + h - _EPS and oy + oh > y + _EPS]
+        free_w = sum(e - s for s, e in _free_intervals(0.0, W, blocked))
+        h2 = max(soft_a / max(free_w - fixw, W * 0.15), fixh, 1e-6)
+        if abs(h2 - h) < 1e-9:
+            break
+        h = h2
+
+    active = [(ox, ox + ow) for (ox, oy, ow, oh) in obstacles
+              if oy <= y + _EPS < oy + oh and ox < W - _EPS and ox + ow > _EPS]
+    free_w = sum(e - s for s, e in _free_intervals(0.0, W, active))
+    h_cap = max(soft_a / max(free_w - fixw, W * 0.15), fixh, 1e-6)
+    edges = [oy for (_ox, oy, _ow, _oh) in obstacles if oy > y + _EPS]
+    edges += [oy + oh for (_ox, oy, _ow, oh) in obstacles
+              if oy <= y + _EPS < oy + oh and oy + oh > y + _EPS]
+    if edges:
+        h_cap = max(min(h_cap, min(edges) - y), fixh, 1e-6)
+    return h / max(h_cap, 1e-6)
+
+
+def should_try_band_edge_cap(n, areas, constraints, target_positions,
+                             width_factor=1.0, min_ratio=5.0):
+    """Cheap predictor for the optional obstacle-band cap candidate.
+
+    It fires only when the incumbent bottom band height is much larger than
+    the capped height at the first obstacle edge, the case-70/90 failure mode.
+    """
+    case = Case(n, areas, constraints, target_positions)
+    pre = [i for i in range(n) if case.preplaced[i] and case.pre_rect(i)]
+    if not pre:
+        return False
+    out = {i: case.pre_rect(i) for i in pre}
+    obstacles = [out[i] for i in pre]
+    movable = [i for i in range(n) if i not in set(pre)]
+    if not movable:
+        return False
+    _force_split_mib(case, movable)
+    units = build_units(case, movable)
+    A_mov = sum(u.area for u in units)
+    A_pre = sum(r[2] * r[3] for r in obstacles)
+    A = A_mov + A_pre
+    px1 = max((r[0] + r[2] for r in obstacles), default=0.0)
+    py1 = max((r[1] + r[3] for r in obstacles), default=0.0)
+    H_forced = max(math.sqrt(A), py1)
+    W = max(min(math.sqrt(A), A / H_forced) * width_factor, px1)
+    bottom = [u for u in units if u.boundary & 8]
+    return _band_snowball_ratio(case, bottom, W, 0.0, obstacles) >= min_ratio
 
 
 # ---------------------------------------------------------------------------
@@ -644,24 +797,33 @@ def unit_xkey(u, placed_centers, adj_xpull):
 
 def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
                   target_positions, width_factor=1.0, pin_scale=1.0,
-                  order_ops=None):
+                  order_ops=None, trace=None, band_edge_cap=False,
+                  edge_order_mode="area", band_order_mode="width"):
     """Two-pass frame-of-rows dissection (pass 2 re-orders with pass 1's
     actual positions — one Gauss-Seidel sweep). Returns positions or None."""
     p1 = _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
                        target_positions, width_factor, pin_scale, order_ops,
-                       prev=None)
+                       prev=None, trace=trace, pass_name="p1",
+                       band_edge_cap=band_edge_cap,
+                       edge_order_mode=edge_order_mode,
+                       band_order_mode=band_order_mode)
     if p1 is None:
         return None
     prev = {i: p1[i] for i in range(n)}
     p2 = _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
                        target_positions, width_factor, pin_scale, order_ops,
-                       prev=prev)
+                       prev=prev, trace=trace, pass_name="p2",
+                       band_edge_cap=band_edge_cap,
+                       edge_order_mode=edge_order_mode,
+                       band_order_mode=band_order_mode)
     return p2 if p2 is not None else p1
 
 
 def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
                   target_positions, width_factor=1.0, pin_scale=1.0,
-                  order_ops=None, prev=None):
+                  order_ops=None, prev=None, trace=None, pass_name="p",
+                  band_edge_cap=False, edge_order_mode="area",
+                  band_order_mode="width"):
     case = Case(n, areas, constraints, target_positions)
     out: Dict[int, Rect] = {}
 
@@ -673,32 +835,7 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
     if not movable:
         return [out.get(i, (0.0, 0.0, 1.0, 1.0)) for i in range(n)]
 
-    # MIB unification for groups NOT captured as one unit (split across
-    # clusters/edge groups): force one shared square shape on every member —
-    # a small slack cost that removes the distinct-shape violations.
-    unit_of = {}
-    units0 = build_units(case, movable)
-    for u in units0:
-        for b in u.blocks:
-            unit_of[b] = u
-    forced = {}
-    mgroups = {}
-    for i in movable:
-        if case.mib[i] > 0:
-            mgroups.setdefault(case.mib[i], []).append(i)
-    for gid, grp in mgroups.items():
-        if len(grp) < 2:
-            continue
-        owners = {id(unit_of[b]) for b in grp}
-        amin = min(case.area[b] for b in grp)
-        amax = max(case.area[b] for b in grp)
-        if len(owners) > 1 and amax / amin <= 1.005:
-            anyfixed = any(case.fixed_dims(b) for b in grp)
-            if not anyfixed:
-                s = math.sqrt(amin)
-                for b in grp:
-                    forced[b] = (s, s)
-    case.forced = forced
+    _force_split_mib(case, movable)
     units = build_units(case, movable)
     A_mov = sum(u.area for u in units)
     A_pre = sum(r[2] * r[3] for r in obstacles)
@@ -730,6 +867,17 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
         groups[key].sort(key=lambda u: (0 if u.boundary & 1 else
                                         (2 if u.boundary & 2 else 1),
                                         -u.area))
+    _trace_append(trace, "pass_start", label=pass_name, n=n, width=W,
+                  total_area=A, movable_area=A_mov, preplaced_area=A_pre,
+                  px1=px1, py1=py1, bottom=len(groups['bottom']),
+                  top=len(groups['top']), left=len(groups['left']),
+                  right=len(groups['right']), mid=len(groups['mid']),
+                  bottom_blocks=_unit_block_count(groups['bottom']),
+                  top_blocks=_unit_block_count(groups['top']),
+                  left_blocks=_unit_block_count(groups['left']),
+                  right_blocks=_unit_block_count(groups['right']),
+                  mid_blocks=_unit_block_count(groups['mid']),
+                  obstacles=len(obstacles), prev=prev is not None)
     # order interior for locality; L/R queues largest-first so early (wide)
     # rows take the wide units
     H_est = A / max(W, 1e-9)
@@ -745,8 +893,16 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
             for (i, j) in order_ops:
                 a, b = i % K, j % K
                 mid[a], mid[b] = mid[b], mid[a]
-    groups['left'].sort(key=lambda u: -u.area)
-    groups['right'].sort(key=lambda u: -u.area)
+    if edge_order_mode == "bary":
+        groups['left'] = order_units(groups['left'], b2b_edges, p2b_edges,
+                                     pins, H_est=H_est,
+                                     pin_scale=pin_scale, y_init=y_init)
+        groups['right'] = order_units(groups['right'], b2b_edges, p2b_edges,
+                                      pins, H_est=H_est,
+                                      pin_scale=pin_scale, y_init=y_init)
+    else:
+        groups['left'].sort(key=lambda u: -u.area)
+        groups['right'].sort(key=lambda u: -u.area)
 
     # within-row x ordering: pull units toward placed neighbors and pins
     adjb = {}
@@ -781,33 +937,45 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
     y = 0.0
     if groups['bottom']:
         y = _band_row(case, groups['bottom'], W, 0.0, obstacles, out,
-                      groups['mid'])
+                      groups['mid'], trace=trace,
+                      trace_label=f"{pass_name}:bottom",
+                      band_edge_cap=band_edge_cap,
+                      band_order_mode=band_order_mode, xkey=xkey)
 
     # --- interior rows with L/R injection ----------------------------------
     y_end = fill_region(case, groups['mid'], 0.0, W, y, obstacles, out,
                         l_queue=groups['left'], r_queue=groups['right'],
-                        xkey=xkey)
+                        xkey=xkey, trace=trace,
+                        trace_label=f"{pass_name}:mid")
 
     # --- top band: ONE exact row flush at the very top ----------------------
     if groups['top']:
         y_top0 = max((r[1] + r[3] for r in out.values()), default=y_end)
         y_top0 = max(y_top0, py1)
         top_spill = []
-        y_after = _band_row(case, groups['top'], W, y_top0, [], out, top_spill)
+        y_after = _band_row(case, groups['top'], W, y_top0, [], out,
+                            top_spill, trace=trace,
+                            trace_label=f"{pass_name}:top",
+                            band_edge_cap=band_edge_cap,
+                            band_order_mode=band_order_mode, xkey=xkey)
         if top_spill:
-            fill_region(case, top_spill, 0.0, W, y_after, [], out)
+            fill_region(case, top_spill, 0.0, W, y_after, [], out,
+                        trace=trace, trace_label=f"{pass_name}:top_spill")
         _retouch_top(case, groups['top'], out)
     # safety: any block still unplaced goes into a strip above everything
     missing = [i for i in movable if i not in out]
     if missing:
         y_hi = max((r[1] + r[3] for r in out.values()), default=0.0)
         fill_region(case, [Unit([i], 'block', case) for i in missing],
-                    0.0, W, y_hi, [], out)
+                    0.0, W, y_hi, [], out, trace=trace,
+                    trace_label=f"{pass_name}:missing")
     _retouch_edges(case, out, n)
     return [out[i] for i in range(n)]
 
 
-def _band_row(case, band_units, W, y, obstacles, out, spill):
+def _band_row(case, band_units, W, y, obstacles, out, spill,
+              trace=None, trace_label="band", band_edge_cap=False,
+              band_order_mode="width", xkey=None):
     """Realize a band as ONE exact-fill row at y spanning [0, W): every soft
     member's height equals the row height, so all touch the band edge.
     Obstacle-crossing segments are handled; units that cannot fit spill into
@@ -815,21 +983,44 @@ def _band_row(case, band_units, W, y, obstacles, out, spill):
     fixw = sum(u.fixed_w for u in band_units)
     soft_a = sum(_soft_area(case, u) for u in band_units)
     fixh = max((u.fixed_h for u in band_units), default=0.0)
-    h = max(soft_a / max(W - fixw, W * 0.15), fixh, 1e-6)
-    # obstacles crossing the band eat width: re-derive h from the FREE width
-    for _ in range(3):
+    if obstacles and band_edge_cap:
+        # Derive the band height from the x-space available at this y only.
+        # If the implied row would cross the next obstacle edge, stop there
+        # and spill leftovers. Letting the height feed back through every
+        # newly-crossed obstacle can snowball into a very tall mostly-empty
+        # band (case 70).
+        blocked = [(ox, ox + ow) for (ox, oy, ow, oh) in obstacles
+                   if oy <= y + _EPS < oy + oh and ox < W - _EPS and ox + ow > _EPS]
+        free_w = sum(e - s for s, e in _free_intervals(0.0, W, blocked))
+        h = max(soft_a / max(free_w - fixw, W * 0.15), fixh, 1e-6)
+        edges = [oy for (_ox, oy, _ow, _oh) in obstacles if oy > y + _EPS]
+        edges += [oy + oh for (_ox, oy, _ow, oh) in obstacles
+                  if oy <= y + _EPS < oy + oh and oy + oh > y + _EPS]
+        if edges:
+            h = max(min(h, min(edges) - y), fixh, 1e-6)
         blocked = [(ox, ox + ow) for (ox, oy, ow, oh) in obstacles
                    if oy < y + h - _EPS and oy + oh > y + _EPS]
-        free_w = sum(e - s for s, e in _free_intervals(0.0, W, blocked))
-        h2 = max(soft_a / max(free_w - fixw, W * 0.15), fixh, 1e-6)
-        if abs(h2 - h) < 1e-9:
-            break
-        h = h2
+    else:
+        h = max(soft_a / max(W - fixw, W * 0.15), fixh, 1e-6)
+        # obstacles crossing the band eat width: re-derive h from the FREE
+        # width. This is the incumbent behavior; keep it as the default and
+        # test the capped mode only as an extra best-of candidate.
+        for _ in range(3):
+            blocked = [(ox, ox + ow) for (ox, oy, ow, oh) in obstacles
+                       if oy < y + h - _EPS and oy + oh > y + _EPS]
+            free_w = sum(e - s for s, e in _free_intervals(0.0, W, blocked))
+            h2 = max(soft_a / max(free_w - fixw, W * 0.15), fixh, 1e-6)
+            if abs(h2 - h) < 1e-9:
+                break
+            h = h2
     segs = _free_intervals(0.0, W, blocked)
     units = list(band_units)
     right_corner = [u for u in units if u.boundary & 2]
     rest = [u for u in units if not (u.boundary & 2)]
+    if band_order_mode == "pinx" and xkey is not None:
+        right_corner.sort(key=lambda u: (xkey(u, 0.0, W), -u.area))
     rem = []
+    before = set(out)
     # NOTE: slivers are legal (evaluator checks area only); bands use a very
     # loose aspect guard so small blocks still make it onto their edge
     # reserve space for right-corner units at the very end of the last
@@ -851,11 +1042,25 @@ def _band_row(case, band_units, W, y, obstacles, out, spill):
         segs = segs[:-1] + [(a, x)]
     elif right_corner:
         rem.extend(right_corner)
-    rest = sorted(rest, key=lambda u: -(u.fixed_w + (_soft_area(case, u) / h
-                                        if _soft_area(case, u) > 0 else 0.0)))
+    if band_order_mode == "pinx" and xkey is not None:
+        rest = sorted(rest, key=lambda u: (xkey(u, 0.0, W),
+                                           -(u.fixed_w + (_soft_area(case, u) / h
+                                             if _soft_area(case, u) > 0 else 0.0))))
+    else:
+        rest = sorted(rest, key=lambda u: -(u.fixed_w + (_soft_area(case, u) / h
+                                            if _soft_area(case, u) > 0 else 0.0)))
     rem.extend(_segment_fill(case, rest, segs, y, h, out, max_aspect=60.0,
                              flat=True))
     spill.extend(rem)
+    placed = set(out) - before
+    placed_area = sum(out[b][2] * out[b][3] for b in placed)
+    free_area = sum((b - a) for a, b in segs) * h
+    _trace_append(trace, "band_row", label=trace_label, y=y, h=h,
+                  units=len(band_units), unit_blocks=_unit_block_count(band_units),
+                  placed_blocks=len(placed), placed_area=placed_area,
+                  free_area=free_area,
+                  fill_ratio=(placed_area / free_area if free_area > _EPS else 0.0),
+                  spill=len(rem), obstacles=len(blocked))
     return y + h
 
 
