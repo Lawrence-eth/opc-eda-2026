@@ -1,5 +1,19 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 barycenter iteration-count probe — ❌ REJECTED (NO CODE)
+- Hypothesis: after v21 added external-y anchors, the old 20 barycenter
+  smoothing iterations may over-propagate row-order pulls. Reducing the
+  iteration count is a no-candidate, near-zero-runtime replacement that might
+  preserve anchor wins while recovering the v21 regressions.
+- Probe: tested 12 and 16 iterations as replacements for v21's 20. Both kept
+  100/100 feasibility but lost RF=1: 12 iterations scored **1.652222**, avg
+  **0.230s**; 16 iterations scored **1.651801**, avg **0.264s**; v21 remains
+  **1.650715**.
+- Final check: runtime-adjusted medians {1,2,3}s were v21
+  **1.311/1.172/1.156**, 12 iterations **1.302/1.174/1.157**, and
+  16 iterations **1.347/1.188/1.161**. The 12-iteration run only won at
+  median 1s and failed the required medians 2/3; restored exact v21 code.
+
 ### 2026-07-08 external-y pull scale sweep — ❌ REJECTED (NO CODE)
 - Hypothesis: v21's external-y ordering anchor is a structural win, but full
   b2b weight may over-pull some queues (largest v21 regressions were cases
