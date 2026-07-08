@@ -1,5 +1,21 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 gated flat-cluster tie-break candidate probe — ❌ REJECTED
+- Hypothesis: the flat cluster edge-order tie-break lost as a global
+  replacement, but it had isolated high-weight wins on cases 88/89/99. Making
+  it an optional dissection candidate behind tight feature gates may capture
+  those wins while the selector rejects misses.
+- Probe: add a `flat_edge_area_tiebreak` dissection option and call it only
+  for high-weight structural pockets matching the observed win classes.
+- Result: the first gated candidate changed cases 88/89/99 and improved raw
+  score **1.638545 → 1.637167**, but lost runtime-adjusted at medians
+  {1,2,3}s (**1.317/1.169/1.150** vs v23 **1.314/1.167/1.147**) because
+  the case-99 tail paid too much runtime. Trimming to cases 88/89 improved
+  raw score to **1.637647** but still lost runtime-adjusted
+  (**1.343/1.178/1.151**) due evaluation-time overhead on those high-weight
+  cases.
+- Verdict: rejected; remove the optional flat tie-break code and keep v23.
+
 ### 2026-07-08 gated strong-width pocket probe — ✅ KEPT (v23)
 - Hypothesis: the high-weight ordering upper-bound scan found two strong
   pin-pull width pockets with material per-case wins: `wf=0.75` for
