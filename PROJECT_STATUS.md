@@ -4,13 +4,13 @@
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v17`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v18`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.6960** | 2.7182 |
+| Score (RF=1) | **1.6845** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.239s / 0.746s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.322 / 1.197 / 1.187** | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.696014, 0 position diffs, avg 0.231s | — |
+| Runtime avg / max | 0.229s / 0.768s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.317 / 1.191 / 1.179** | 2.110 / 1.924 / 1.903 |
+| Packaged binary (official command, incl. spawn) | 1.684492, 0 position diffs, avg 0.235s | — |
 
 ## What the solver is
 
@@ -26,8 +26,9 @@ classes; v15 adds one barycentric left/right edge-queue ordering candidate for
 HPWL wins on high-weight cases; v16 switches that extra candidate to pin/net-x
 band ordering for n<118 while preserving v15 width-first bands on n>=118; v17
 uses wf=0.8 for that hybrid candidate on high-boundary, moderate-net 95..117
-block cases, without adding another candidate. The
-dissection family wins most cases; the shelf covers the rest. Deterministic,
+block cases, without adding another candidate; v18 adds one high-weight
+strong pin-pull hybrid ordering candidate (`pin_scale=6.0`) only for n>=100.
+The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
 Key structural properties (why it beats everything previous):
@@ -41,7 +42,7 @@ Key structural properties (why it beats everything previous):
 ## Verification state (2026-07-08)
 
 - 51/51 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v17.json`, max-score 1.70).
+  (defaults: `results/integrated_v18.json`, max-score 1.69).
 - Submission package rebuilt + parity-verified (0/100 position diffs through
   the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
@@ -49,8 +50,8 @@ Key structural properties (why it beats everything previous):
 
 ## Where the remaining score is
 
-Current n≥100 averages: hpwl_gap 0.645, area_gap 0.162, V_rel 0.093.
-Weighted worst-case averages: hpwl_gap 0.645, area_gap 0.162, V_rel 0.093.
+Current n≥100 averages: hpwl_gap 0.621, area_gap 0.155, V_rel 0.094.
+Weighted worst-case averages: hpwl_gap 0.621, area_gap 0.155, V_rel 0.094.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
 play would score 1.108 (RF=1) / 0.776 (at the runtime floor). Golden-structure
 mining is now in `results/golden_structure.json`: golden pays boundary misses

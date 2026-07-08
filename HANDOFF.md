@@ -1,7 +1,7 @@
 # HANDOFF — ICCAD 2026 Problem C (FloorSet Challenge)
 
 > For the next agent taking over this project. Current head was measured on
-> 2026-07-08 after integrated v17. Nothing is aspirational.
+> 2026-07-08 after integrated v18. Nothing is aspirational.
 > Operator's standing orders: **the only goal is to WIN. No time limit. Never
 > regress the verified state.**
 
@@ -11,19 +11,19 @@
 
 | Metric | Value | Artifact |
 |---|---|---|
-| Official validation score (RF=1) | **1.6960** | `results/integrated_v17.json` |
+| Official validation score (RF=1) | **1.6845** | `results/integrated_v18.json` |
 | Feasible | **100 / 100** | same |
-| Runtime | avg 0.239s/case, max 0.746s (in-process) | same |
-| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.606 / **1.322** / 1.197 / 1.187 | recompute per §5.3 |
-| Packaged binary via official command | **1.696014, 0/100 position diffs**, avg 0.231s incl. spawn | `results/wrapper_v17.json` |
-| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible, avg 0.230s, p95 0.431s, max 0.536s | rerun per §5.5 |
+| Runtime | avg 0.229s/case, max 0.768s (in-process) | same |
+| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.601 / **1.317** / 1.191 / 1.179 | recompute per §5.3 |
+| Packaged binary via official command | **1.684492, 0/100 position diffs**, avg 0.235s incl. spawn | `results/wrapper_v18.json` |
+| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible, avg 0.232s, p95 0.443s, max 0.603s | rerun per §5.5 |
 | Tests / audit / release gate | 51/51 PASS / PASS / PASS | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
 Golden-equivalent play = 1.108 RF=1 / 0.776 at the runtime floor (the golden
 layouts themselves violate soft constraints on 90/100 cases —
 `results/golden_scored.json`). Absolute bound 0.70. **Distance travelled:
-2.718 → 1.696; distance remaining to golden-equivalent: 1.696 → 1.108.**
+2.718 → 1.684; distance remaining to golden-equivalent: 1.684 → 1.108.**
 
 ## 2. Read these, in order
 
@@ -61,21 +61,25 @@ layouts themselves violate soft constraints on 90/100 cases —
    measured case-98/99 wins. v17 uses wf=0.8 instead of wf=1.0 for
    high-boundary, moderate-net 95..117 block cases. It is kept behind the same
    selector and captures HPWL/soft wins without post-placement search.
-6. **High-weight boundary reshape candidate** (v13): after portfolio
+6. **High-weight strong pin-pull hybrid candidate** (v18): one extra
+   dissection candidate only for n>=100 with `pin_scale=6.0`,
+   `edge_order_mode="bary"`, and `band_order_mode="pinx"`. It targets HPWL
+   in the weighted cases; measured wins include cases 84, 88, 94, 95, and 98.
+7. **High-weight boundary reshape candidate** (v13): after portfolio
    selection, only for n≥118, try same-area reshapes of free non-cluster,
    non-MIB boundary blocks that satisfy their full current-bbox boundary code.
    This is also selector-gated; measured validation win is case 98.
-7. **Boundary edge-slide polish** (v14): only for n∈{103,119}, try same-area
+8. **Boundary edge-slide polish** (v14): only for n∈{103,119}, try same-area
    in-bbox placements for free non-cluster, non-MIB boundary misses using
    obstacle-clearance endpoints. It is cost-gated and keeps the current bbox;
    measured wins are validation cases 82 and 98.
-8. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
+9. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
    With golden baselines absent (deployment) it normalizes against the first
    candidate and uses **SIGNED gaps** (clamping against a non-golden reference
    censors improvements — this bug cost a day; don't reintroduce it).
-9. If the fast shelf won, the **full-SA shelf** is run and the selection
+10. If the fast shelf won, the **full-SA shelf** is run and the selection
    redone. The dissection family wins most cases; shelf remains the fallback.
-10. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
+11. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
    local search (`_REFINE_BUDGET=0.0` — see §6 for why).
 
 `dissect.py` — the campaign engine (exact-area dissection):
@@ -98,8 +102,9 @@ layouts themselves violate soft constraints on 90/100 cases —
   consistency).
 - **Ordering** (HPWL): vertical = barycenter iteration over b2b + absolute
   pin-y anchors; horizontal = within-row sort by pull toward placed neighbors
-  + pin-x. The v17 hybrid candidate can also sort bottom/top band units by
-  pin/net-x pull and choose wf=0.8 for one structural high-weight gate.
+  + pin-x. The v17/v18 hybrid candidates can also sort bottom/top band units
+  by pin/net-x pull; v17 chooses wf=0.8 for one structural high-weight gate,
+  while v18 adds a high pin-scale variant for n>=100.
   **Two passes**: pass 2 re-orders using pass 1's actual
   positions.
 - Final `_retouch_edges`: flush boundary-coded blocks to the bbox edge when
@@ -168,7 +173,7 @@ def radj(path, med):
         tot+=c*w
     return tot/Z
 for m in (0.5,1,2,3):
-    print(m, radj('results/<candidate>.json', m), radj('results/integrated_v17.json', m))
+    print(m, radj('results/<candidate>.json', m), radj('results/integrated_v18.json', m))
 EOF
 ```
 KEEP iff it beats the incumbent at median ∈ {1,2,3}s AND stays 100/100.
@@ -187,14 +192,14 @@ PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
 
 5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (51 tests) and
 `.venv/bin/python scripts/check_public_release.py` (defaults now point at
-`results/integrated_v17.json`, max-score 1.70 — bump the threshold when you
+`results/integrated_v18.json`, max-score 1.69 — bump the threshold when you
 beat it).
 
 ## 6. Open leads, ranked (with the evidence)
 
-Current integrated v17 decomposition (n≥100): **hg 0.645, ag 0.162,
-vr 0.093**. Score-weighted heavy-case averages: **hg 0.645, ag 0.162,
-vr 0.093**. Violation ledger across 100 cases: boundary 332, grouping 56,
+Current integrated v18 decomposition (n≥100): **hg 0.621, ag 0.155,
+vr 0.094**. Score-weighted heavy-case averages: **hg 0.621, ag 0.155,
+vr 0.094**. Violation ledger across 100 cases: boundary 332, grouping 56,
 MIB 123. A chunk of boundary violations are preplaced-with-boundary-codes,
 which are UNFIXABLE by rule and golden pays them too.
 
@@ -280,8 +285,10 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `scripts/fuzz_binary.py` | wrapper-protocol feasibility fuzz on training data |
 | `scripts/match_validation_in_training.py` | retrieval scan (result: 0/1,008,000 — don't redo) |
 | `scripts/check_public_release.py` | release gate (audit + docs scan) |
-| `results/integrated_v17.json` | CURRENT official result (1.6960) |
-| `results/wrapper_v17.json` | packaged-binary parity run (1.696014) |
+| `results/integrated_v18.json` | CURRENT official result (1.6845) |
+| `results/wrapper_v18.json` | packaged-binary parity run (1.684492) |
+| `results/integrated_v17.json` | previous official result (1.6960) |
+| `results/wrapper_v17.json` | previous packaged-binary parity run (1.696014) |
 | `results/integrated_v16.json` | previous official result (1.7027) |
 | `results/wrapper_v16.json` | previous packaged-binary parity run (1.702727) |
 | `results/integrated_v15.json` | previous official result (1.7368) |

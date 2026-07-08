@@ -227,6 +227,18 @@ class MyOptimizer(FloorplanOptimizer):
                 cand = None
             if cand and len(cand) == block_count:
                 candidates.append(cand)
+            # High-weight HPWL probe: stronger pin pull in the hybrid ordering
+            # is cheap and replay showed wins concentrated in n>=100 cases.
+            if block_count >= 100:
+                try:
+                    cand = dissect_solve(*dis_args, width_factor=1.0,
+                                         pin_scale=6.0,
+                                         edge_order_mode="bary",
+                                         band_order_mode="pinx")
+                except Exception:
+                    cand = None
+                if cand and len(cand) == block_count:
+                    candidates.append(cand)
             # Case-70-class obstacle layout: the incumbent bottom/top band
             # height iteration can snowball when low preplaced obstacles
             # fragment the band. Keep the capped variant as a single extra

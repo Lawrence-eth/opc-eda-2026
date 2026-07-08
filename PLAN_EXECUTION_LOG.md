@@ -1,5 +1,21 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 strong pin-pull hybrid ordering candidate — ✅ KEPT (v18)
+- Hypothesis: the v16/v17 hybrid ordering still under-pulls high-weight blocks
+  toward absolute pin anchors. A stronger pin pull should be cheap if limited
+  to n>=100 and kept behind the existing selector.
+- Probe: replayed dissection variants against `integrated_v17`. The best
+  cheap upper bound was one extra candidate with `width_factor=1.0`,
+  `pin_scale=6.0`, `edge_order_mode="bary"`, and
+  `band_order_mode="pinx"` for n>=100. Oracle best-of moved
+  **1.696014 → 1.684492**, led by cases 84, 98, 88, 95, and 94.
+- Result: official validation **1.696014 → 1.684492**, 100/100 feasible,
+  avg runtime **0.229s** in the kept in-process artifact. Runtime-adjusted
+  totals at medians {0.5,1,2,3}s moved from
+  **1.606/1.322/1.197/1.187** to **1.601/1.317/1.191/1.179**. Package
+  rebuilt; wrapper score **1.684492**, 0/100 position diffs, avg 0.235s;
+  binary fuzz 400/400 feasible, avg 0.232s, p95 0.443s, max 0.603s.
+
 ### 2026-07-08 width-adaptive hybrid candidate — ✅ KEPT (v17)
 - Hypothesis: the wf=0.8 edge-bary+band-pinx signal is real, but adding it as
   another portfolio member spends too much runtime. Replacing the existing v16
