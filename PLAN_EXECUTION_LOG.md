@@ -1,5 +1,19 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 n=115 boundary edge-slide probe — ❌ REJECTED (NO CODE)
+- Hypothesis: v14's in-bbox boundary edge-slide polish for n=103/119 might
+  also capture a narrow n=115 pocket without changing the broader dissection
+  portfolio.
+- Probe: replaying the existing `_boundary_edge_slide_candidate` against v20
+  saved positions found exactly one win: case 94 improved cost
+  **1.683930 → 1.632648** by removing one boundary miss (soft 5/65 → 4/65),
+  for weighted delta **-0.002704**. The official gated candidate scored
+  **1.654099**, 100/100 feasible, but raised average runtime to **0.268s**.
+- Final check: same-window v20 recheck stayed **1.656802**, 100/100 feasible,
+  average runtime **0.23s**. Runtime-adjusted medians {1,2,3}s were v20
+  recheck **1.313/1.176/1.160** vs the n=115 slide probe
+  **1.354/1.189/1.160**. Rejected and restored exact v20 code.
+
 ### 2026-07-08 v21 high-weight pin-pull micro-pockets — ❌ REVERTED
 - Hypothesis: after v20, smaller local pockets remained in the same
   high-weight dissection family: case 99 preferred `wf=1.125` over v20's
