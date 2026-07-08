@@ -5,14 +5,14 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-08, round 15): official 1.6483, 100/100, rt avg 0.262s.
-radj@1s 1.338 vs v9's 2.110 (-37%); same-window v21 was 1.344. G3 V_rel
-gate met (n≥100 vr 0.089).
-Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483.
+**Status (2026-07-08, round 16): official 1.6385, 100/100, rt avg 0.246s.
+radj@1s 1.314 vs v9's 2.110 (-38%); v22 was 1.338. G3 V_rel
+gate met (n≥100 vr 0.087).
+Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385.
 Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
 candidate), hg 0.60 on n≥100 integrated score drivers (ordering),
-grouping 58 / MIB 126 residuals. Exact v22 soft ledger is boundary 326,
-grouping 58, MIB 126, total 510/4478 (`results/enriched_diagnostics.json`).
+grouping 54 / MIB 126 residuals. Exact v23 soft ledger is boundary 327,
+grouping 54, MIB 126, total 507/4478 (`results/enriched_diagnostics.json`).
 Golden mining says MIB should be exact, clusters should almost always connect,
 and some boundary misses are inherent or cost-optimal (including 13
 preplaced-boundary misses). Package refreshed after each engine change (§G5).**
@@ -182,6 +182,10 @@ runtime floor even with the executable spawn overhead (~0.11s).
   Official **1.6483**, 100/100; same-window v21 recheck gate passed at
   radj@{1,2,3}s (**1.338/1.180/1.155** vs **1.344/1.185/1.159**);
   wrapper parity 0 position diffs; fuzz 400/400.
+  Thirteenth kept polish added two tightly gated strong pin-pull width pockets
+  (`wf=0.75` and `wf=1.15`) for high-weight feature classes. Official
+  **1.6385**, 100/100; radj@{1,2,3}s = **1.314/1.167/1.147** vs v22
+  **1.338/1.180/1.155**; wrapper parity 0 position diffs; fuzz 400/400.
   Still open: SA over the dissection (sibling swaps, subtree
   transplants, strip re-partitions) under exact cost; aspect-bound tuning;
   fixed/preplaced slack recovery; per-case portfolio.
@@ -313,6 +317,13 @@ runtime floor even with the executable spawn overhead (~0.11s).
   Same-window v21 recheck gate passed at radj@{1,2,3}s =
   **1.338/1.180/1.155** vs **1.344/1.185/1.159**. Package rebuilt +
   parity-verified at 1.648337; binary fuzz 400/400 feasible.
+- Round 16: no-code upper-bound scan over a short high-weight ordering
+  variant list found two deployable strong pin-pull width pockets. Kept two
+  tightly gated extra candidates: `wf=0.75` for high-boundary low-p2b or
+  dense-b2b pockets, and `wf=1.15` for 106-108 block moderate-boundary/net
+  pockets. Official **1.6385**, 100/100; radj@{1,2,3}s =
+  **1.314/1.167/1.147** vs v22 **1.338/1.180/1.155**. Package rebuilt +
+  parity-verified at 1.638545; binary fuzz 400/400 feasible.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;
   obstacle slabs; cluster lanes; MIB slots; barycenter ordering. Iterations:

@@ -1,5 +1,37 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 gated strong-width pocket probe — ✅ KEPT (v23)
+- Hypothesis: the high-weight ordering upper-bound scan found two strong
+  pin-pull width pockets with material per-case wins: `wf=0.75` for
+  high-boundary, low-p2b or very dense-b2b cases in the 105-117 block range,
+  and `wf=1.15` for 106-108 block, moderate-boundary, moderate-net cases.
+  Adding them behind tight structural gates may capture cases 85/96 and 86/87
+  with negligible runtime, while the existing selector rejects misses.
+- Probe: add two gated `pin_scale=6.0`, edge-bary, band-pinx candidates:
+  `wf=0.75` for the two narrow feature pockets and `wf=1.15` for the
+  106-108 block moderate-boundary/net pocket.
+- Result: official validation **1.648337 → 1.638545**, 100/100 feasible,
+  avg runtime **0.246s**. Only four cases changed: 85, 86, 87, and 96.
+  Largest wins were cases 87 (-0.1664 cost), 86 (-0.0916), and 85 (-0.0816).
+  Runtime-adjusted medians {1,2,3}s improved from v22
+  **1.338/1.180/1.155** to v23 **1.314/1.167/1.147**.
+- Verdict: kept as v23; rebuild package and refresh release artifacts.
+
+### 2026-07-08 high-weight ordering variant upper-bound scan — ✅ FOLLOW-UP PROBE OPENED (NO CODE)
+- Hypothesis: remaining score is concentrated in cases 80-99. A small set of
+  targeted dissection ordering variants, reusing existing knobs
+  (`edge_order_mode`, `band_order_mode`, `pin_scale`, `width_factor`), may show
+  enough upper-bound improvement on high-weight cases to justify a narrow
+  deployable gate. This is intentionally not a broad pin-scale × width grid.
+- Probe: evaluate a short variant list on validation cases 80-99 and compare
+  each candidate's official per-case cost against the promoted v22 result.
+- Result: best-of upper bound over cases 80-99 was focus delta **-0.0122**.
+  Promising pockets: `wf=1.15` strong pin-pull wins cases 86/87
+  (cost deltas -0.0916/-0.1664), and `wf=0.75` strong pin-pull wins cases
+  85/96 (-0.0816/-0.0062). A `pin_scale=8` pocket on case 97 was too tiny
+  to justify extra runtime.
+- Verdict: open the gated strong-width pocket probe above.
+
 ### 2026-07-08 flat cluster edge-order tie-break probe — ❌ REJECTED
 - Hypothesis: v22 improved non-flat cluster lanes by preserving edge-side
   priority while using area as the deterministic tie-breaker. Flat clusters

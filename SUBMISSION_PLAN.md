@@ -35,7 +35,7 @@ floor that v9's whole strategy banks on. The package therefore had to be torch-f
 | **Packaged binary** via the official command (`--evaluate op_wrapper.py`) | **2.718225, 100/100, 0 position differences**; runtime avg 0.244s/case, n≥100 avg 0.475s, max 0.759s (79× headroom under the 60s wrapper timeout) |
 | Binary fuzz on 400 random training instances (exact wrapper protocol) | **400/400 hard-feasible**, avg 0.205s, max 0.705s |
 | **Re-verified after CAMPAIGN_GOLDEN G4 engine** (2026-07-07): wrapper + rebuilt binary | **2.120411, 100/100, 0 position diffs** vs in-process; avg 0.33s/case incl. spawn (max 0.96s); fuzz 400/400 feasible (max 1.15s) |
-| **CURRENT (2026-07-08, integrated v22)**: wrapper + rebuilt binary | **1.648337, 100/100, 0 position diffs** vs `results/integrated_v22.json`; avg 0.238s/case incl. spawn (max 0.665s); fuzz 400/400 feasible (avg 0.234s, p95 0.453s, max 0.589s) |
+| **CURRENT (2026-07-08, integrated v23)**: wrapper + rebuilt binary | **1.638545, 100/100, 0 position diffs** vs `results/integrated_v23.json`; avg 0.239s/case incl. spawn (max 0.643s); fuzz 400/400 feasible (avg 0.235s, p95 0.452s, max 0.593s) |
 
 Fixed during packaging: `torch_stub.py` originally aliased `float`, shadowing the
 builtin inside the stub (all cases silently fell back → score 9.98). Caught by the
@@ -132,7 +132,7 @@ leverage table and progress log when the engine lands.
 
 | Risk | Assessment | Mitigation |
 |---|---|---|
-| Field median runtime < 0.8s (floor not reached) | Unlikely: every executable submission pays spawn per case; ML entries pay torch/model-load per case (seconds) | Even at RF=1 exactly, 1.657 with 100/100 is a sound entry |
+| Field median runtime < 0.8s (floor not reached) | Unlikely: every executable submission pays spawn per case; ML entries pay torch/model-load per case (seconds) | Even at RF=1 exactly, 1.6385 with 100/100 is a sound entry |
 | Hidden-set infeasibility | 5,000-instance solve() fuzz + 400-instance binary fuzz, 0 failures; crash-proof fallback in binary | Accepted residual |
 | Eval-host incompatibility (glibc/arch) | Built on glibc 2.39 for 2.41 target (forward-compatible); onedir bundles libpython | P1.3 container rebuild if time |
 | Organizers run source instead of binary | Source fallback in package is the same solver, stdlib-only | README documents both paths |
@@ -146,6 +146,6 @@ cp -r submission/dist packaging/op_wrapper.py external/FloorSet/iccad2026contest
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate op_wrapper.py \
     --output ../../../results/wrapper_check.json
-# REQUIRED: Total Score 1.6483, Feasible 100, and 0 position diffs vs results/integrated_v22.json
+# REQUIRED: Total Score 1.6385, Feasible 100, and 0 position diffs vs results/integrated_v23.json
 cd ../../.. && .venv/bin/python scripts/fuzz_binary.py --num 400   # REQUIRED: 0 failures
 ```

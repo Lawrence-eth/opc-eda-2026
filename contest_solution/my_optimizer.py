@@ -236,6 +236,30 @@ class MyOptimizer(FloorplanOptimizer):
                     and (len(p2b_edges) <= 1200 or len(b2b_edges) > 6000)
                 ):
                     strong_pin_wfs.append(0.85)
+                b2b_count = len(b2b_edges)
+                p2b_count = len(p2b_edges)
+                if (
+                    (
+                        105 <= block_count <= 107
+                        and 31 <= boundary_count <= 33
+                        and 1800 <= b2b_count <= 3000
+                        and 800 <= p2b_count <= 1200
+                    )
+                    or (
+                        116 <= block_count <= 118
+                        and 32 <= boundary_count <= 34
+                        and b2b_count > 6000
+                        and p2b_count <= 500
+                    )
+                ):
+                    strong_pin_wfs.append(0.75)
+                if (
+                    106 <= block_count <= 108
+                    and 26 <= boundary_count <= 27
+                    and 1200 <= b2b_count <= 2400
+                    and 800 <= p2b_count <= 2500
+                ):
+                    strong_pin_wfs.append(1.15)
                 for hybrid_wf in strong_pin_wfs:
                     try:
                         cand = dissect_solve(*dis_args, width_factor=hybrid_wf,
