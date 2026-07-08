@@ -57,6 +57,9 @@ Key structural properties (why it beats everything previous):
 
 Current n≥100 averages: hpwl_gap 0.609, area_gap 0.157, V_rel 0.089.
 Weighted worst-case averages: hpwl_gap 0.630, area_gap 0.164, V_rel 0.093.
+Exact v20 soft ledger: boundary 327, grouping 57, MIB 122, total 506/4478
+(`results/enriched_diagnostics.json`). Score-weighted soft counts in the
+top-20 focus band are boundary 3.221, MIB 1.055, grouping 0.910.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
 play would score 1.108 (RF=1) / 0.776 (at the runtime floor). Golden-structure
 mining is now in `results/golden_structure.json`: golden pays boundary misses

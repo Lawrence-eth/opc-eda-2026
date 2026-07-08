@@ -211,8 +211,10 @@ beat it).
 
 Current integrated v20 decomposition (n≥100): **hg 0.609, ag 0.157,
 vr 0.089**. Score-weighted heavy-case averages: **hg 0.630, ag 0.164,
-vr 0.093**. Violation ledger across 100 cases: boundary 332, grouping 56,
-MIB 123. A chunk of boundary violations are preplaced-with-boundary-codes,
+vr 0.093**. Exact v20 soft ledger (`results/enriched_diagnostics.json`):
+boundary 327, grouping 57, MIB 122, total 506/4478. Score-weighted soft
+counts in the top-20 focus band: boundary 3.221, MIB 1.055, grouping 0.910.
+A chunk of boundary violations are preplaced-with-boundary-codes,
 which are UNFIXABLE by rule and golden pays them too.
 
 Golden-structure mining is now measured in `results/golden_structure.json`
@@ -241,7 +243,7 @@ of area/HPWL, and don't chase generic "floater" insertion as a primary lead.
 3. **ag 0.16 residuals**: band heights from the free-width iteration can
    overshoot; fixed blocks are not grouped by height into shared rows
    (each tall fixed block inflates its row); obstacle-segment remainders.
-4. **MIB 123**: golden has 0 MIB violations, so equality is not optional.
+4. **MIB 122**: golden has 0 MIB violations, so equality is not optional.
    The reverted global-square candidate proves that a blunt extra candidate is
    worse; the useful version is a hidden-safe shape planner that selects one
    (w,h) per group without exploding area or width on large cases.
@@ -320,6 +322,7 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `results/v9_locked.json` | pre-campaign locked result (2.7182) |
 | `results/golden_scored.json` | golden layouts scored officially (the target) |
 | `results/golden_structure.json` | mined golden structure priors + scorer cross-check |
+| `results/enriched_diagnostics.json` | v20 sidecar with official boundary/grouping/MIB attribution |
 | `results/retrieval_scan.json` | proof hidden set can't be looked up |
 | `docs/CAMPAIGN_GOLDEN.md` | campaign plan + measured milestones |
 | `docs/extracted/` | problem v10 + Q&A 06-18 + submission guidelines (text) |

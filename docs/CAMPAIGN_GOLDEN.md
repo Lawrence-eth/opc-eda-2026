@@ -10,11 +10,12 @@ radj@1s 1.315 vs v9's 2.110 (-38%); v19 was 1.357. G3 V_rel gate met
 (n≥100 vr 0.089).
 Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568.
 Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
-candidate), hg 0.65 on n≥100 integrated score drivers (ordering), grouping 56 / MIB 123
-residuals. Golden mining says MIB should be exact, clusters should almost
-always connect, and some boundary misses are inherent or cost-optimal
-(including 13 preplaced-boundary misses). Package refreshed after each engine
-change (§G5).**
+candidate), hg 0.65 on n≥100 integrated score drivers (ordering),
+grouping 57 / MIB 122 residuals. Exact v20 soft ledger is boundary 327,
+grouping 57, MIB 122, total 506/4478 (`results/enriched_diagnostics.json`).
+Golden mining says MIB should be exact, clusters should almost always connect,
+and some boundary misses are inherent or cost-optimal (including 13
+preplaced-boundary misses). Package refreshed after each engine change (§G5).**
 Every milestone below records its real, measured result when it lands —
 nothing in this file is aspirational; if a number is missing, it hasn't run.
 

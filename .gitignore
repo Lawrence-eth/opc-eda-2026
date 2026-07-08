@@ -61,6 +61,7 @@ results/*.json
 !results/n9_robustness.json
 !results/golden_scored.json
 !results/golden_structure.json
+!results/enriched_diagnostics.json
 !results/retrieval_scan.json
 !results/integrated_v2.json
 !results/integrated_v8.json
