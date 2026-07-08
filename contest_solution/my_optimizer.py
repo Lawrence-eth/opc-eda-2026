@@ -202,7 +202,24 @@ class MyOptimizer(FloorplanOptimizer):
             # blocks, also use pin/net-x band ordering; the largest cases keep
             # v15's width-first bands to preserve the high-weight 98/99 wins.
             try:
-                kwargs = dict(width_factor=1.0, edge_order_mode="bary")
+                hybrid_wf = 1.0
+                boundary_count = 0
+                preplaced_count = 0
+                if con_l is not None:
+                    for row in con_l:
+                        if len(row) > 4 and int(float(row[4])) != 0:
+                            boundary_count += 1
+                        if len(row) > 1 and float(row[1]) != 0:
+                            preplaced_count += 1
+                if (
+                    95 <= block_count < 118
+                    and len(b2b_edges) < 2500
+                    and len(p2b_edges) < 2000
+                    and boundary_count >= 31
+                    and preplaced_count <= 4
+                ):
+                    hybrid_wf = 0.8
+                kwargs = dict(width_factor=hybrid_wf, edge_order_mode="bary")
                 if block_count < 118:
                     kwargs["band_order_mode"] = "pinx"
                 cand = dissect_solve(*dis_args, **kwargs)

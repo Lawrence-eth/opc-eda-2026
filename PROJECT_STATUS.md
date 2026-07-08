@@ -4,13 +4,13 @@
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v16`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v17`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.7027** | 2.7182 |
+| Score (RF=1) | **1.6960** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.228s / 0.717s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.316 / 1.201 / 1.192** | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.702727, 0 position diffs, avg 0.230s | — |
+| Runtime avg / max | 0.239s / 0.746s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.322 / 1.197 / 1.187** | 2.110 / 1.924 / 1.903 |
+| Packaged binary (official command, incl. spawn) | 1.696014, 0 position diffs, avg 0.231s | — |
 
 ## What the solver is
 
@@ -24,7 +24,9 @@ a high-weight same-area boundary reshape candidate for free n>=118 blocks; v14
 adds a tightly gated same-bbox boundary edge-slide polish for the n=103/119
 classes; v15 adds one barycentric left/right edge-queue ordering candidate for
 HPWL wins on high-weight cases; v16 switches that extra candidate to pin/net-x
-band ordering for n<118 while preserving v15 width-first bands on n>=118. The
+band ordering for n<118 while preserving v15 width-first bands on n>=118; v17
+uses wf=0.8 for that hybrid candidate on high-boundary, moderate-net 95..117
+block cases, without adding another candidate. The
 dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -39,7 +41,7 @@ Key structural properties (why it beats everything previous):
 ## Verification state (2026-07-08)
 
 - 51/51 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v16.json`, max-score 1.71).
+  (defaults: `results/integrated_v17.json`, max-score 1.70).
 - Submission package rebuilt + parity-verified (0/100 position diffs through
   the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
@@ -47,8 +49,8 @@ Key structural properties (why it beats everything previous):
 
 ## Where the remaining score is
 
-Current n≥100 averages: hpwl_gap 0.650, area_gap 0.160, V_rel 0.095.
-Weighted worst-case averages: hpwl_gap 0.650, area_gap 0.160, V_rel 0.095.
+Current n≥100 averages: hpwl_gap 0.645, area_gap 0.162, V_rel 0.093.
+Weighted worst-case averages: hpwl_gap 0.645, area_gap 0.162, V_rel 0.093.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
 play would score 1.108 (RF=1) / 0.776 (at the runtime floor). Golden-structure
 mining is now in `results/golden_structure.json`: golden pays boundary misses

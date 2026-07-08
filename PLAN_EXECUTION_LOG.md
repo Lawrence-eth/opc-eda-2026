@@ -1,6 +1,24 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
-### 2026-07-08 wf=0.8 hybrid pin-x candidate — ❌ REVERTED
+### 2026-07-08 width-adaptive hybrid candidate — ✅ KEPT (v17)
+- Hypothesis: the wf=0.8 edge-bary+band-pinx signal is real, but adding it as
+  another portfolio member spends too much runtime. Replacing the existing v16
+  hybrid candidate's width factor on a structural gate should keep the quality
+  wins without increasing candidate count.
+- Probe: use wf=0.8 for the existing hybrid candidate only when
+  `95 <= block_count < 118`, `len(b2b_edges) < 2500`, `len(p2b_edges) < 2000`,
+  boundary-coded block count is at least 31, and preplaced count is at most 4.
+  Otherwise keep v16's wf=1.0 hybrid. This intentionally leaves n>=118 on
+  v15/v16 width-first behavior to preserve cases 98/99.
+- Result: official validation **1.702727 → 1.696014**, 100/100 feasible, avg
+  runtime **0.239s** in the kept in-process artifact. The older v16 artifact
+  had a faster timing sample, so the keep decision used a same-window recheck:
+  v16 recheck **1.620/1.332/1.204/1.192** vs v17
+  **1.606/1.322/1.197/1.187** at medians {0.5,1,2,3}s. Package rebuilt;
+  wrapper score **1.696014**, 0/100 position diffs, avg 0.231s; binary fuzz
+  400/400 feasible, avg 0.230s, p95 0.431s, max 0.536s.
+
+### 2026-07-08 extra wf=0.8 hybrid pin-x candidate — ❌ REVERTED
 - Hypothesis: v16's edge-bary+band-pinx candidate at wf=1.0 exposes a second
   cheap ordering pocket at narrower die width. Replay of one extra
   `width_factor=0.8, edge_order_mode="bary", band_order_mode="pinx"` candidate

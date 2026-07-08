@@ -1,7 +1,7 @@
 # HANDOFF — ICCAD 2026 Problem C (FloorSet Challenge)
 
 > For the next agent taking over this project. Current head was measured on
-> 2026-07-08 after integrated v16. Nothing is aspirational.
+> 2026-07-08 after integrated v17. Nothing is aspirational.
 > Operator's standing orders: **the only goal is to WIN. No time limit. Never
 > regress the verified state.**
 
@@ -11,19 +11,19 @@
 
 | Metric | Value | Artifact |
 |---|---|---|
-| Official validation score (RF=1) | **1.7027** | `results/integrated_v16.json` |
+| Official validation score (RF=1) | **1.6960** | `results/integrated_v17.json` |
 | Feasible | **100 / 100** | same |
-| Runtime | avg 0.228s/case, max 0.717s (in-process) | same |
-| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.592 / **1.316** / 1.201 / 1.192 | recompute per §5.3 |
-| Packaged binary via official command | **1.702727, 0/100 position diffs**, avg 0.230s incl. spawn | `results/wrapper_v16.json` |
-| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible, avg 0.226s, p95 0.422s, max 0.535s | rerun per §5.5 |
+| Runtime | avg 0.239s/case, max 0.746s (in-process) | same |
+| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.606 / **1.322** / 1.197 / 1.187 | recompute per §5.3 |
+| Packaged binary via official command | **1.696014, 0/100 position diffs**, avg 0.231s incl. spawn | `results/wrapper_v17.json` |
+| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible, avg 0.230s, p95 0.431s, max 0.536s | rerun per §5.5 |
 | Tests / audit / release gate | 51/51 PASS / PASS / PASS | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
 Golden-equivalent play = 1.108 RF=1 / 0.776 at the runtime floor (the golden
 layouts themselves violate soft constraints on 90/100 cases —
 `results/golden_scored.json`). Absolute bound 0.70. **Distance travelled:
-2.718 → 1.703; distance remaining to golden-equivalent: 1.703 → 1.108.**
+2.718 → 1.696; distance remaining to golden-equivalent: 1.696 → 1.108.**
 
 ## 2. Read these, in order
 
@@ -54,12 +54,13 @@ layouts themselves violate soft constraints on 90/100 cases —
    HPWL/area ordering variants and are kept behind the same selector; the
    upper block-count gate avoids spending runtime on 104–120 where validation
    selected none and runtime dominates.
-5. **Hybrid edge-ordering candidate** (v16): one extra wf=1.0 dissection
+5. **Width-adaptive hybrid edge-ordering candidate** (v17): one extra dissection
    candidate orders left/right boundary queues by the barycenter signal
    instead of area. For n<118 it also sorts bottom/top band units by pin/net-x
    pull; for n>=118 it preserves v15 width-first band ordering to keep the
-   measured case-98/99 wins. It is kept behind the same selector and captures
-   HPWL/soft wins without post-placement search.
+   measured case-98/99 wins. v17 uses wf=0.8 instead of wf=1.0 for
+   high-boundary, moderate-net 95..117 block cases. It is kept behind the same
+   selector and captures HPWL/soft wins without post-placement search.
 6. **High-weight boundary reshape candidate** (v13): after portfolio
    selection, only for n≥118, try same-area reshapes of free non-cluster,
    non-MIB boundary blocks that satisfy their full current-bbox boundary code.
@@ -97,8 +98,9 @@ layouts themselves violate soft constraints on 90/100 cases —
   consistency).
 - **Ordering** (HPWL): vertical = barycenter iteration over b2b + absolute
   pin-y anchors; horizontal = within-row sort by pull toward placed neighbors
-  + pin-x. The v16 hybrid candidate can also sort bottom/top band units by
-  pin/net-x pull. **Two passes**: pass 2 re-orders using pass 1's actual
+  + pin-x. The v17 hybrid candidate can also sort bottom/top band units by
+  pin/net-x pull and choose wf=0.8 for one structural high-weight gate.
+  **Two passes**: pass 2 re-orders using pass 1's actual
   positions.
 - Final `_retouch_edges`: flush boundary-coded blocks to the bbox edge when
   the destination is empty — **never moves preplaced** (hard constraint,
@@ -166,7 +168,7 @@ def radj(path, med):
         tot+=c*w
     return tot/Z
 for m in (0.5,1,2,3):
-    print(m, radj('results/<candidate>.json', m), radj('results/integrated_v16.json', m))
+    print(m, radj('results/<candidate>.json', m), radj('results/integrated_v17.json', m))
 EOF
 ```
 KEEP iff it beats the incumbent at median ∈ {1,2,3}s AND stays 100/100.
@@ -185,14 +187,14 @@ PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
 
 5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (51 tests) and
 `.venv/bin/python scripts/check_public_release.py` (defaults now point at
-`results/integrated_v16.json`, max-score 1.71 — bump the threshold when you
+`results/integrated_v17.json`, max-score 1.70 — bump the threshold when you
 beat it).
 
 ## 6. Open leads, ranked (with the evidence)
 
-Current integrated v16 decomposition (n≥100): **hg 0.650, ag 0.160,
-vr 0.095**. Score-weighted heavy-case averages: **hg 0.650, ag 0.160,
-vr 0.095**. Violation ledger across 100 cases: boundary 337, grouping 55,
+Current integrated v17 decomposition (n≥100): **hg 0.645, ag 0.162,
+vr 0.093**. Score-weighted heavy-case averages: **hg 0.645, ag 0.162,
+vr 0.093**. Violation ledger across 100 cases: boundary 332, grouping 56,
 MIB 123. A chunk of boundary violations are preplaced-with-boundary-codes,
 which are UNFIXABLE by rule and golden pays them too.
 
@@ -226,7 +228,7 @@ of area/HPWL, and don't chase generic "floater" insertion as a primary lead.
    The reverted global-square candidate proves that a blunt extra candidate is
    worse; the useful version is a hidden-safe shape planner that selects one
    (w,h) per group without exploding area or width on large cases.
-5. **Grouping 55**: golden connects 350/360 groups and every preplaced cluster
+5. **Grouping 56**: golden connects 350/360 groups and every preplaced cluster
    member touches its cluster. The reverted preplaced-bridge probe found real
    upper-bound wins but no deployable selector; a stronger rigid-component
    bridge oracle also improved only -0.0079 weighted and the deployable
@@ -278,8 +280,10 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `scripts/fuzz_binary.py` | wrapper-protocol feasibility fuzz on training data |
 | `scripts/match_validation_in_training.py` | retrieval scan (result: 0/1,008,000 — don't redo) |
 | `scripts/check_public_release.py` | release gate (audit + docs scan) |
-| `results/integrated_v16.json` | CURRENT official result (1.7027) |
-| `results/wrapper_v16.json` | packaged-binary parity run (1.702727) |
+| `results/integrated_v17.json` | CURRENT official result (1.6960) |
+| `results/wrapper_v17.json` | packaged-binary parity run (1.696014) |
+| `results/integrated_v16.json` | previous official result (1.7027) |
+| `results/wrapper_v16.json` | previous packaged-binary parity run (1.702727) |
 | `results/integrated_v15.json` | previous official result (1.7368) |
 | `results/wrapper_v15.json` | previous packaged-binary parity run (1.736800) |
 | `results/integrated_v14.json` | previous official result (1.7827) |
