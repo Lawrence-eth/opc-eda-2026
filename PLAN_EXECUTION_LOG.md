@@ -1,5 +1,21 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 strong6_wf1 pruning attribution — ❌ REJECTED (NO CODE)
+- Hypothesis: v18's broad `pin_scale=6.0`, edge-bary + band-pinx candidate
+  may be overpaying runtime on n>=100 cases where it never wins; a tighter
+  structural gate could preserve v20 positions while improving
+  runtime-adjusted score.
+- Probe: full attribution reproduced `integrated_v20` exactly (0 mismatches).
+  `strong6_wf1` was available on 21 large cases and selected on 8
+  (cases 82, 84, 86, 88, 91, 94, 95, 97). A pruning gate that retained those
+  public classes produced position-identical RF=1 output:
+  **1.656802**, 100/100 feasible.
+- Final check: same-window medians {1,2,3}s were v20 recheck
+  **1.335/1.182/1.160** vs pruned **1.325/1.181/1.160**. Despite the small
+  runtime-adjusted public win, this was rejected: it buys no RF=1 improvement
+  and narrows a broad hidden-safe candidate using public-case attribution.
+  Code restored to exact v20.
+
 ### 2026-07-08 isolated ps0.75 edge-bary pockets — ❌ REJECTED (NO CODE)
 - Hypothesis: the broad v21 micro-pocket run contained a real case-97
   `pin_scale=0.75` signal that might pass if isolated and paired with the
