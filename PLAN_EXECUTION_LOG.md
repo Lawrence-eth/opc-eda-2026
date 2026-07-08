@@ -1,5 +1,18 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-08 external-y pull scale sweep — ❌ REJECTED (NO CODE)
+- Hypothesis: v21's external-y ordering anchor is a structural win, but full
+  b2b weight may over-pull some queues (largest v21 regressions were cases
+  92/88/89/99/90). A damped or stronger constant on that already-paid pull
+  could improve HPWL/area without adding any portfolio candidate or runtime.
+- Probe: tested `0.5x` and `2.0x` external-y weights as replacements for
+  v21's implicit `1.0x` weight. Both kept 100/100 feasibility but lost the
+  publication guard: `0.5x` scored **1.655010**, avg **0.262s**, and
+  `2.0x` scored **1.660547**, avg **0.268s**, versus v21 **1.650715**.
+- Runtime-adjusted medians {1,2,3}s also lost: v21 **1.311/1.172/1.156**,
+  `0.5x` **1.347/1.188/1.163**, `2.0x` **1.363/1.197/1.167**. Restored
+  exact v21 code.
+
 ### 2026-07-08 external-y anchored ordering probe — ✅ KEPT (v21)
 - Hypothesis: the paid second dissection pass already has previous positions
   for preplaced, fixed, and edge-routed blocks, but `order_units()` ignores
