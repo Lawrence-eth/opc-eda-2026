@@ -1,5 +1,23 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 dissection micro-optimization parity probe — ❌ REJECTED
+- Hypothesis: v24 repeatedly recomputes per-unit soft area, rigid dimensions,
+  and tiny edge sets inside the dissection construction path. Caching these
+  values should preserve every placement exactly while reducing runtime for all
+  dissection candidates, improving runtime-adjusted score without narrowing the
+  portfolio or adding public-case gates.
+- Probe: add a `Unit.soft_area` cached field, make `_soft_area()` return it,
+  avoid duplicate `case.rigid_dims()` calls in `Unit.__init__`, and hoist small
+  set construction in `_dissect_once()` / `_place_cluster()`. Run full official
+  validation, position parity against v24, and runtime-adjusted medians.
+- Result: full official validation preserved the exact v24 raw score
+  (**1.632775**) and 100/100 feasibility with **0 position-changed cases**.
+  The measured runtime moved the wrong way: avg **0.2443s** / max
+  **0.8910s** versus v24 avg **0.2378s** / max **0.8632s**.
+- Verdict: rejected; runtime-adjusted medians {1,2}s regressed from v24
+  **1.298799/1.159495** to **1.306632/1.162456** (median 3s unchanged at
+  **1.142942**). Restored exact v24 dissection code.
+
 ### 2026-07-09 high-n alternating cluster-lane probe — ❌ REJECTED
 - Hypothesis: the exact cluster-lane scan showed that alternating lane
   assignment after edge-priority sorting gives a small weighted win on the
