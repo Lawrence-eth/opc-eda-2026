@@ -20,7 +20,7 @@ never regress it; improve on top of it behind gates.
 ## Hard rules (from the operator + verified evidence)
 
 - **Never regress HEAD.** The committed solver (shelf + dissection portfolio)
-  is the floor: **1.6225 official, 100/100 feasible**, deterministic. New ideas
+  is the floor: **1.6207 official, 100/100 feasible**, deterministic. New ideas
   integrate behind the per-case feasibility-gated selection in `solve()`; keep
   a change only if it wins runtime-adjusted at median ∈ {1,2,3}s
   (`HANDOFF.md` §5.3).
@@ -59,7 +59,7 @@ never regress it; improve on top of it behind gates.
 | `contest_solution/dissect.py` | exact-area dissection engine (the campaign's core) |
 | `packaging/` | submission package sources (torch-free executable; see SUBMISSION_PLAN.md) |
 | `scripts/` | evaluation/analysis/audit/fuzz tooling (each has a docstring) |
-| `results/integrated_v26.json` | the CURRENT verified result (1.6225) |
+| `results/integrated_v27.json` | the CURRENT verified result (1.6207) |
 | `results/v9_locked.json` | pre-campaign locked result (2.7182) |
 | `results/golden_scored.json` | golden layouts scored by the official evaluator (per case) |
 | `results/retrieval_scan.json` | proof that validation ∉ training (1M scanned, 0 hits) |

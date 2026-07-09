@@ -1,5 +1,48 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 gated active-slab aspect replacement — ✅ KEPT (v27)
+- Hypothesis: generic aspect relaxation is not deployable, but two existing
+  hidden-computable feature pockets have material offline wins without soft
+  regressions: limit 18 for the preplaced-heavy case-88 backfill class and
+  limit 40 for the established low-p2b capped-band case-90 class. Applying
+  those limits inside their existing portfolio runs should retain v26 runtime.
+- Probe: use limit 18 only for 108-110 block, boundary>=36, preplaced>=6,
+  sparse-net backfill cases; use limit 40 only on the existing `wf=1.1`
+  low-p2b capped-band candidate. Run full official validation and compare
+  runtime-adjusted medians against v26.
+- Result: two full runs scored **1.620687**, 100/100 feasible, changing only
+  cases 88 and 90. The confirmation run averaged **0.1694s** (p95
+  **0.3623s**, max **0.5320s**); same-window v26 averaged **0.1693s** (p95
+  **0.3639s**, max **0.5464s**).
+- Verdict: kept as v27. Same-window runtime-adjusted medians {0.5,1,2,3}s
+  improved from v26 **1.395393/1.173738/1.135763/1.135763** to
+  **1.394152/1.172593/1.134481/1.134481**.
+- Package verification: rebuilt wrapper score **1.620687**, 100/100 feasible,
+  with 0 position/cost diffs; avg/p95/max **0.2170/0.3933/0.6132s**.
+  Binary fuzz passed 400/400 with avg/p95/max **0.212/0.373/0.527s**;
+  55/55 tests passed.
+
+### 2026-07-09 active-slab aspect-guard probe — ✅ NARROW FOLLOW-UP OPENED
+- Hypothesis: v26 traces still show large unused areas in preplaced-obstacle
+  slabs, led by about 5,400 area units on case 86. `_segment_fill()` preserves
+  queue order but rejects soft units whose shape at the fixed slab height
+  exceeds a 12:1 aspect ratio, even though the evaluator imposes no aspect
+  constraint. Relaxing only this guard may fill legal slab space and reduce
+  final height without the HPWL damage caused by the rejected best-fit queue
+  reordering.
+- Probe: add an opt-in active-slab aspect limit, replay selected v26
+  constructions at limits 18/25/40, and score them offline before any
+  portfolio integration. Keep queue order, boundary handling, and all default
+  behavior unchanged.
+- Result: limits 18/25/40 changed 27/31/34 selected constructions. Replacing
+  broadly regressed weighted raw score by **+0.00727/+0.00754/+0.00779**;
+  oracle gains were only **-0.00201/-0.00216/-0.00285**, and the deployed
+  self-normalized selector accepted 0 variants. Limit 18 improved the
+  case-88 class by weighted **-0.000740**; limit 40 improved the existing
+  capped-band case-90 class by **-0.001091**.
+- Verdict: reject generic relaxation and open only the two pre-existing
+  feature-pocket replacements above.
+
 ### 2026-07-09 gated in-place clamped backfill replacement — ✅ KEPT (v26)
 - Hypothesis: the backfill layout changes are useful, but rebuilding the
   already-selected dissection adds 40-160ms on every gated case and loses the

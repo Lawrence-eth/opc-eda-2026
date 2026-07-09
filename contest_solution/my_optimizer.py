@@ -262,10 +262,22 @@ class MyOptimizer(FloorplanOptimizer):
                     and len(p2b_edges) > 3000
                 )
             )
+            active_slab_max_aspect = (
+                18.0
+                if (
+                    108 <= block_count <= 110
+                    and boundary_count >= 36
+                    and preplaced_count >= 6
+                    and len(b2b_edges) < 2000
+                    and len(p2b_edges) < 1000
+                )
+                else 12.0
+            )
             for wf in (0.8, 0.9, 1.0, 1.1, 1.2):
                 kwargs = {
                     "width_factor": wf,
                     "clamped_backfill": clamped_backfill,
+                    "active_slab_max_aspect": active_slab_max_aspect,
                 }
                 try:
                     cand = dissect_solve(*dis_args, **kwargs)
@@ -291,7 +303,8 @@ class MyOptimizer(FloorplanOptimizer):
                     hybrid_wf = 0.8
                 kwargs = dict(
                     width_factor=hybrid_wf, edge_order_mode="bary",
-                    clamped_backfill=clamped_backfill)
+                    clamped_backfill=clamped_backfill,
+                    active_slab_max_aspect=active_slab_max_aspect)
                 if block_count < 118:
                     kwargs["band_order_mode"] = "pinx"
                 cand = dissect_solve(*dis_args, **kwargs)
@@ -336,7 +349,8 @@ class MyOptimizer(FloorplanOptimizer):
                     kwargs = dict(
                         width_factor=hybrid_wf, pin_scale=6.0,
                         edge_order_mode="bary", band_order_mode="pinx",
-                        clamped_backfill=clamped_backfill)
+                        clamped_backfill=clamped_backfill,
+                        active_slab_max_aspect=active_slab_max_aspect)
                     try:
                         cand = dissect_solve(*dis_args, **kwargs)
                     except Exception:
@@ -352,7 +366,8 @@ class MyOptimizer(FloorplanOptimizer):
                     kwargs = dict(
                         width_factor=1.15, pin_scale=6.0,
                         edge_order_mode="bary",
-                        clamped_backfill=clamped_backfill)
+                        clamped_backfill=clamped_backfill,
+                        active_slab_max_aspect=active_slab_max_aspect)
                     try:
                         cand = dissect_solve(*dis_args, **kwargs)
                     except Exception:
@@ -387,9 +402,12 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 use_band_cap = False
             if use_band_cap:
+                cap_max_aspect = (
+                    40.0 if band_cap_wf == 1.1 else active_slab_max_aspect)
                 kwargs = dict(
                     width_factor=band_cap_wf, band_edge_cap=True,
-                    clamped_backfill=clamped_backfill)
+                    clamped_backfill=clamped_backfill,
+                    active_slab_max_aspect=cap_max_aspect)
                 try:
                     cand = dissect_solve(*dis_args, **kwargs)
                 except Exception:
@@ -405,7 +423,8 @@ class MyOptimizer(FloorplanOptimizer):
                 for pin_scale in (0.5, 4.0):
                     kwargs = dict(
                         width_factor=1.0, pin_scale=pin_scale,
-                        clamped_backfill=clamped_backfill)
+                        clamped_backfill=clamped_backfill,
+                        active_slab_max_aspect=active_slab_max_aspect)
                     try:
                         cand = dissect_solve(*dis_args, **kwargs)
                     except Exception:

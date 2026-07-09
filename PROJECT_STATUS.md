@@ -4,13 +4,13 @@
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v26`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v27`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.6225** | 2.7182 |
+| Score (RF=1) | **1.6207** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.170s / 0.534s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.175 / 1.136 / 1.136** | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.622518, 0 position diffs, avg 0.216s | — |
+| Runtime avg / max | 0.169s / 0.532s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.173 / 1.134 / 1.134** | 2.110 / 1.924 / 1.903 |
+| Packaged binary (official command, incl. spawn) | 1.620687, 0 position diffs, avg 0.217s | — |
 
 ## What the solver is
 
@@ -50,6 +50,9 @@ one block-center pass per candidate.
 v26 backfills short rows clamped to preplaced-obstacle edges from the remaining
 mid queue in tightly gated feature pockets, improving eight cases without
 adding a portfolio member.
+v27 relaxes the active obstacle-slab aspect guard from 12:1 to 18:1 for the
+case-88 backfill class and to 40:1 for the existing case-90 capped-band class,
+improving HPWL on two cases without changing portfolio size.
 The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -63,8 +66,8 @@ Key structural properties (why it beats everything previous):
 
 ## Verification state (2026-07-09)
 
-- 54/54 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v26.json`, max-score 1.635).
+- 55/55 tests pass; result audit PASS; release gate PASS
+  (defaults: `results/integrated_v27.json`, max-score 1.635).
 - Submission package rebuilt + parity-verified (0/100 position diffs through
   the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
@@ -72,9 +75,9 @@ Key structural properties (why it beats everything previous):
 
 ## Where the remaining score is
 
-Current n≥100 averages: hpwl_gap 0.576, area_gap 0.154, V_rel 0.085.
-Score-weighted averages: hpwl_gap 0.569, area_gap 0.145, V_rel 0.085.
-Exact v26 soft ledger: boundary 324, grouping 54, MIB 126, total 504/4478
+Current n≥100 averages: hpwl_gap 0.573, area_gap 0.154, V_rel 0.085.
+Score-weighted averages: hpwl_gap 0.567, area_gap 0.145, V_rel 0.085.
+Exact v27 soft ledger: boundary 324, grouping 54, MIB 126, total 504/4478
 (`results/enriched_diagnostics.json`). Score-weighted soft counts in the
 top-20 focus band are boundary 3.181, MIB 1.127, grouping 0.741.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent

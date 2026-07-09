@@ -126,6 +126,41 @@ def test_clamped_row_backfill_uses_queued_unit_that_fits_short_slab():
     assert with_backfill[2][1] == 0.0
 
 
+def test_active_slab_aspect_limit_controls_legal_short_slab_fill():
+    case = dissect_module.Case(
+        1,
+        [4.0],
+        [[0, 0, 0, 0, 0]],
+        None,
+    )
+    obstacle = [(8.0, 0.0, 2.0, 0.5)]
+
+    default_fill = {}
+    dissect_module.fill_region(
+        case,
+        [dissect_module.Unit([0], "block", case)],
+        0.0,
+        10.0,
+        0.0,
+        obstacle,
+        default_fill,
+    )
+    relaxed_fill = {}
+    dissect_module.fill_region(
+        case,
+        [dissect_module.Unit([0], "block", case)],
+        0.0,
+        10.0,
+        0.0,
+        obstacle,
+        relaxed_fill,
+        active_slab_max_aspect=18.0,
+    )
+
+    assert default_fill[0] == (0.0, 0.5, 10.0, 0.4)
+    assert relaxed_fill[0] == (0.0, 0.0, 8.0, 0.5)
+
+
 def test_group_components_require_shared_edge_not_corner_touch():
     opt = MyOptimizer()
     positions = [

@@ -5,13 +5,13 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-09, round 19): official 1.6225, 100/100, rt avg 0.170s.
-radj@1s 1.175 vs v9's 2.110 (-44%); v25 same-window was 1.182. G3 V_rel
+**Status (2026-07-09, round 20): official 1.6207, 100/100, rt avg 0.169s.
+radj@1s 1.173 vs v9's 2.110 (-44%); v26 same-window was 1.174. G3 V_rel
 gate met (n≥100 vr 0.085).
-Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328 → 1.6225.
+Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328 → 1.6225 → 1.6207.
 Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
 candidate), hg 0.60 on n≥100 integrated score drivers (ordering),
-grouping 54 / MIB 126 residuals. Exact v26 soft ledger is boundary 324,
+grouping 54 / MIB 126 residuals. Exact v27 soft ledger is boundary 324,
 grouping 54, MIB 126, total 504/4478 (`results/enriched_diagnostics.json`).
 Golden mining says MIB should be exact, clusters should almost always connect,
 and some boundary misses are inherent or cost-optimal (including 13
@@ -202,6 +202,11 @@ runtime floor even with the executable spawn overhead (~0.11s).
   pockets. Official **1.6225**, 100/100; same-window radj@{1,2,3}s =
   **1.175/1.136/1.136** vs v25 **1.182/1.143/1.143**; wrapper parity
   0 position diffs; fuzz 400/400.
+  Seventeenth kept polish relaxes the active obstacle-slab aspect guard only
+  for the established case-88 backfill and case-90 capped-band feature
+  pockets. Official **1.6207**, 100/100; same-window radj@{1,2,3}s =
+  **1.173/1.134/1.134** vs v26 **1.174/1.136/1.136**; wrapper parity
+  0 position diffs; fuzz 400/400.
   Still open: SA over the dissection (sibling swaps, subtree
   transplants, strip re-partitions) under exact cost; aspect-bound tuning;
   fixed/preplaced slack recovery; per-case portfolio.
@@ -359,6 +364,12 @@ runtime floor even with the executable spawn overhead (~0.11s).
   **1.6225**, 100/100; same-window radj@{1,2,3}s =
   **1.175/1.136/1.136** vs v25 **1.182/1.143/1.143**. Package rebuilt +
   parity-verified at 1.622518; binary fuzz 400/400 feasible.
+- Round 20: preserving active-slab queue order but relaxing its internal
+  aspect guard in the existing case-88 and case-90 feature pockets improved
+  two HPWL residuals. Official **1.6207**, 100/100; same-window
+  radj@{1,2,3}s = **1.173/1.134/1.134** vs v26
+  **1.174/1.136/1.136**. Package rebuilt + parity-verified at 1.620687;
+  binary fuzz 400/400 feasible.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;
   obstacle slabs; cluster lanes; MIB slots; barycenter ordering. Iterations:
