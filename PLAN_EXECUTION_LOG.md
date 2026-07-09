@@ -1,5 +1,38 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 gated capped-band width pocket probe — ❌ REJECTED
+- Hypothesis: the capped-band residual scan found material, narrow wins for
+  high-weight obstacle layouts: `band_edge_cap=True`, `wf=1.1` on the case-90
+  class and `band_edge_cap=True`, `wf=1.2` on the case-89 class. Adding only
+  those capped variants behind tight structural gates may improve raw score
+  while keeping runtime overhead small enough to pass the runtime-adjusted
+  keep gate.
+- Probe: add two optional dissection candidates: `wf=1.1` capped-band for
+  the low-p2b, dense-b2b, six-preplaced case-90 class, and `wf=1.2`
+  capped-band for the high-p2b, eight-plus-preplaced case-89 class.
+- Result: official validation improved raw score **1.638545 → 1.631975**,
+  100/100 feasible, changing only cases 89 and 90. Runtime rose enough to
+  miss the keep gate: runtime-adjusted medians {1,2,3}s moved from v23
+  **1.314/1.167/1.147** to **1.333/1.170/1.143**.
+- Verdict: rejected; restore v23 solver code and keep the scan as a
+  documented upper-bound signal only.
+
+### 2026-07-09 capped-band residual area scan — ✅ FOLLOW-UP PROBE OPENED (NO CODE)
+- Hypothesis: residual area_gap remains material in the weighted cases, and
+  the existing `band_edge_cap` candidate only fires for the original severe
+  bottom-band snowball predictor. A bounded scan of capped-band variants on
+  high-weight cases may reveal a narrow, hidden-safe obstacle/band pocket
+  without broadening the candidate portfolio blindly.
+- Probe: evaluate `band_edge_cap=True` with a small width-factor set on
+  validation cases 80-99 against `results/integrated_v23.json`, then inspect
+  whether any wins are material and structurally gateable.
+- Result: broad capped-band candidates were not viable, but the best-of scan
+  found two gateable wins: case 90 with `wf=1.1` improved cost
+  **2.198808 → 2.046075** and case 89 with `wf=1.2` improved
+  **2.077342 → 2.054330**.
+- Verdict: open the gated capped-band width pocket probe above; do not add a
+  broad capped-band portfolio candidate.
+
 ### 2026-07-09 wf0.75 pin-scale replacement probe — ❌ REJECTED
 - Hypothesis: v23's `wf=0.75` strong-width pocket uses the default strong
   `pin_scale=6.0`, but the high-weight residual scan shows `pin_scale=4.0`
