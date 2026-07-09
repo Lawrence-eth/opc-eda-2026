@@ -1,5 +1,36 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 wf0.75 pin-scale replacement probe — ❌ REJECTED
+- Hypothesis: v23's `wf=0.75` strong-width pocket uses the default strong
+  `pin_scale=6.0`, but the high-weight residual scan shows `pin_scale=4.0`
+  is better on both current public hit classes (cases 85 and 96). Replacing
+  that width pocket's pin scale should keep candidate count/runtime constant
+  while improving RF=1.
+- Probe: use `pin_scale=4.0` only for the gated `wf=0.75` strong pin-pull
+  pocket; keep all other strong pin-pull candidates at `pin_scale=6.0`.
+- Result: official validation improved raw score **1.638545 → 1.637827**,
+  100/100 feasible, changing only cases 85 and 96. The raw gains were too
+  small for the timing sample: runtime-adjusted medians {1,2,3}s moved from
+  v23 **1.314/1.167/1.147** to **1.345/1.178/1.149**.
+- Verdict: rejected; restore `wf=0.75` to `pin_scale=6.0`.
+
+### 2026-07-09 high-weight residual ordering pocket scan — ✅ FOLLOW-UP PROBE OPENED (NO CODE)
+- Hypothesis: after v23, the largest remaining score mass is still high-weight
+  HPWL/area on cases 80-99. A small targeted scan over existing dissection
+  knobs (`width_factor`, `pin_scale`, edge-bary, band-pinx) may expose another
+  narrow feature pocket that is strong enough to survive the runtime-adjusted
+  keep gate.
+- Probe: evaluate a bounded variant list on validation cases 80-99 against
+  `results/integrated_v23.json`; do not edit the solver unless the per-case
+  upper bound is material and structurally gateable.
+- Result: best-of upper bound over cases 80-99 was focus delta **-0.00247**,
+  too small to justify adding another candidate. The strongest actionable
+  signal was replacement-style: `pin_scale=4.0`, `wf=0.75`, edge-bary +
+  band-pinx improved the same public feature pockets that v23 already serves
+  with `pin_scale=6.0` (case 85 delta -0.0120, case 96 delta -0.0067).
+- Verdict: open the `wf=0.75` pin-scale replacement probe above; do not add a
+  broad new candidate from this scan.
+
 ### 2026-07-08 gated flat-cluster tie-break candidate probe — ❌ REJECTED
 - Hypothesis: the flat cluster edge-order tie-break lost as a global
   replacement, but it had isolated high-weight wins on cases 88/89/99. Making
