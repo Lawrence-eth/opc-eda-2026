@@ -1,5 +1,83 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 high-n alternating cluster-lane probe — ❌ REJECTED
+- Hypothesis: the exact cluster-lane scan showed that alternating lane
+  assignment after edge-priority sorting gives a small weighted win on the
+  high-weight tail, especially case 98, while lower-n regressions are avoidable.
+  Gating the replacement to large cases keeps candidate count unchanged and
+  should have negligible runtime impact.
+- Probe: for non-flat, all-soft clusters in `case.n >= 110`, replace the
+  greedy lower-area lane assignment with deterministic alternating assignment
+  after the existing edge-side/area sort. Keep all smaller cases on the v24
+  greedy lane balancer. Run the full official validation and compare with v24.
+- Result: full official validation improved raw score
+  **1.632775 → 1.632024**, 100/100 feasible. Improvements were concentrated
+  in case 98 (weighted **-0.000797**) plus small wins on cases 89/93/99;
+  regressions were small but present on cases 91/94/96/95. Runtime increased
+  from v24 avg **0.2378s** / max **0.8632s** to avg **0.2586s** / max
+  **0.9281s**.
+- Verdict: rejected; runtime-adjusted medians {1,2}s regressed from v24
+  **1.298799/1.159495** to **1.323187/1.167347** (median 3s was essentially
+  flat/slightly better: **1.142858** vs **1.142942**). Restored v24 cluster
+  lane code.
+
+### 2026-07-09 exact cluster-lane partition scan — ✅ FOLLOW-UP PROBE OPENED (NO CODE)
+- Hypothesis: v22's kept cluster lane edge-order rule still uses a greedy
+  two-lane area split. For small cluster groups, an exact two-way lane
+  partition that preserves edge-side ordering inside each lane could reduce
+  cluster geometry/HPWL residuals as a construction replacement, with no added
+  portfolio candidates and negligible runtime.
+- Probe: monkey-patch `_place_cluster()` in memory for cases 80-99 with exact
+  small-group lane partition variants, compare against v24 per-case costs, and
+  open code only if the replacement has a material weighted win with no
+  high-weight regressions.
+- Result: focus scan over cases 80-99 found small net wins for two
+  replacements: contiguous split weighted delta **-0.000159** and alternating
+  split weighted delta **-0.000377**; exact arbitrary partition regressed
+  **+0.000118**. Alternating's best signal was case 98
+  (**1.370261 → 1.359426**, area delta **-0.0157**, weighted **-0.000797**),
+  with smaller wins on cases 89/93/99 and small HPWL regressions on
+  83/85/86/91/94/95/96.
+- Verdict: opened the high-n alternating cluster-lane probe above, gated to
+  `case.n >= 110` to avoid the lower-n scan regressions.
+
+### 2026-07-09 v24 residual anatomy refresh — ✅ FOLLOW-UP PROBE OPENED (NO CODE)
+- Hypothesis: after v24, the highest weighted residual cases may have shifted
+  away from the previously explored cap/order/flat-tie signals. A fresh
+  weighted anatomy pass over v24 can point to a construction-level replacement
+  lead that is not already timing-rejected.
+- Probe: inspect v24 per-case cost, weighted contribution, soft violation
+  composition, block/count features, and selected-candidate family where
+  available; use the result only to choose the next logged experiment.
+- Result: v24 remains dominated by weighted n>=101 cases (**79.46%** of
+  reconstructed score). The top weighted cases are 99, 97, 98, 95, 94, and 96;
+  weighted pressure is still primarily HPWL/connectivity rather than area or
+  MIB. Aggregate n>=101 averages: hpwl **0.5660**, area **0.1571**, soft
+  ratio **0.0850**, runtime **0.476s**.
+- Verdict: opened the cluster-lane construction scan below; continue to prefer
+  replacement-style HPWL construction changes over added candidates.
+
+### 2026-07-09 existing-artifact replacement mining — ❌ CLOSED (NO CODE)
+- Hypothesis: several rejected probes contain per-case raw wins that failed only
+  because they added runtime or changed too many cases. Mining all retained
+  result artifacts against v24 may reveal a narrow replacement-style signal that
+  can be deployed inside an existing candidate slot, preserving candidate count.
+- Probe: compare every `results/*.json` artifact with 100 validation rows
+  against `results/integrated_v24.json`, rank per-case improvements by weighted
+  raw cost delta, and inspect only public cases where a candidate improves v24
+  while staying 100/100 feasible. Open a code probe only if the win is
+  structurally gateable and not already rejected by a same-window timing gate.
+- Result: mining confirmed the strongest full-artifact raw win is the already
+  rejected gated order-iteration pocket (`integrated_v25_order_iters*_tmp`,
+  weighted delta **-0.007737** on cases 88/90/92/93). The next clean artifact
+  signal is the already rejected case-89 capped-band replacement
+  (`integrated_v25_std_cap_repl_tmp`, weighted delta **-0.000800**). The
+  flat-cluster tie-break artifacts still show the previously rejected
+  case 88/89/99 HPWL wins, but that path already failed both global and gated
+  timing checks.
+- Verdict: no new deployable replacement from retained artifacts; keep v24 and
+  move to a different construction-level lead.
+
 ### 2026-07-09 order-iteration same-window timing audit — ❌ REJECTION CONFIRMED (NO CODE)
 - Hypothesis: the rejected gated `order_iters=8` pocket probe is
   candidate-count neutral and should not intrinsically add runtime, but both
