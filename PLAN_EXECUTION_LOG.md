@@ -1,5 +1,45 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 gated order-iteration pocket probe — ❌ REJECTED
+- Hypothesis: the barycenter relaxation scan found that global ordering changes
+  regress, but `order_iters=8` has material, gateable wins in a few high-weight
+  feature pockets: case 88 via strong `wf=1.0`, case 90 via the v24 band-cap
+  candidate, case 92 via the hybrid `wf=0.8` candidate, and case 93 via the
+  strong `wf=0.85` candidate. Replacing the ordering iteration count only for
+  those existing candidates keeps candidate count flat and may improve both
+  raw and runtime-adjusted score.
+- Probe: add an optional `order_iters` parameter to dissection ordering and
+  pass `order_iters=8` only behind tight structural gates matching the scan
+  pockets; leave the global portfolio unchanged.
+- Result: official validation improved raw score **1.632775 → 1.625038**,
+  100/100 feasible, changing only cases 88/90/92/93. The first timing sample
+  lost runtime-adjusted medians {1,2}s (**1.320/1.162** vs v24
+  **1.299/1.159**) while winning median 3s (**1.138** vs **1.143**); a
+  rerun confirmed the failure at medians {1,2}s (**1.328/1.166**).
+- Verdict: rejected; restore v24 code. The four pockets remain a strong raw
+  upper-bound signal, but not deployable under the current runtime gate.
+
+### 2026-07-09 barycenter relaxation upper-bound scan — ✅ FOLLOW-UP PROBE OPENED (NO CODE)
+- Hypothesis: residual high-weight HPWL is dominated by row ordering, and the
+  current `order_units()` barycenter pass uses fixed relaxation/iteration
+  constants. A bounded in-memory scan of a few relaxation/iteration variants
+  on cases 80-99 may reveal a replacement-style ordering tweak that improves
+  high-weight cases without adding portfolio candidates.
+- Probe: monkey-patch `dissect.order_units()` in memory for a small variant set
+  (`relax`/iteration/tie-break only), evaluate selected existing dissection
+  candidate shapes on validation cases 80-99 against `results/integrated_v24.json`,
+  and only open a code probe if the best-of win is material and structurally
+  gateable.
+- Result: all broad focus variants regressed, but the per-case best-of upper
+  bound was **-0.010110** weighted. The largest gateable signals were
+  `order_iters=8` wins on case 88 strong `wf=1.0`
+  (**2.376064 → 2.262138**), case 90 band-cap `wf=1.1`
+  (**2.046075 → 2.010585**), case 92 hybrid `wf=0.8`
+  (**1.564838 → 1.532208**), and case 93 strong `wf=0.85`
+  (**1.298519 → 1.271785**).
+- Verdict: open the gated order-iteration pocket probe above; do not apply a
+  global relaxation/iteration replacement.
+
 ### 2026-07-09 standard-width capped replacement probe — ❌ REJECTED
 - Hypothesis: the case-89 capped `wf=1.2` win from the residual scan failed as
   an extra candidate because runtime overhead outweighed the raw gain. Replacing
