@@ -5,13 +5,13 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-09, round 17): official 1.6328, 100/100, rt avg 0.238s.
-radj@1s 1.299 vs v9's 2.110 (-38%); v23 was 1.314. G3 V_rel
+**Status (2026-07-09, round 18): official 1.6328, 100/100, rt avg 0.159s.
+radj@1s 1.175 vs v9's 2.110 (-44%); v24 was 1.299. G3 V_rel
 gate met (n≥100 vr 0.085).
 Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328.
 Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
 candidate), hg 0.60 on n≥100 integrated score drivers (ordering),
-grouping 53 / MIB 126 residuals. Exact v24 soft ledger is boundary 326,
+grouping 53 / MIB 126 residuals. Exact v25 soft ledger is boundary 326,
 grouping 53, MIB 126, total 505/4478 (`results/enriched_diagnostics.json`).
 Golden mining says MIB should be exact, clusters should almost always connect,
 and some boundary misses are inherent or cost-optimal (including 13
@@ -191,6 +191,12 @@ runtime floor even with the executable spawn overhead (~0.11s).
   case-90 class. Official **1.6328**, 100/100; radj@{1,2,3}s =
   **1.299/1.159/1.143** vs v23 **1.314/1.167/1.147**; wrapper parity
   0 position diffs; fuzz 400/400.
+  Fifteenth kept polish replaced repeated tensor-scalar HPWL calls in
+  candidate scoring with pre-extracted Python edge/pin lists and one center
+  pass per candidate. It preserves all v24 positions and the **1.6328** raw
+  score while reducing in-process avg runtime from **0.238s to 0.159s**;
+  radj@{1,2,3}s = **1.175/1.143/1.143**. Wrapper parity is 0 position
+  diffs; binary fuzz is 400/400.
   Still open: SA over the dissection (sibling swaps, subtree
   transplants, strip re-partitions) under exact cost; aspect-bound tuning;
   fixed/preplaced slack recovery; per-case portfolio.

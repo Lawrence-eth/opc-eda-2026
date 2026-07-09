@@ -32,14 +32,57 @@ def _load_optimizer():
 
     solution_dir = Path(__file__).resolve().parents[1] / "contest_solution"
     sys.path.insert(0, str(solution_dir))
-    return importlib.import_module("my_optimizer").MyOptimizer
+    return importlib.import_module("my_optimizer")
 
 
-MyOptimizer = _load_optimizer()
+optimizer_module = _load_optimizer()
+MyOptimizer = optimizer_module.MyOptimizer
+calculate_hpwl_edges = optimizer_module._calculate_hpwl_edges
+tensor_to_list = optimizer_module._tensor_to_list
 
 
 def _constraints(block_count):
     return torch.zeros((block_count, 5), dtype=torch.float32)
+
+
+def test_list_hpwl_matches_official_arithmetic_for_lists_and_tensors():
+    positions = [
+        (0.0, 1.0, 2.0, 4.0),
+        (5.0, 3.0, 6.0, 2.0),
+        (2.0, 8.0, 4.0, 2.0),
+    ]
+    b2b = [(0, 1, 1.5), (1, 2, 0.25)]
+    p2b = [(0, 0, 2.0), (1, 2, 0.75)]
+    pins = [(10.0, 4.0), (1.0, 12.0)]
+
+    centers = [(x + w / 2, y + h / 2) for x, y, w, h in positions]
+    b2b_total = sum(
+        weight * (abs(centers[b][0] - centers[a][0])
+                  + abs(centers[b][1] - centers[a][1]))
+        for a, b, weight in b2b
+    )
+    p2b_total = sum(
+        weight * (abs(pins[pin][0] - centers[block][0])
+                  + abs(pins[pin][1] - centers[block][1]))
+        for pin, block, weight in p2b
+    )
+    expected = b2b_total + p2b_total
+
+    assert calculate_hpwl_edges(positions, b2b, p2b, pins) == expected
+    assert calculate_hpwl_edges(
+        positions,
+        torch.tensor(b2b),
+        torch.tensor(p2b),
+        torch.tensor(pins),
+    ) == expected
+
+
+def test_tensor_to_list_supports_packaging_stub_protocol():
+    class StubTensor:
+        def tolist(self):
+            return [[1.0, 2.0]]
+
+    assert tensor_to_list(StubTensor()) == [[1.0, 2.0]]
 
 
 def test_group_components_require_shared_edge_not_corner_touch():

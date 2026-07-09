@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT))
 
 from scripts import audit_results, compare_results
 
-DEFAULT_RESULT = ROOT / "results" / "integrated_v24.json"
+DEFAULT_RESULT = ROOT / "results" / "integrated_v25.json"
 DEFAULT_PUBLIC_OPTIMIZER = ROOT / "contest_solution" / "my_optimizer.py"
 DEFAULT_SCAN_PATHS = (
     ROOT / "README.md",

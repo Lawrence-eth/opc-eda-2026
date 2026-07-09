@@ -4,13 +4,13 @@
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v24`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v25`) | Pre-campaign (v9) |
 |---|---|---|
 | Score (RF=1) | **1.6328** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.238s / 0.863s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.299 / 1.159 / 1.143** | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.632775, 0 position diffs, avg 0.242s | — |
+| Runtime avg / max | 0.159s / 0.522s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.175 / 1.143 / 1.143** | 2.110 / 1.924 / 1.903 |
+| Packaged binary (official command, incl. spawn) | 1.632775, 0 position diffs, avg 0.217s | — |
 
 ## What the solver is
 
@@ -44,6 +44,9 @@ cases and keeping the result selector-gated.
 v24 keeps the existing `band_edge_cap` candidate count unchanged but chooses
 `wf=1.1` for the low-p2b case-90 obstacle-band class, capturing the capped-band
 scan signal without the runtime cost of an extra candidate.
+v25 preserves every v24 placement while replacing repeated tensor-scalar HPWL
+evaluation in candidate scoring with pre-extracted Python edge/pin lists and
+one block-center pass per candidate.
 The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -57,8 +60,8 @@ Key structural properties (why it beats everything previous):
 
 ## Verification state (2026-07-09)
 
-- 51/51 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v24.json`, max-score 1.635).
+- 53/53 tests pass; result audit PASS; release gate PASS
+  (defaults: `results/integrated_v25.json`, max-score 1.635).
 - Submission package rebuilt + parity-verified (0/100 position diffs through
   the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
@@ -68,7 +71,7 @@ Key structural properties (why it beats everything previous):
 
 Current n≥100 averages: hpwl_gap 0.585, area_gap 0.158, V_rel 0.085.
 Score-weighted averages: hpwl_gap 0.577, area_gap 0.149, V_rel 0.086.
-Exact v24 soft ledger: boundary 326, grouping 53, MIB 126, total 505/4478
+Exact v25 soft ledger: boundary 326, grouping 53, MIB 126, total 505/4478
 (`results/enriched_diagnostics.json`). Score-weighted soft counts in the
 top-20 focus band are boundary 3.181, MIB 1.127, grouping 0.741.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent

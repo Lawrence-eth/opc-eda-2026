@@ -23,6 +23,49 @@ from iccad2026_evaluate import FloorplanOptimizer, calculate_bbox_area, calculat
 Rect = Tuple[float, float, float, float]
 
 
+def _tensor_to_list(value):
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    return value.tolist()
+
+
+def _calculate_hpwl_edges(positions, b2b_edges, p2b_edges, pins):
+    """HPWL over pre-extracted Python edge lists."""
+    if isinstance(b2b_edges, torch.Tensor):
+        b2b_edges = [
+            (int(edge[0]), int(edge[1]), float(edge[2]))
+            for edge in _tensor_to_list(b2b_edges)
+        ]
+    if isinstance(p2b_edges, torch.Tensor):
+        p2b_edges = [
+            (int(edge[0]), int(edge[1]), float(edge[2]))
+            for edge in _tensor_to_list(p2b_edges)
+        ]
+    if isinstance(pins, torch.Tensor):
+        pins = _tensor_to_list(pins)
+    centers = [(x + w / 2, y + h / 2) for x, y, w, h in positions]
+    n = len(centers)
+    b2b_total = 0.0
+    for a, b, weight in b2b_edges:
+        if a == -1:
+            continue
+        if a < n and b < n:
+            ax, ay = centers[a]
+            bx, by = centers[b]
+            b2b_total += weight * (abs(bx - ax) + abs(by - ay))
+    p2b_total = 0.0
+    for pin_idx, block_idx, weight in p2b_edges:
+        if pin_idx == -1:
+            continue
+        if block_idx < n and pin_idx < len(pins):
+            px, py = pins[pin_idx][0], pins[pin_idx][1]
+            bx, by = centers[block_idx]
+            p2b_total += weight * (abs(px - bx) + abs(py - by))
+    return b2b_total + p2b_total
+
+
 def _worker_solve(args):
     """Module-level worker for ProcessPoolExecutor. Returns (cfg_idx, positions, true_cost)."""
     cfg_idx, cfg, block_count, area_targets_np, b2b_edges, p2b_edges, pins_pos_np, \
@@ -113,6 +156,7 @@ class MyOptimizer(FloorplanOptimizer):
 
         b2b_edges = self._b2b_edges(b2b_connectivity)
         p2b_edges = self._p2b_edges(p2b_connectivity)
+        pins_l = pins_pos.tolist() if pins_pos is not None else []
 
         # Shelf path (proven approach from sprint5_v9).
         # For the heavy cases the dissection engine wins ~96% of the time, so
@@ -137,7 +181,8 @@ class MyOptimizer(FloorplanOptimizer):
                     pins_pos, constraints, target_positions, b2b_edges, p2b_edges
                 )
                 if positions:
-                    cost = self._selection_cost(positions, constraints, area_targets, b2b_edges, p2b_edges, pins_pos)
+                    cost = self._selection_cost(positions, constraints, area_targets,
+                                                b2b_edges, p2b_edges, pins_l)
                     if cost < best_cost:
                         best_cost = cost
                         best_positions = positions
@@ -163,9 +208,9 @@ class MyOptimizer(FloorplanOptimizer):
                 )
                 if sp_result is not None:
                     sp_cost = self._true_contest_cost(sp_result, constraints, area_targets,
-                                                      b2b_edges, p2b_edges, pins_pos, target_positions)
+                                                      b2b_edges, p2b_edges, pins_l, target_positions)
                     v9_cost = self._true_contest_cost(best_positions, constraints, area_targets,
-                                                      b2b_edges, p2b_edges, pins_pos, target_positions)
+                                                      b2b_edges, p2b_edges, pins_l, target_positions)
                     if sp_cost < v9_cost:
                         best_positions = sp_result
             except Exception:
@@ -184,7 +229,6 @@ class MyOptimizer(FloorplanOptimizer):
                      if constraints is not None else None)
             tp_l = (target_positions[:block_count].tolist()
                     if target_positions is not None else None)
-            pins_l = pins_pos.tolist() if pins_pos is not None else []
             dis_args = (block_count, areas_l, b2b_edges, p2b_edges, pins_l,
                         con_l, tp_l)
             dis_cands = {}
@@ -336,7 +380,7 @@ class MyOptimizer(FloorplanOptimizer):
             if len(candidates) > 1:
                 picked = self._select_candidate(
                     candidates, constraints, area_targets, b2b_edges,
-                    p2b_edges, pins_pos, target_positions)
+                    p2b_edges, pins_l, target_positions)
                 if picked is not None:
                     if (fast_first and picked is candidates[0]):
                         # the fast (no-SA) shelf beat every dissection —
@@ -350,7 +394,7 @@ class MyOptimizer(FloorplanOptimizer):
                             if full:
                                 picked = self._select_candidate(
                                     [full, picked], constraints, area_targets,
-                                    b2b_edges, p2b_edges, pins_pos,
+                                    b2b_edges, p2b_edges, pins_l,
                                     target_positions) or picked
                         except Exception:
                             pass
@@ -375,12 +419,12 @@ class MyOptimizer(FloorplanOptimizer):
                     budget = _REFINE_BUDGET if block_count >= 100 else _REFINE_BUDGET * 0.6
                     refined = self._refine_dissection(
                         dis_args, best_wf, picked, budget, constraints,
-                        area_targets, b2b_edges, p2b_edges, pins_pos,
+                        area_targets, b2b_edges, p2b_edges, pins_l,
                         target_positions)
                     if refined is not None:
                         best_positions = self._select_candidate(
                             [best_positions, refined], constraints,
-                            area_targets, b2b_edges, p2b_edges, pins_pos,
+                            area_targets, b2b_edges, p2b_edges, pins_l,
                             target_positions) or best_positions
         except Exception as e:
             if getattr(self, "verbose", False):
@@ -394,7 +438,7 @@ class MyOptimizer(FloorplanOptimizer):
             try:
                 reshaped = self._boundary_reshape_candidate(
                     best_positions, constraints, area_targets, b2b_edges,
-                    p2b_edges, pins_pos, target_positions)
+                    p2b_edges, pins_l, target_positions)
                 if reshaped is not None:
                     best_positions = reshaped
             except Exception:
@@ -425,8 +469,7 @@ class MyOptimizer(FloorplanOptimizer):
             try:
                 feas = self._is_feasible(pos, constraints, area_targets,
                                          target_positions)
-                hpwl = (calculate_hpwl_b2b(pos, b2b)
-                        + calculate_hpwl_p2b(pos, p2b, pins_pos))
+                hpwl = _calculate_hpwl_edges(pos, b2b, p2b, pins_pos)
                 bbox = calculate_bbox_area(pos)
                 if href is None:
                     href = max(hpwl, 1e-9)
@@ -745,8 +788,7 @@ class MyOptimizer(FloorplanOptimizer):
         if not candidates:
             return None
 
-        base_hpwl = (calculate_hpwl_b2b(base, b2b)
-                     + calculate_hpwl_p2b(base, p2b, pins_pos))
+        base_hpwl = _calculate_hpwl_edges(base, b2b, p2b, pins_pos)
         base_viol = self._soft_violation_count(base, constraints)
         ns = max(self._n_soft(constraints, n), 1)
 
@@ -854,10 +896,9 @@ class MyOptimizer(FloorplanOptimizer):
         _select_candidate)."""
         feas = self._is_feasible(pos, constraints, area_targets,
                                  target_positions)
-        hpwl = calculate_hpwl_b2b(pos, b2b) + calculate_hpwl_p2b(pos, p2b, pins_pos)
+        hpwl = _calculate_hpwl_edges(pos, b2b, p2b, pins_pos)
         bbox = calculate_bbox_area(pos)
-        href = max(calculate_hpwl_b2b(ref_pos, b2b)
-                   + calculate_hpwl_p2b(ref_pos, p2b, pins_pos), 1e-9)
+        href = max(_calculate_hpwl_edges(ref_pos, b2b, p2b, pins_pos), 1e-9)
         aref = max(calculate_bbox_area(ref_pos), 1e-9)
         if self._hpwl_baseline and self._area_baseline:
             hg = max(0.0, (hpwl - self._hpwl_baseline) / self._hpwl_baseline)
@@ -2915,9 +2956,8 @@ class MyOptimizer(FloorplanOptimizer):
     def _selection_cost(self, positions, constraints, area_targets, b2b_connectivity,
                         p2b_connectivity, pins_pos):
         bbox_area = calculate_bbox_area(positions)
-        hpwl = calculate_hpwl_b2b(positions, b2b_connectivity) + calculate_hpwl_p2b(
-            positions, p2b_connectivity, pins_pos
-        )
+        hpwl = _calculate_hpwl_edges(
+            positions, b2b_connectivity, p2b_connectivity, pins_pos)
         soft = self._soft_violation_count(positions, constraints)
         target_area = sum(float(a) for a in area_targets[:len(positions)] if a > 0)
         area_scale = max(math.sqrt(max(target_area, 1.0)), 1.0)
@@ -2998,7 +3038,7 @@ class MyOptimizer(FloorplanOptimizer):
             return self._selection_cost(positions, constraints, area_targets, b2b, p2b, pins_pos)
         if not self._is_feasible(positions, constraints, area_targets, target_positions):
             return 10.0
-        hpwl = calculate_hpwl_b2b(positions, b2b) + calculate_hpwl_p2b(positions, p2b, pins_pos)
+        hpwl = _calculate_hpwl_edges(positions, b2b, p2b, pins_pos)
         bbox = calculate_bbox_area(positions)
         hg = max(0.0, (hpwl - self._hpwl_baseline) / max(self._hpwl_baseline, 1e-6))
         ag = max(0.0, (bbox - self._area_baseline) / max(self._area_baseline, 1e-6))

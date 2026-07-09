@@ -1,5 +1,53 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 list-based HPWL candidate scoring probe — ✅ KEPT (v25)
+- Hypothesis: the heavy-case profile shows `_select_candidate()` dominated by
+  repeated evaluator HPWL calls, especially tensor-scalar pin access in
+  `calculate_hpwl_p2b()`. The optimizer already extracts ordered Python edge
+  lists; converting pins once per solve and precomputing block centers once per
+  candidate should preserve the exact score/ranking while removing the largest
+  measured selector hotspot.
+- Probe: add an internal list-based HPWL helper, create `pins_l` once near edge
+  extraction, and use the helper in active candidate scoring/cost paths. Keep
+  edge iteration and arithmetic order unchanged. Require 0 position diffs,
+  identical raw score, and runtime-adjusted wins at medians {1,2,3}s.
+- Result: the first full run exposed one compatibility bug: passing `pins_l`
+  into the existing case-98 edge-slide helper skipped that polish. Restoring
+  the original tensor for that one helper recovered exact v24 output. Two
+  corrected full runs scored **1.632775**, 100/100 feasible, with **0 position
+  diffs**. Runtime improved from v24 avg/p95/max
+  **0.2378/0.5947/0.8632s** to **0.1603/0.3503/0.5266s** and
+  **0.1588/0.3453/0.5221s**.
+- Package verification exposed a second compatibility issue: the lightweight
+  Torch stub has `tolist()` but not `detach().cpu()`. Capability-based tensor
+  conversion restored the case-98 packaged polish. The rebuilt wrapper scored
+  **1.632775**, 100/100 feasible, with **0 position/cost diffs**; avg/p95/max
+  runtime was **0.2173/0.3954/0.6114s**. Binary fuzz passed 400/400 with
+  avg/p95/max **0.211/0.363/0.504s**; 53/53 tests passed.
+- Verdict: kept as v25. Runtime-adjusted medians {0.5,1,2,3}s improved from
+  v24 **1.582342/1.298799/1.159495/1.142942** to
+  **1.382204/1.174610/1.142942/1.142942** in the confirmation sample. Median
+  3s is equal because both versions already hit the contest's 0.7 floor on
+  every case. Rebuild package and refresh release artifacts.
+
+### 2026-07-09 v24 heavy-case runtime profile — ✅ FOLLOW-UP PROBE OPENED (NO CODE)
+- Hypothesis: recent output-preserving micro-optimizations targeted low-impact
+  bookkeeping and did not improve measured runtime. Profiling representative
+  high-weight cases should expose a larger safe hotspot, ideally in candidate
+  scoring/validation rather than construction semantics.
+- Probe: run `cProfile` on the current v24 `MyOptimizer.solve()` for selected
+  n>=115 validation cases after dataset load, rank cumulative/self time by
+  optimizer and dissection functions, and open a code probe only for an
+  output-preserving hotspot supported by the profile.
+- Result: `cProfile` on cases 95/98/99 identified candidate scoring as the
+  dominant safe hotspot. `_select_candidate()` consumed **0.721/0.333/0.809s**
+  under profiling; repeated `calculate_hpwl_p2b()` calls consumed
+  **0.621/0.165/0.585s** cumulative, with tensor scalar conversion dominating
+  self time. Dissection construction was the other large cost, but changing it
+  risks layout semantics.
+- Verdict: open the list-based HPWL candidate scoring probe above; do not
+  revisit the rejected low-impact dissection bookkeeping cache.
+
 ### 2026-07-09 high-weight pure-area cluster-lane scan — ❌ REJECTED (NO CODE)
 - Hypothesis: v22's non-flat cluster lane seed order (edge-side priority before
   area) was kept globally, but some current high-weight residuals may still

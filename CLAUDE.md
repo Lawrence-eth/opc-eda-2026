@@ -59,7 +59,7 @@ never regress it; improve on top of it behind gates.
 | `contest_solution/dissect.py` | exact-area dissection engine (the campaign's core) |
 | `packaging/` | submission package sources (torch-free executable; see SUBMISSION_PLAN.md) |
 | `scripts/` | evaluation/analysis/audit/fuzz tooling (each has a docstring) |
-| `results/integrated_v24.json` | the CURRENT verified result (1.6328) |
+| `results/integrated_v25.json` | the CURRENT verified result (1.6328) |
 | `results/v9_locked.json` | pre-campaign locked result (2.7182) |
 | `results/golden_scored.json` | golden layouts scored by the official evaluator (per case) |
 | `results/retrieval_scan.json` | proof that validation ∉ training (1M scanned, 0 hits) |
