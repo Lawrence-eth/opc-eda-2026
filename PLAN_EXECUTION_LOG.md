@@ -1,5 +1,20 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 high-weight pure-area cluster-lane scan — ❌ REJECTED (NO CODE)
+- Hypothesis: v22's non-flat cluster lane seed order (edge-side priority before
+  area) was kept globally, but some current high-weight residuals may still
+  prefer the older pure-area lane seed. A focused in-memory scan can determine
+  whether a broad high-n replacement is plausible without adding candidates.
+- Probe: monkey-patch only the non-flat, all-soft cluster lane seed order to
+  pure descending area while leaving the rest of v24 unchanged, evaluate cases
+  80-99 through the full optimizer, and compare per-case weighted costs.
+- Result: focus scan over cases 80-99 kept 100/100 feasibility in the sampled
+  window but had weighted delta **+0.001321**. It changed only case 85, which
+  regressed from **1.411237 → 1.464298** by adding one soft violation
+  (`vr +0.0156`) and slightly worsening HPWL.
+- Verdict: rejected; v22's edge-side cluster lane seed remains strictly better
+  for the current v24 solver.
+
 ### 2026-07-09 dissection micro-optimization parity probe — ❌ REJECTED
 - Hypothesis: v24 repeatedly recomputes per-unit soft area, rigid dimensions,
   and tiny edge sets inside the dissection construction path. Caching these
