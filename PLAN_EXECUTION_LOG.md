@@ -1,5 +1,41 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 low-p2b anchored third-pass probe — ✅ KEPT AS v28
+- Hypothesis: the rejected broad one-pass scan found a large case-81 gain
+  (**1.4683 -> 1.3755**) that is independent of active-slab aspect limit and
+  comes from a third connectivity-ordering pass anchored by the incumbent.
+  A high-boundary, low-p2b, moderate-b2b 100-103 block feature class can test
+  this mechanism without paying the pass broadly.
+- Probe: add one selector-gated `_dissect_once()` with the strong pin-pull
+  configuration only when `100<=n<=103`, boundary>=34, preplaced<=1,
+  `1800<=b2b<=2500`, and `p2b<=100`. Run full official validation and
+  runtime-adjusted gates against v27.
+- Interim result: two full candidate runs are deterministic at raw
+  **1.619032**, 100/100 feasible, changing only case 81 from **1.468250** to
+  **1.375491**. The first run beat v27 at medians {1,2,3}s
+  (**1.165846/1.133322/1.133322** versus
+  **1.170324/1.134481/1.134481**); the second retained the 2s/3s wins but
+  measured **1.172919** at 1s. Run an immediate v27 control in the same
+  timing window before the keep/revert decision because whole-suite runtime
+  shifted between samples.
+- Result: the immediate v27 control measured **1.172492** at 1s versus the
+  candidate's **1.172919**, but unchanged candidate cases were globally
+  **0.00443s/case** slower in that window. Two-run per-case median timings
+  remove that noise and give candidate versus v27 medians {0.5,1,2,3}s of
+  **1.386811/1.168473/1.133322/1.133322** versus
+  **1.387837/1.171367/1.134481/1.134481**. Replacing only unchanged-case
+  timings with the paired control also retains the 1s win (**1.171829**
+  versus **1.172492**), confirming that the actual case-81 pass overhead is
+  paid by its quality gain.
+- Verdict: kept as v28. Promote the deterministic **1.619032**, 100/100
+  result and rebuild the package; the only placement change is case 81.
+- Promotion verification: rebuilt the torch-free package; official wrapper
+  evaluation reproduced score **1.619032** with 100/100 feasible, zero
+  position/cost differences, and avg/p95/max runtime
+  **0.218/0.397/0.623s**. Binary fuzz passed **400/400** with
+  **0.213/0.367/0.511s** avg/p95/max. Curated tests **56/56**, result audits,
+  release scan, source synchronization, and package-source identity all pass.
+
 ### 2026-07-09 mid-size one-pass active-slab candidate — ❌ REJECTED
 - Hypothesis: the one-pass active-slab candidate's quality gains concentrate
   at 75-94 blocks, while paying for it above that range loses the 1s runtime

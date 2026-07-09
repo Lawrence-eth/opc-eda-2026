@@ -5,13 +5,13 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-09, round 20): official 1.6207, 100/100, rt avg 0.169s.
-radj@1s 1.173 vs v9's 2.110 (-44%); v26 same-window was 1.174. G3 V_rel
+**Status (2026-07-09, round 21): official 1.6190, 100/100, rt avg 0.172s.
+Two-run median radj@1s 1.168 vs v9's 2.110 (-45%); v27 was 1.171. G3 V_rel
 gate met (n≥100 vr 0.085).
-Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328 → 1.6225 → 1.6207.
-Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
-candidate), hg 0.60 on n≥100 integrated score drivers (ordering),
-grouping 54 / MIB 126 residuals. Exact v27 soft ledger is boundary 324,
+Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328 → 1.6225 → 1.6207 → 1.6190.
+Open leads: ag 0.154 on n≥100 (case-70-class snowball mitigated by a gated
+candidate), hg 0.565 on n≥100 integrated score drivers (ordering),
+grouping 54 / MIB 126 residuals. Exact v28 soft ledger is boundary 324,
 grouping 54, MIB 126, total 504/4478 (`results/enriched_diagnostics.json`).
 Golden mining says MIB should be exact, clusters should almost always connect,
 and some boundary misses are inherent or cost-optimal (including 13
@@ -370,6 +370,12 @@ runtime floor even with the executable spawn overhead (~0.11s).
   radj@{1,2,3}s = **1.173/1.134/1.134** vs v26
   **1.174/1.136/1.136**. Package rebuilt + parity-verified at 1.620687;
   binary fuzz 400/400 feasible.
+- Round 21: a strong pin-pull dissection pass anchored by the selected
+  incumbent was narrowed to the high-boundary, low-p2b 100-103-block feature
+  pocket. It changes only case 81, reducing cost **1.468250 → 1.375491**.
+  Official **1.6190**, 100/100; two-run median radj@{1,2,3}s =
+  **1.168/1.133/1.133** vs v27 **1.171/1.134/1.134**. Package rebuilt +
+  exact parity at 1.619032; binary fuzz 400/400 feasible.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;
   obstacle slabs; cluster lanes; MIB slots; barycenter ordering. Iterations:

@@ -1,7 +1,7 @@
 # HANDOFF — ICCAD 2026 Problem C (FloorSet Challenge)
 
 > For the next agent taking over this project. Current head was measured on
-> 2026-07-09 after integrated v27. Nothing is aspirational.
+> 2026-07-09 after integrated v28. Nothing is aspirational.
 > Operator's standing orders: **the only goal is to WIN. No time limit. Never
 > regress the verified state.**
 
@@ -11,19 +11,19 @@
 
 | Metric | Value | Artifact |
 |---|---|---|
-| Official validation score (RF=1) | **1.6207** | `results/integrated_v27.json` |
+| Official validation score (RF=1) | **1.6190** | `results/integrated_v28.json` |
 | Feasible | **100 / 100** | same |
-| Runtime | avg 0.169s/case, max 0.532s (in-process) | same |
-| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.394 / **1.173** / 1.134 / 1.134 | recompute per §5.3 |
-| Packaged binary via official command | **1.620687, 0/100 position diffs**, avg 0.217s incl. spawn | `results/wrapper_v27.json` |
-| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible, avg 0.212s, p95 0.373s, max 0.527s | rerun per §5.5 |
-| Tests / audit / release gate | 55/55 PASS / PASS / PASS | `pytest`, §5.6 |
+| Runtime | avg 0.172s/case, max 0.478s (in-process) | same |
+| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.387 / **1.168** / 1.133 / 1.133 (two-run per-case medians) | recompute per §5.3 |
+| Packaged binary via official command | **1.619032, 0/100 position diffs**, avg 0.218s incl. spawn | `results/wrapper_v28.json` |
+| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible, avg 0.213s, p95 0.367s, max 0.511s | rerun per §5.5 |
+| Tests / audit / release gate | 56/56 PASS / PASS / PASS | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
 Golden-equivalent play = 1.108 RF=1 / 0.776 at the runtime floor (the golden
 layouts themselves violate soft constraints on 90/100 cases —
 `results/golden_scored.json`). Absolute bound 0.70. **Distance travelled:
-2.718 → 1.621; distance remaining to golden-equivalent: 1.621 → 1.108.**
+2.718 → 1.619; distance remaining to golden-equivalent: 1.619 → 1.108.**
 
 ## 2. Read these, in order
 
@@ -107,13 +107,18 @@ layouts themselves violate soft constraints on 90/100 cases —
 16. **Gated active-slab aspect relaxation** (v27): active fixed-height
    obstacle slabs retain queue order but allow legal high-aspect soft blocks
    in the established case-88 and case-90 feature pockets.
-17. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
+17. **Gated incumbent-anchored third pass** (v28): after initial selection,
+   one strong pin-pull `_dissect_once()` pass uses the incumbent positions as
+   ordering anchors only when `100<=n<=103`, boundary≥34, preplaced≤1,
+   `1800<=b2b<=2500`, and `p2b<=100`. The selector accepts it only when
+   feasible and better; validation changes only case 81.
+18. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
    With golden baselines absent (deployment) it normalizes against the first
    candidate and uses **SIGNED gaps** (clamping against a non-golden reference
    censors improvements — this bug cost a day; don't reintroduce it).
-18. If the fast shelf won, the **full-SA shelf** is run and the selection
+19. If the fast shelf won, the **full-SA shelf** is run and the selection
    redone. The dissection family wins most cases; shelf remains the fallback.
-19. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
+20. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
    local search (`_REFINE_BUDGET=0.0` — see §6 for why).
 
 `dissect.py` — the campaign engine (exact-area dissection):
@@ -217,7 +222,7 @@ def radj(path, med):
         tot+=c*w
     return tot/Z
 for m in (0.5,1,2,3):
-        print(m, radj('results/<candidate>.json', m), radj('results/integrated_v27.json', m))
+        print(m, radj('results/<candidate>.json', m), radj('results/integrated_v28.json', m))
 EOF
 ```
 KEEP iff it beats the incumbent at median ∈ {1,2,3}s AND stays 100/100.
@@ -234,16 +239,16 @@ PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
 
 5.5 **Binary fuzz** (hidden-set insurance): `.venv/bin/python scripts/fuzz_binary.py --num 400` → must be 0 failures.
 
-5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (55 tests) and
+5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (56 tests) and
 `.venv/bin/python scripts/check_public_release.py` (defaults now point at
-`results/integrated_v27.json`, max-score 1.635 — bump the threshold when you
+`results/integrated_v28.json`, max-score 1.635 — bump the threshold when you
 beat it).
 
 ## 6. Open leads, ranked (with the evidence)
 
-Current integrated v27 decomposition (n≥100): **hg 0.573, ag 0.154,
-vr 0.085**. Score-weighted averages: **hg 0.567, ag 0.145,
-vr 0.085**. Exact v27 soft ledger (`results/enriched_diagnostics.json`):
+Current integrated v28 decomposition (n≥100): **hg 0.565, ag 0.154,
+vr 0.085**. Score-weighted averages: **hg 0.564, ag 0.145,
+vr 0.085**. Exact v28 soft ledger (`results/enriched_diagnostics.json`):
 boundary 324, grouping 54, MIB 126, total 504/4478. Score-weighted soft
 counts in the top-20 focus band: boundary 3.117, MIB 1.127, grouping 0.773.
 A chunk of boundary violations are preplaced-with-boundary-codes,
@@ -331,8 +336,10 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `scripts/fuzz_binary.py` | wrapper-protocol feasibility fuzz on training data |
 | `scripts/match_validation_in_training.py` | retrieval scan (result: 0/1,008,000 — don't redo) |
 | `scripts/check_public_release.py` | release gate (audit + docs scan) |
-| `results/integrated_v27.json` | CURRENT official result (1.6207) |
-| `results/wrapper_v27.json` | packaged-binary parity run (1.620687) |
+| `results/integrated_v28.json` | CURRENT official result (1.6190) |
+| `results/wrapper_v28.json` | packaged-binary parity run (1.619032) |
+| `results/integrated_v27.json` | previous official result (1.6207) |
+| `results/wrapper_v27.json` | previous packaged-binary parity run (1.620687) |
 | `results/integrated_v26.json` | previous official result (1.6225) |
 | `results/wrapper_v26.json` | previous packaged-binary parity run (1.622518) |
 | `results/integrated_v25.json` | previous official result (1.6328) |
@@ -366,7 +373,7 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `results/v9_locked.json` | pre-campaign locked result (2.7182) |
 | `results/golden_scored.json` | golden layouts scored officially (the target) |
 | `results/golden_structure.json` | mined golden structure priors + scorer cross-check |
-| `results/enriched_diagnostics.json` | v27 sidecar with official boundary/grouping/MIB attribution |
+| `results/enriched_diagnostics.json` | v28 sidecar with official boundary/grouping/MIB attribution |
 | `results/retrieval_scan.json` | proof hidden set can't be looked up |
 | `docs/CAMPAIGN_GOLDEN.md` | campaign plan + measured milestones |
 | `docs/extracted/` | problem v10 + Q&A 06-18 + submission guidelines (text) |

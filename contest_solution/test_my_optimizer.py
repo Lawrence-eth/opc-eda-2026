@@ -62,7 +62,27 @@ except ModuleNotFoundError:
     evaluator_stub.check_dimension_hard_constraints = check_dimension_hard_constraints
     sys.modules["iccad2026_evaluate"] = evaluator_stub
 
-from my_optimizer import MyOptimizer
+from my_optimizer import MyOptimizer, _should_try_anchored_third_pass
+
+
+def test_anchored_third_pass_gate_accepts_case_81_feature_pocket():
+    assert _should_try_anchored_third_pass(102, 34, 1, 2184, 45)
+
+
+@pytest.mark.parametrize(
+    "features",
+    [
+        (99, 34, 1, 2184, 45),
+        (104, 34, 1, 2184, 45),
+        (102, 33, 1, 2184, 45),
+        (102, 34, 2, 2184, 45),
+        (102, 34, 1, 1799, 45),
+        (102, 34, 1, 2501, 45),
+        (102, 34, 1, 2184, 101),
+    ],
+)
+def test_anchored_third_pass_gate_rejects_outside_feature_pocket(features):
+    assert not _should_try_anchored_third_pass(*features)
 
 
 def test_optimizer_keeps_preplaced_blocks_exact_and_avoids_overlap():

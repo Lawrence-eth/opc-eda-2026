@@ -39,6 +39,9 @@ optimizer_module = _load_optimizer()
 MyOptimizer = optimizer_module.MyOptimizer
 calculate_hpwl_edges = optimizer_module._calculate_hpwl_edges
 tensor_to_list = optimizer_module._tensor_to_list
+should_try_anchored_third_pass = (
+    optimizer_module._should_try_anchored_third_pass
+)
 dissect_module = importlib.import_module("dissect")
 
 
@@ -84,6 +87,20 @@ def test_tensor_to_list_supports_packaging_stub_protocol():
             return [[1.0, 2.0]]
 
     assert tensor_to_list(StubTensor()) == [[1.0, 2.0]]
+
+
+def test_anchored_third_pass_feature_gate_is_narrow():
+    assert should_try_anchored_third_pass(102, 34, 1, 2184, 45)
+    rejected = [
+        (99, 34, 1, 2184, 45),
+        (104, 34, 1, 2184, 45),
+        (102, 33, 1, 2184, 45),
+        (102, 34, 2, 2184, 45),
+        (102, 34, 1, 1799, 45),
+        (102, 34, 1, 2501, 45),
+        (102, 34, 1, 2184, 101),
+    ]
+    assert not any(should_try_anchored_third_pass(*case) for case in rejected)
 
 
 def test_clamped_row_backfill_uses_queued_unit_that_fits_short_slab():
