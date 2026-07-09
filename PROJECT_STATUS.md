@@ -1,16 +1,16 @@
 # Project Status
 
-**Updated 2026-07-08. For the full handoff, read [`HANDOFF.md`](HANDOFF.md).**
+**Updated 2026-07-09. For the full handoff, read [`HANDOFF.md`](HANDOFF.md).**
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v23`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v24`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.6385** | 2.7182 |
+| Score (RF=1) | **1.6328** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.246s / 0.898s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.314 / 1.167 / 1.147** | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.638545, 0 position diffs, avg 0.239s | — |
+| Runtime avg / max | 0.238s / 0.863s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.299 / 1.159 / 1.143** | 2.110 / 1.924 / 1.903 |
+| Packaged binary (official command, incl. spawn) | 1.632775, 0 position diffs, avg 0.242s | — |
 
 ## What the solver is
 
@@ -41,6 +41,9 @@ interactions without adding a portfolio member.
 v23 adds two tightly gated strong pin-pull width pockets (`wf=0.75` and
 `wf=1.15`) for high-weight feature classes, changing only four validation
 cases and keeping the result selector-gated.
+v24 keeps the existing `band_edge_cap` candidate count unchanged but chooses
+`wf=1.1` for the low-p2b case-90 obstacle-band class, capturing the capped-band
+scan signal without the runtime cost of an extra candidate.
 The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -52,10 +55,10 @@ Key structural properties (why it beats everything previous):
 - boundary demands satisfied by frame structure (bands / row-end slots /
   edge stacks), preplaced blocks carved around and never moved.
 
-## Verification state (2026-07-08)
+## Verification state (2026-07-09)
 
 - 51/51 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v23.json`, max-score 1.64).
+  (defaults: `results/integrated_v24.json`, max-score 1.635).
 - Submission package rebuilt + parity-verified (0/100 position diffs through
   the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
@@ -63,11 +66,11 @@ Key structural properties (why it beats everything previous):
 
 ## Where the remaining score is
 
-Current n≥100 averages: hpwl_gap 0.586, area_gap 0.158, V_rel 0.087.
-Score-weighted averages: hpwl_gap 0.578, area_gap 0.150, V_rel 0.087.
-Exact v23 soft ledger: boundary 327, grouping 54, MIB 126, total 507/4478
+Current n≥100 averages: hpwl_gap 0.585, area_gap 0.158, V_rel 0.085.
+Score-weighted averages: hpwl_gap 0.577, area_gap 0.149, V_rel 0.086.
+Exact v24 soft ledger: boundary 326, grouping 53, MIB 126, total 505/4478
 (`results/enriched_diagnostics.json`). Score-weighted soft counts in the
-top-20 focus band are boundary 3.173, MIB 1.095, grouping 0.824.
+top-20 focus band are boundary 3.181, MIB 1.127, grouping 0.741.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
 play would score 1.108 (RF=1) / 0.776 (at the runtime floor). Golden-structure
 mining is now in `results/golden_structure.json`: golden pays boundary misses

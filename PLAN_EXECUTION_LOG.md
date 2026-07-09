@@ -1,5 +1,21 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 band-cap width replacement probe — ✅ KEPT (v24)
+- Hypothesis: the rejected capped-band pocket probe lost because it added
+  extra candidates. The same scan signal may be deployable as a replacement
+  for the existing single `band_edge_cap` candidate: use `wf=1.1` on the
+  low-p2b case-90 class and `wf=1.2` on the high-p2b case-89 class while
+  leaving all other band-cap cases at `wf=1.0`.
+- Probe: keep the `should_try_band_edge_cap` gate and candidate count
+  unchanged, but choose the capped candidate's width factor from the two
+  tight structural pockets found by the scan.
+- Result: official validation improved raw score **1.638545 → 1.632775**,
+  100/100 feasible, changing only case 90
+  (**2.198808 → 2.046075**). Runtime-adjusted medians {0.5,1,2,3}s improved
+  from v23 **1.602/1.314/1.167/1.147** to
+  **1.582/1.299/1.159/1.143**.
+- Verdict: kept as v24; rebuild package and refresh release artifacts.
+
 ### 2026-07-09 gated capped-band width pocket probe — ❌ REJECTED
 - Hypothesis: the capped-band residual scan found material, narrow wins for
   high-weight obstacle layouts: `band_edge_cap=True`, `wf=1.1` on the case-90
