@@ -1,5 +1,23 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 standard-width capped replacement probe — ❌ REJECTED
+- Hypothesis: the case-89 capped `wf=1.2` win from the residual scan failed as
+  an extra candidate because runtime overhead outweighed the raw gain. Replacing
+  the existing standard `wf=1.2` dissection candidate with its capped-band
+  version only for the high-p2b case-89 class may capture the same public win
+  without increasing candidate count.
+- Probe: compute the existing structural counts before the width-factor loop,
+  and for the tight case-89 gate run the `wf=1.2` member of the standard
+  dissection portfolio with `band_edge_cap=True`; leave all other width
+  candidates unchanged.
+- Result: official validation improved raw score **1.632775 → 1.631975**,
+  100/100 feasible, changing only case 89
+  (**2.077342 → 2.054330**). The raw win was too small for the timing sample:
+  runtime-adjusted medians {1,2,3}s moved from v24
+  **1.299/1.159/1.143** to **1.321/1.166/1.143**.
+- Verdict: rejected; restore the v24 standard width portfolio and keep the
+  case-89 capped signal as an upper-bound only.
+
 ### 2026-07-09 band-cap width replacement probe — ✅ KEPT (v24)
 - Hypothesis: the rejected capped-band pocket probe lost because it added
   extra candidates. The same scan signal may be deployable as a replacement
