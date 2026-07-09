@@ -1,5 +1,58 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 mid-size one-pass active-slab candidate — ❌ REJECTED
+- Hypothesis: the one-pass active-slab candidate's quality gains concentrate
+  at 75-94 blocks, while paying for it above that range loses the 1s runtime
+  gate. Restricting the opportunity probe and selected rebuild to this
+  contiguous mid-size band should retain weighted raw gain **-0.001346** and
+  beat v27 at medians {1,2,3}s.
+- Probe: gate the existing one-pass probe to `75 <= block_count <= 94`, keep
+  the same limit-25 construction and deployed selector, and run full official
+  validation.
+- Result: the two-pass opportunity flag produced **1.619341**, 100/100, but
+  lost the same-window 1s gate. Restricting the flag to pass 2 reduced false
+  positives and scored **1.619562**, avg **0.1674s**, but runtime-adjusted
+  medians {0.5,1,2,3}s were
+  **1.389365/1.173374/1.133693/1.133693** versus the same-window v27
+  **1.384043/1.170324/1.134481/1.134481**.
+- Verdict: rejected because both trigger variants lose at 1s. Restored exact
+  v27 solver code; do not retry selected-layout rebuilds without removing
+  their construction cost.
+
+### 2026-07-09 one-pass selected active-slab candidate — 🔬 PROBE OPENED
+- Hypothesis: the full selected-candidate rebuild improves raw score but costs
+  too much runtime. Reusing the incumbent positions as external ordering
+  anchors and running only one `_dissect_once()` at limit 25 should halve the
+  added construction cost and may improve ordering coherence.
+- Probe: replace the trace-gated two-pass rebuild below with one dissection
+  pass seeded by the incumbent positions. Offline tensor-contract replay
+  selects 41 improvements worth weighted **-0.003521**, led by case 81
+  (**1.468 -> 1.375**). Run full official validation and runtime gates.
+- Result: broad one-pass integration scored **1.619128**, 100/100 feasible,
+  but avg runtime rose to **0.1831s**. Runtime-adjusted medians
+  {0.5,1,2,3}s were **1.414672/1.176817/1.133389/1.133389** versus v27
+  **1.394152/1.172593/1.134481/1.134481**.
+- Verdict: reject the broad one-pass gate because it loses at 0.5s and 1s;
+  open the measured 75-94 band above.
+
+### 2026-07-09 trace-gated selected active-slab candidate — 🔬 PROBE OPENED
+- Hypothesis: the corrected tensor-contract selector replay accepts ten
+  limit-25 active-slab variants and every accepted variant improves official
+  RF=1 quality (weighted gain **-0.001155**). Recording during normal
+  construction whether the selected candidate encountered a unit that fits at
+  25:1 but not at its current aspect limit can avoid rebuilding cases where
+  the variant cannot change output.
+- Probe: attach a boolean opportunity probe to existing dissection candidates,
+  then rebuild only the selected candidate at limit 25 when its probe fired
+  and `block_count<=105`; compare it with the incumbent through the deployed
+  selector. Run full official validation and runtime-adjusted gates.
+- Result: full official validation scored **1.619532**, 100/100 feasible, but
+  avg runtime rose from v27 **0.1694s** to **0.1793s**. Runtime-adjusted
+  medians {0.5,1,2,3}s were **1.414740/1.180004/1.133673/1.133673**
+  versus v27 **1.394152/1.172593/1.134481/1.134481**.
+- Verdict: reject the two-pass rebuild because it loses at 0.5s and 1s; open
+  the one-pass formulation above.
+
 ### 2026-07-09 gated active-slab aspect replacement — ✅ KEPT (v27)
 - Hypothesis: generic aspect relaxation is not deployable, but two existing
   hidden-computable feature pockets have material offline wins without soft
@@ -36,10 +89,12 @@
   behavior unchanged.
 - Result: limits 18/25/40 changed 27/31/34 selected constructions. Replacing
   broadly regressed weighted raw score by **+0.00727/+0.00754/+0.00779**;
-  oracle gains were only **-0.00201/-0.00216/-0.00285**, and the deployed
-  self-normalized selector accepted 0 variants. Limit 18 improved the
-  case-88 class by weighted **-0.000740**; limit 40 improved the existing
-  capped-band case-90 class by **-0.001091**.
+  oracle gains were only **-0.00201/-0.00216/-0.00285**. An initial selector
+  replay incorrectly passed list-form target positions and reported zero
+  accepts. Correct tensor-contract replay accepted 8/10/11 variants; all ten
+  limit-25 accepts improved official quality for weighted **-0.001155**.
+  Limit 18 improved the case-88 class by weighted **-0.000740**; limit 40
+  improved the existing capped-band case-90 class by **-0.001091**.
 - Verdict: reject generic relaxation and open only the two pre-existing
   feature-pocket replacements above.
 
