@@ -232,9 +232,43 @@ class MyOptimizer(FloorplanOptimizer):
             dis_args = (block_count, areas_l, b2b_edges, p2b_edges, pins_l,
                         con_l, tp_l)
             dis_cands = {}
+            boundary_count = 0
+            preplaced_count = 0
+            if con_l is not None:
+                for row in con_l:
+                    if len(row) > 4 and int(float(row[4])) != 0:
+                        boundary_count += 1
+                    if len(row) > 1 and float(row[1]) != 0:
+                        preplaced_count += 1
+            clamped_backfill = (
+                (
+                    90 <= block_count <= 96
+                    and preplaced_count >= 4
+                )
+                or (
+                    97 <= block_count <= 103
+                    and preplaced_count >= 6
+                    and len(b2b_edges) < 1000
+                )
+                or (
+                    108 <= block_count <= 110
+                    and preplaced_count >= 6
+                    and len(b2b_edges) < 2000
+                )
+                or (
+                    block_count >= 120
+                    and boundary_count >= 36
+                    and len(b2b_edges) > 6000
+                    and len(p2b_edges) > 3000
+                )
+            )
             for wf in (0.8, 0.9, 1.0, 1.1, 1.2):
+                kwargs = {
+                    "width_factor": wf,
+                    "clamped_backfill": clamped_backfill,
+                }
                 try:
-                    cand = dissect_solve(*dis_args, width_factor=wf)
+                    cand = dissect_solve(*dis_args, **kwargs)
                 except Exception:
                     continue
                 if cand and len(cand) == block_count:
@@ -247,14 +281,6 @@ class MyOptimizer(FloorplanOptimizer):
             # v15's width-first bands to preserve the high-weight 98/99 wins.
             try:
                 hybrid_wf = 1.0
-                boundary_count = 0
-                preplaced_count = 0
-                if con_l is not None:
-                    for row in con_l:
-                        if len(row) > 4 and int(float(row[4])) != 0:
-                            boundary_count += 1
-                        if len(row) > 1 and float(row[1]) != 0:
-                            preplaced_count += 1
                 if (
                     95 <= block_count < 118
                     and len(b2b_edges) < 2500
@@ -263,7 +289,9 @@ class MyOptimizer(FloorplanOptimizer):
                     and preplaced_count <= 4
                 ):
                     hybrid_wf = 0.8
-                kwargs = dict(width_factor=hybrid_wf, edge_order_mode="bary")
+                kwargs = dict(
+                    width_factor=hybrid_wf, edge_order_mode="bary",
+                    clamped_backfill=clamped_backfill)
                 if block_count < 118:
                     kwargs["band_order_mode"] = "pinx"
                 cand = dissect_solve(*dis_args, **kwargs)
@@ -305,11 +333,12 @@ class MyOptimizer(FloorplanOptimizer):
                 ):
                     strong_pin_wfs.append(1.15)
                 for hybrid_wf in strong_pin_wfs:
+                    kwargs = dict(
+                        width_factor=hybrid_wf, pin_scale=6.0,
+                        edge_order_mode="bary", band_order_mode="pinx",
+                        clamped_backfill=clamped_backfill)
                     try:
-                        cand = dissect_solve(*dis_args, width_factor=hybrid_wf,
-                                             pin_scale=6.0,
-                                             edge_order_mode="bary",
-                                             band_order_mode="pinx")
+                        cand = dissect_solve(*dis_args, **kwargs)
                     except Exception:
                         cand = None
                     if cand and len(cand) == block_count:
@@ -320,10 +349,12 @@ class MyOptimizer(FloorplanOptimizer):
                     and len(b2b_edges) > 6000
                     and len(p2b_edges) > 3000
                 ):
+                    kwargs = dict(
+                        width_factor=1.15, pin_scale=6.0,
+                        edge_order_mode="bary",
+                        clamped_backfill=clamped_backfill)
                     try:
-                        cand = dissect_solve(*dis_args, width_factor=1.15,
-                                             pin_scale=6.0,
-                                             edge_order_mode="bary")
+                        cand = dissect_solve(*dis_args, **kwargs)
                     except Exception:
                         cand = None
                     if cand and len(cand) == block_count:
@@ -356,9 +387,11 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 use_band_cap = False
             if use_band_cap:
+                kwargs = dict(
+                    width_factor=band_cap_wf, band_edge_cap=True,
+                    clamped_backfill=clamped_backfill)
                 try:
-                    cand = dissect_solve(*dis_args, width_factor=band_cap_wf,
-                                         band_edge_cap=True)
+                    cand = dissect_solve(*dis_args, **kwargs)
                 except Exception:
                     cand = None
                 if cand and len(cand) == block_count:
@@ -370,9 +403,11 @@ class MyOptimizer(FloorplanOptimizer):
             # the runtime cost dominates and no validation case selected them.
             if 50 <= block_count <= 103:
                 for pin_scale in (0.5, 4.0):
+                    kwargs = dict(
+                        width_factor=1.0, pin_scale=pin_scale,
+                        clamped_backfill=clamped_backfill)
                     try:
-                        cand = dissect_solve(*dis_args, width_factor=1.0,
-                                             pin_scale=pin_scale)
+                        cand = dissect_solve(*dis_args, **kwargs)
                     except Exception:
                         cand = None
                     if cand and len(cand) == block_count:

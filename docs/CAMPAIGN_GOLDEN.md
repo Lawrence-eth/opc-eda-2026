@@ -5,14 +5,14 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-09, round 18): official 1.6328, 100/100, rt avg 0.159s.
-radj@1s 1.175 vs v9's 2.110 (-44%); v24 was 1.299. G3 V_rel
+**Status (2026-07-09, round 19): official 1.6225, 100/100, rt avg 0.170s.
+radj@1s 1.175 vs v9's 2.110 (-44%); v25 same-window was 1.182. G3 V_rel
 gate met (n≥100 vr 0.085).
-Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328.
+Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328 → 1.6225.
 Open leads: ag 0.16 on n≥100 (case-70-class snowball mitigated by a gated
 candidate), hg 0.60 on n≥100 integrated score drivers (ordering),
-grouping 53 / MIB 126 residuals. Exact v25 soft ledger is boundary 326,
-grouping 53, MIB 126, total 505/4478 (`results/enriched_diagnostics.json`).
+grouping 54 / MIB 126 residuals. Exact v26 soft ledger is boundary 324,
+grouping 54, MIB 126, total 504/4478 (`results/enriched_diagnostics.json`).
 Golden mining says MIB should be exact, clusters should almost always connect,
 and some boundary misses are inherent or cost-optimal (including 13
 preplaced-boundary misses). Package refreshed after each engine change (§G5).**
@@ -197,6 +197,11 @@ runtime floor even with the executable spawn overhead (~0.11s).
   score while reducing in-process avg runtime from **0.238s to 0.159s**;
   radj@{1,2,3}s = **1.175/1.143/1.143**. Wrapper parity is 0 position
   diffs; binary fuzz is 400/400.
+  Sixteenth kept polish backfills short flexible rows clamped to a preplaced
+  obstacle edge from the remaining mid queue in tightly gated feature
+  pockets. Official **1.6225**, 100/100; same-window radj@{1,2,3}s =
+  **1.175/1.136/1.136** vs v25 **1.182/1.143/1.143**; wrapper parity
+  0 position diffs; fuzz 400/400.
   Still open: SA over the dissection (sibling swaps, subtree
   transplants, strip re-partitions) under exact cost; aspect-bound tuning;
   fixed/preplaced slack recovery; per-case portfolio.
@@ -343,6 +348,17 @@ runtime floor even with the executable spawn overhead (~0.11s).
   Official **1.6328**, 100/100; radj@{1,2,3}s =
   **1.299/1.159/1.143** vs v23 **1.314/1.167/1.147**. Package rebuilt +
   parity-verified at 1.632775; binary fuzz 400/400 feasible.
+- Round 18: profiled heavy cases and replaced repeated tensor-scalar HPWL
+  evaluation in candidate scoring with pre-extracted Python lists and one
+  center pass. All v24 positions stayed identical; in-process runtime fell
+  from 0.238s to 0.159s and radj@{1,2,3}s became
+  **1.175/1.143/1.143**.
+- Round 19: obstacle traces showed `free_row_clamped` left short slabs empty
+  after testing only the admitted row. Kept a gated in-place backfill from the
+  remaining queue, changing eight cases without adding a candidate. Official
+  **1.6225**, 100/100; same-window radj@{1,2,3}s =
+  **1.175/1.136/1.136** vs v25 **1.182/1.143/1.143**. Package rebuilt +
+  parity-verified at 1.622518; binary fuzz 400/400 feasible.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;
   obstacle slabs; cluster lanes; MIB slots; barycenter ordering. Iterations:

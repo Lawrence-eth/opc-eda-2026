@@ -39,6 +39,7 @@ optimizer_module = _load_optimizer()
 MyOptimizer = optimizer_module.MyOptimizer
 calculate_hpwl_edges = optimizer_module._calculate_hpwl_edges
 tensor_to_list = optimizer_module._tensor_to_list
+dissect_module = importlib.import_module("dissect")
 
 
 def _constraints(block_count):
@@ -83,6 +84,46 @@ def test_tensor_to_list_supports_packaging_stub_protocol():
             return [[1.0, 2.0]]
 
     assert tensor_to_list(StubTensor()) == [[1.0, 2.0]]
+
+
+def test_clamped_row_backfill_uses_queued_unit_that_fits_short_slab():
+    case = dissect_module.Case(
+        3,
+        [40.0, 200.0, 4.0],
+        [[0, 0, 0, 0, 0]] * 3,
+        None,
+    )
+    head = dissect_module.Unit([0], "block", case)
+    large = dissect_module.Unit([1], "block", case)
+    small = dissect_module.Unit([2], "block", case)
+    obstacle = [(8.0, 2.0, 2.0, 2.0)]
+
+    without_backfill = {}
+    dissect_module.fill_region(
+        case,
+        [large, small],
+        0.0,
+        10.0,
+        0.0,
+        obstacle,
+        without_backfill,
+        l_queue=[head],
+    )
+    with_backfill = {}
+    dissect_module.fill_region(
+        case,
+        [large, small],
+        0.0,
+        10.0,
+        0.0,
+        obstacle,
+        with_backfill,
+        l_queue=[head],
+        clamped_backfill=True,
+    )
+
+    assert without_backfill[2][1] == 2.0
+    assert with_backfill[2][1] == 0.0
 
 
 def test_group_components_require_shared_edge_not_corner_touch():

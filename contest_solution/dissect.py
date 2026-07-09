@@ -438,7 +438,8 @@ def _unit_block_count(units):
 
 def fill_region(case, units, x0, x1, y0, obstacles, out,
                 l_queue=None, r_queue=None, xkey=None,
-                trace=None, trace_label="region"):
+                trace=None, trace_label="region",
+                clamped_backfill=False):
     """Fill the vertical strip [x0, x1) upward from y0, around obstacles.
     Free spans get flexible exact rows; slabs crossed by obstacles get
     segmented fixed-height fills. One unit from l_queue starts each flexible
@@ -582,6 +583,9 @@ def fill_region(case, units, x0, x1, y0, obstacles, out,
                 else:
                     back.append(u)
             queue = back + queue
+            if clamped_backfill and x < x1 - _EPS:
+                queue = _segment_fill(
+                    case, queue, [(x, x1)], y, h, out, max_aspect=25.0)
             placed = set(out) - before
             placed_area = sum(out[b][2] * out[b][3] for b in placed)
             _trace_append(
@@ -810,7 +814,8 @@ def unit_xkey(u, placed_centers, adj_xpull):
 def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
                   target_positions, width_factor=1.0, pin_scale=1.0,
                   order_ops=None, trace=None, band_edge_cap=False,
-                  edge_order_mode="area", band_order_mode="width"):
+                  edge_order_mode="area", band_order_mode="width",
+                  clamped_backfill=False):
     """Two-pass frame-of-rows dissection (pass 2 re-orders with pass 1's
     actual positions — one Gauss-Seidel sweep). Returns positions or None."""
     p1 = _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
@@ -818,7 +823,8 @@ def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
                        prev=None, trace=trace, pass_name="p1",
                        band_edge_cap=band_edge_cap,
                        edge_order_mode=edge_order_mode,
-                       band_order_mode=band_order_mode)
+                       band_order_mode=band_order_mode,
+                       clamped_backfill=clamped_backfill)
     if p1 is None:
         return None
     prev = {i: p1[i] for i in range(n)}
@@ -827,7 +833,8 @@ def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
                        prev=prev, trace=trace, pass_name="p2",
                        band_edge_cap=band_edge_cap,
                        edge_order_mode=edge_order_mode,
-                       band_order_mode=band_order_mode)
+                       band_order_mode=band_order_mode,
+                       clamped_backfill=clamped_backfill)
     return p2 if p2 is not None else p1
 
 
@@ -835,7 +842,7 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
                   target_positions, width_factor=1.0, pin_scale=1.0,
                   order_ops=None, prev=None, trace=None, pass_name="p",
                   band_edge_cap=False, edge_order_mode="area",
-                  band_order_mode="width"):
+                  band_order_mode="width", clamped_backfill=False):
     case = Case(n, areas, constraints, target_positions)
     out: Dict[int, Rect] = {}
 
@@ -958,7 +965,8 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
     y_end = fill_region(case, groups['mid'], 0.0, W, y, obstacles, out,
                         l_queue=groups['left'], r_queue=groups['right'],
                         xkey=xkey, trace=trace,
-                        trace_label=f"{pass_name}:mid")
+                        trace_label=f"{pass_name}:mid",
+                        clamped_backfill=clamped_backfill)
 
     # --- top band: ONE exact row flush at the very top ----------------------
     if groups['top']:

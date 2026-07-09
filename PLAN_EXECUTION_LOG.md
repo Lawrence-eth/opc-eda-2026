@@ -1,5 +1,68 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 gated in-place clamped backfill replacement — ✅ KEPT (v26)
+- Hypothesis: the backfill layout changes are useful, but rebuilding the
+  already-selected dissection adds 40-160ms on every gated case and loses the
+  runtime-adjusted 1s gate. Enabling the same backfill branch inside existing
+  portfolio runs for the eight feature-gated pockets should preserve the raw
+  improvements without adding a candidate.
+- Probe: replace, rather than duplicate, dissection construction only when the
+  static backfill gate fires; keep every other case and the portfolio size
+  unchanged. Require 100/100 feasibility and runtime-adjusted wins over v25 at
+  medians {1,2,3}s.
+- Result: two full runs scored **1.622518**, 100/100 feasible, changing eight
+  cases. The confirmation run averaged **0.1697s** (p95 **0.3634s**, max
+  **0.5335s**). In the same window, unchanged v25 averaged **0.1706s** (p95
+  **0.3649s**, max **0.5371s**).
+- Verdict: kept as v26. Same-window runtime-adjusted medians {0.5,1,2,3}s
+  improved from v25 **1.407149/1.182170/1.142942/1.142942** to
+  **1.397361/1.175310/1.135763/1.135763**. The replacement improves cases
+  69/70/74/75/79/88/89/99 and adds no portfolio member.
+- Package verification: rebuilt wrapper score **1.622518**, 100/100 feasible,
+  with 0 position/cost diffs; avg/p95/max **0.2157/0.3970/0.6078s**.
+  Binary fuzz passed 400/400 with avg/p95/max **0.211/0.372/0.509s**;
+  54/54 tests passed.
+
+### 2026-07-09 clamped obstacle-row backfill probe — ❌ EXTRA CANDIDATE REJECTED
+- Hypothesis: when a flexible row is clamped to the next preplaced-obstacle
+  edge, `fill_region()` tests only units already admitted to that row. If most
+  do not fit the short slab, it advances to the obstacle edge without trying
+  other queued units, leaving large avoidable holes. v25 traces attribute
+  about 2,300-5,900 empty area units to this branch on cases
+  69/70/74/79/80/88/89.
+- Probe: add an opt-in dissection mode that, after preserving edge-queue
+  semantics, greedily backfills the remaining clamped-row x span from the
+  existing mid queue using the same height/aspect feasibility checks as
+  obstacle-segment filling. Add it as a selector-gated candidate only for
+  obstacle-heavy n>=90 cases with at least three preplaced blocks. Run the
+  full official validation and runtime-adjusted comparison against v25.
+- Result: the broad extra-candidate run improved raw score to **1.625856**,
+  100/100 feasible, but runtime rose to avg **0.1701s**. Runtime-adjusted
+  medians {0.5,1,2,3}s were **1.419459/1.185565/1.138099/1.138099** versus
+  v25 **1.382204/1.174610/1.142942/1.142942**.
+- Verdict: reject the extra candidate because it loses at 0.5s and 1s. Keep
+  the backfill primitive for the in-place replacement probe above.
+
+### 2026-07-09 v25 obstacle-row area residual anatomy — ✅ FOLLOW-UP OPENED
+- Hypothesis: after the case-70/90 capped-band fixes, the remaining weighted
+  area gap is concentrated in a small number of fixed/preplaced obstacle
+  geometries where one tall rigid block inflates a row or leaves unusable
+  segment remainders. Correlating v25 area residuals with obstacle heights,
+  row spans, and current band-cap gates should identify a narrower predictor
+  than the rejected broad capped-band default.
+- Probe: rank validation cases by score-weighted area contribution, inspect
+  fixed/preplaced geometry and solver feature gates for the top cases, and
+  compare against v24/v25-selected layouts. This is an analysis-only pass; do
+  not change construction until one repeated, hidden-computable pattern is
+  supported by multiple cases.
+- Result: only cases 70/90 among the major area contributors trigger the
+  existing band cap. Trace replay found a different repeated loss:
+  `free_row_clamped` advanced to obstacle edges after testing only the
+  partially admitted row, leaving about 2,300-5,900 area units empty on
+  cases 69/70/74/79/80/88/89.
+- Verdict: open the clamped-row backfill probe above; generic width scans did
+  not produce a deployable selector win.
+
 ### 2026-07-09 list-based HPWL candidate scoring probe — ✅ KEPT (v25)
 - Hypothesis: the heavy-case profile shows `_select_candidate()` dominated by
   repeated evaluator HPWL calls, especially tensor-scalar pin access in

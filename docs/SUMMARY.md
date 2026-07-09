@@ -2,7 +2,7 @@
 
 > Single-source overview: problem, solution, results, methodology, honest
 > assessment. Each section ≈ one slide. Numbers verified against
-> `results/integrated_v25.json` (current) and `results/v9_locked.json`
+> `results/integrated_v26.json` (current) and `results/v9_locked.json`
 > (pre-campaign baseline). Updated 2026-07-09.
 
 ---
@@ -61,11 +61,11 @@ from the structure (w = area/height). Then:
 
 | Metric | Pre-campaign (v9) | **Current** |
 |---|---|---|
-| Official score (RF=1) | 2.7182 | **1.6328** (-40%) |
+| Official score (RF=1) | 2.7182 | **1.6225** (-40%) |
 | Feasible | 100/100 | **100/100** |
-| Runtime | 0.18s avg | **0.159s avg** |
-| Runtime-adjusted @ median 1s | 2.110 | **1.175** (-44%; v24: 1.299) |
-| Packaged binary, official command | — | 1.632775, 0 position diffs, 0.217s incl. spawn |
+| Runtime | 0.18s avg | **0.170s avg** |
+| Runtime-adjusted @ median 1s | 2.110 | **1.175** (-44%; v25 same-window: 1.182) |
+| Packaged binary, official command | — | 1.622518, 0 position diffs, 0.216s incl. spawn |
 
 Calibration: golden-equivalent play = 1.108 (RF=1) / 0.776 (at the runtime
 floor); theoretical bound 0.70. Golden itself violates soft constraints on
@@ -78,7 +78,7 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 - The shipped PyInstaller binary re-verified through the organizers' exact
   command after every engine change: identical positions, 400/400
   training-instance feasibility fuzz.
-- 53 regression tests + result audit + release gate on every commit; every
+- 54 regression tests + result audit + release gate on every commit; every
   experiment, including reverted probes, logged with verdicts.
 
 ## 6. Methodology / rigor (1 slide)
@@ -111,7 +111,7 @@ cp contest_solution/my_optimizer.py contest_solution/dissect.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
-# -> Total Score: 1.6328, Feasible: 100
-python -m pytest                                    # 53/53
+# -> Total Score: 1.6225, Feasible: 100
+python -m pytest                                    # 54/54
 python scripts/check_public_release.py              # PASS
 ```
