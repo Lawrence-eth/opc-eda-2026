@@ -1,5 +1,53 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 case-81 anchored-pass convergence scan — ✅ KEPT AS v29
+- Hypothesis: replaying the v28 strong anchored pass from its promoted
+  case-81 layout produces another deterministic cost reduction
+  (**1.375491 -> 1.323854**), worth an estimated **0.000921** total raw
+  score. One additional pass under the existing v28 feature gate may pay for
+  its roughly 30ms local runtime.
+- Probe: iterate the same `_dissect_once()` configuration offline from the
+  v28 incumbent to measure convergence and select the minimum useful pass
+  count. Integrate at most one additional pass first, then require full
+  official timing gates against v28.
+- Interim result: offline convergence accepts exactly one additional pass
+  (**1.323854**) and rejects the next (**1.325261**). Two full candidate
+  runs are deterministic at **1.618110**, 100/100 feasible, changing only
+  case 81. Their independent aggregate loses the 1s gate because unchanged
+  high-weight case timings shifted; run an immediate v28 control after the
+  second candidate and isolate the only real runtime delta before deciding.
+- Result: the paired second candidate/control window gives v29 versus v28
+  runtime-adjusted medians {0.5,1,2,3}s of
+  **1.401045/1.174421/1.132677/1.132677** versus
+  **1.403742/1.175892/1.133322/1.133322**. Replacing unchanged candidate
+  timings with the paired v28 control still wins at 1s
+  (**1.175690** versus **1.175892**), so the actual additional case-81 pass
+  pays for itself.
+- Verdict: kept as v29. Promote **1.618110**, 100/100 feasible; only case 81
+  changes, from **1.375491** to **1.323854**.
+- Promotion verification: rebuilt package and reproduced **1.618110** through
+  the official wrapper with zero position/cost differences; wrapper
+  avg/p95/max runtime **0.218/0.407/0.628s**. Binary fuzz passed
+  **400/400** at **0.213/0.369/0.530s** avg/p95/max.
+
+### 2026-07-09 preplaced-heavy anchored aspect-pass pocket — ⏸ DEFERRED
+- Hypothesis: after promoting the case-81 anchored pass, the largest remaining
+  accepted result in the rejected broad one-pass artifact is case 61
+  (**2.411925 -> 2.218303**, weighted raw gain **0.000653**). Its
+  hidden-computable signature is narrow: 82 blocks, 7 preplaced, 22 boundary,
+  336 b2b, and 1367 p2b edges. A limit-25 incumbent-anchored pass may retain
+  this gain without the broad runtime penalty.
+- Probe: first replay the exact one-pass construction on case 61 and adjacent
+  cases to verify which knob causes the stored gain. If deterministic, derive
+  a conservative feature gate and run full official validation against v28.
+- Result: after reconstructing the evaluator's optimizer-facing target tensor,
+  replay confirmed that case 61 needs aspect relaxation: costs at limits
+  {12,18,25,40} are **2.455762/2.216406/2.191745/2.130020** versus v28
+  **2.411925**. The same scan exposed a larger second anchored-pass gain on
+  the already-gated case 81.
+- Verdict: defer the new case-61 gate until the case-81 convergence probe
+  above is resolved; retain limit 40 as the strongest case-61 upper bound.
+
 ### 2026-07-09 low-p2b anchored third-pass probe — ✅ KEPT AS v28
 - Hypothesis: the rejected broad one-pass scan found a large case-81 gain
   (**1.4683 -> 1.3755**) that is independent of active-slab aspect limit and

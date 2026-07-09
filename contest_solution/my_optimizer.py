@@ -472,27 +472,35 @@ class MyOptimizer(FloorplanOptimizer):
                         len(b2b_edges),
                         len(p2b_edges),
                     ):
-                        try:
-                            third_pass = _dissect_once(
-                                *dis_args,
-                                width_factor=1.0,
-                                pin_scale=6.0,
-                                prev={
-                                    i: tuple(picked[i])
-                                    for i in range(block_count)
-                                },
-                                pass_name="third_pass",
-                                edge_order_mode="bary",
-                                band_order_mode="pinx",
-                            )
-                        except Exception:
-                            third_pass = None
-                        if third_pass and len(third_pass) == block_count:
-                            picked = self._select_candidate(
-                                [picked, third_pass],
+                        for pass_name in ("third_pass", "fourth_pass"):
+                            try:
+                                anchored_pass = _dissect_once(
+                                    *dis_args,
+                                    width_factor=1.0,
+                                    pin_scale=6.0,
+                                    prev={
+                                        i: tuple(picked[i])
+                                        for i in range(block_count)
+                                    },
+                                    pass_name=pass_name,
+                                    edge_order_mode="bary",
+                                    band_order_mode="pinx",
+                                )
+                            except Exception:
+                                anchored_pass = None
+                            if (
+                                not anchored_pass
+                                or len(anchored_pass) != block_count
+                            ):
+                                break
+                            next_picked = self._select_candidate(
+                                [picked, anchored_pass],
                                 constraints, area_targets, b2b_edges,
                                 p2b_edges, pins_l, target_positions,
                             ) or picked
+                            if next_picked is picked:
+                                break
+                            picked = next_picked
                     best_positions = picked
                 # order-refinement local search on the best dissection:
                 # rebuild-based transpositions of the interior order under a

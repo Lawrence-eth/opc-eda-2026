@@ -18,25 +18,25 @@ ordering candidate + high-weight strong pin-pull hybrid ordering candidate
 + cluster lane edge-ordering + gated strong-width pin-pull pockets
 + band-cap width replacement + list-based HPWL candidate scoring
 + gated clamped obstacle-row backfill + gated active-slab aspect relaxation
-+ gated incumbent-anchored third-pass ordering**
++ gated incumbent-anchored convergence ordering**
 (CAMPAIGN_GOLDEN G6 polish) —
 `contest_solution/my_optimizer.py` + `contest_solution/dissect.py`; result
-snapshot `results/integrated_v28.json`.
+snapshot `results/integrated_v29.json`.
 Previous locked entry: `sprint5_v9` (2.7182, `results/v9_locked.json`) —
 still the per-case fallback inside solve().
 
 | Metric | Value |
 |--------|-------|
-| Validation score (RF=1.0) | **1.6190** (v9: 2.7182) |
+| Validation score (RF=1.0) | **1.6181** (v9: 2.7182) |
 | Feasible cases | **100 / 100** |
-| Average runtime | **~0.172s/case** (max ~0.48s) |
-| Runtime-adjusted total @ median 1s | **1.168** (v27: 1.171, two-run medians; v9: 2.11) |
+| Average runtime | **~0.173s/case** (max ~0.55s) |
+| Runtime-adjusted total @ median 1s | **1.174** (v28: 1.176 paired window; v9: 2.11) |
 
 **Note on the score:** the contest cost is *runtime-adjusted* —
 `cost · max(0.7, (rt/median)^0.3)` with a hard 0.7× floor for being ≥~3×
 faster than the field median. The current solver has 40% better raw quality
-than v9. v28 adds one tightly gated incumbent-anchored ordering pass for a
-high-boundary, low-p2b feature pocket, improving only case 81.
+than v9. v29 runs the tightly gated incumbent-anchored ordering step to
+selector convergence, improving only case 81.
 Runtime discipline is a standing rule: changes are judged runtime-adjusted at
 median ∈ {1,2,3}s (`HANDOFF.md` §5.3), never on the raw score alone.
 
@@ -54,7 +54,7 @@ contest_solution/
 packaging/                   # Submission executable sources + build script + organizers' op_wrapper
 scripts/                     # dissect_eval / fuzz_binary / analyze / audit / release-check / retrieval scan
 tests/                       # Regression + unit tests (56)
-results/                     # Curated result artifacts (integrated_v28.json = current)
+results/                     # Curated result artifacts (integrated_v29.json = current)
 external/FloorSet/           # Contest framework + datasets (gitignored; see HANDOFF bootstrap)
 docs/
 ├── CAMPAIGN_GOLDEN.md       # ACTIVE plan: evidence, milestones, open leads
@@ -90,7 +90,7 @@ all workflows: `HANDOFF.md` §5.)
 
 ```bash
 .venv/bin/python -m pytest                          # all tests pass (torch-dependent tests skip if torch absent)
-.venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/integrated_v28.json, --max-score 1.635)
+.venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/integrated_v29.json, --max-score 1.635)
 ```
 
 ## Documentation
