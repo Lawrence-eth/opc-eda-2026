@@ -1,5 +1,21 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-09 order-iteration same-window timing audit — ❌ REJECTION CONFIRMED (NO CODE)
+- Hypothesis: the rejected gated `order_iters=8` pocket probe is
+  candidate-count neutral and should not intrinsically add runtime, but both
+  official candidate samples were compared against the older v24 timing file.
+  A same-window v24 recheck may show whether the runtime-adjusted rejection was
+  a real solver cost or timing-sample noise.
+- Probe: rerun the current v24 solver unchanged as
+  `results/integrated_v24_recheck_order_window_tmp.json`, then compare
+  runtime-adjusted medians {1,2,3}s against the existing
+  `results/integrated_v25_order_iters_r2_tmp.json` candidate sample.
+- Result: v24 recheck matched the promoted raw score **1.632775** and had
+  runtime-adjusted medians {1,2,3}s **1.299/1.159/1.143**. The candidate
+  rerun remained worse at medians {1,2}s (**1.328/1.166**) despite its raw
+  score improvement to **1.625038**.
+- Verdict: rejection confirmed; keep v24 as the floor.
+
 ### 2026-07-09 gated order-iteration pocket probe — ❌ REJECTED
 - Hypothesis: the barycenter relaxation scan found that global ordering changes
   regress, but `order_iters=8` has material, gateable wins in a few high-weight
