@@ -1,6 +1,6 @@
 # SUBMISSION PLAN — ICCAD 2026 Problem C (FloorSet Challenge)
 
-**Status date: 2026-07-09. Operator directive: no deadline pressure — the only
+**Status date: 2026-07-10. Operator directive: no deadline pressure — the only
 goal is to win.** This document covers the submission *mechanics*: the organizer
 format, the verified package, and the rebuild gate. The active plan for winning
 score improvements is **`docs/CAMPAIGN_GOLDEN.md`** — the package documented here
@@ -35,7 +35,18 @@ floor that v9's whole strategy banks on. The package therefore had to be torch-f
 | **Packaged binary** via the official command (`--evaluate op_wrapper.py`) | **2.718225, 100/100, 0 position differences**; runtime avg 0.244s/case, n≥100 avg 0.475s, max 0.759s (79× headroom under the 60s wrapper timeout) |
 | Binary fuzz on 400 random training instances (exact wrapper protocol) | **400/400 hard-feasible**, avg 0.205s, max 0.705s |
 | **Re-verified after CAMPAIGN_GOLDEN G4 engine** (2026-07-07): wrapper + rebuilt binary | **2.120411, 100/100, 0 position diffs** vs in-process; avg 0.33s/case incl. spawn (max 0.96s); fuzz 400/400 feasible (max 1.15s) |
-| **CURRENT (2026-07-09, integrated v29)**: wrapper + rebuilt binary | **1.618110, 100/100, 0 position diffs** vs `results/integrated_v29.json`; avg 0.218s/case incl. spawn (p95 0.407s, max 0.628s); fuzz 400/400 feasible (avg 0.213s, p95 0.369s, max 0.530s) |
+| **Historical (2026-07-09, integrated v29)**: wrapper + rebuilt binary | **1.618110, 100/100, 0 position diffs** vs `results/integrated_v29.json`; avg 0.218s/case incl. spawn (p95 0.407s, max 0.628s); fuzz 400/400 feasible |
+| **CURRENT (2026-07-10, integrated v31)** | **1.616638, 100/100**; AMD64 Debian 13/Python 3.13 package has exact target-arch wrapper parity (all 28,200 position scalars and every quality metric match) |
+
+**2026-07-10 release blocker fixed:** the earlier archive was built
+on an ARM64 host even though the evaluation machine is an Intel Xeon.
+`op_wrapper.py` does not fall back after an executable-format error, so that
+archive was not submittable. `build_submission.sh` now builds through an amd64
+Debian 13/Python 3.13 container when the host is not x86-64 and rejects any
+artifact whose ELF machine is not AMD x86-64. The current archive passes the
+guard; only a package produced by this build may be uploaded.
+Current hardened archive SHA-256:
+`777f5eac7ac44d2d6025c313c03a0d1597cdef9b31f81257bbe57c4a8fa7caac`.
 
 Fixed during packaging: `torch_stub.py` originally aliased `float`, shadowing the
 builtin inside the stub (all cases silently fell back → score 9.98). Caught by the
@@ -55,8 +66,8 @@ packaging/                  (tracked sources)
 └── build_submission.sh     one-shot build → submission/iccad2026_submission.tar.gz
 
 submission/ (generated, gitignored)
-├── dist/my_optimizer/      PyInstaller --onedir, 21 MB, NO torch
-└── iccad2026_submission.tar.gz   (8.3 MB: dist + op_wrapper + README + source fallback)
+├── dist/my_optimizer/      PyInstaller --onedir, 53 MB, NO real torch
+└── iccad2026_submission.tar.gz   (23 MB: dist + op_wrapper + README + source fallback)
 ```
 
 Design decisions:
@@ -71,7 +82,10 @@ Design decisions:
 
 ## 4. Answer: "is the best solution possible to be found?"
 
-**The best solution exists but cannot be looked up, and no known method reaches it in 6 days.**
+**A best solution exists mathematically, but a proof of the global optimum for
+the full 120-block mixed discrete/nonlinear problem is not realistic inside the
+contest runtime. A winning solution is still a credible engineering goal; it
+must be established against the leaderboard, not assumed from the public set.**
 
 - **Score floor**: quality gaps are clamped at 0 vs golden baselines, so perfect play =
   match golden HPWL/area, zero-out soft violations where possible, hit the runtime floor.
@@ -111,13 +125,15 @@ only improve.
    re-run the package once (`--evaluate op_wrapper.py`) as a checksum-level sanity pass.
 
 **P1 — final hardening (done unless noted)**
-1. ✅ Package built + equivalence-verified + fuzzed (this document).
+1. ✅ Package built + 100-case target-arch equivalence verified. The v31 target
+   binary also passed 100/100 random training instances under QEMU; timings are
+   nonrepresentative. The latest 400-case native binary fuzz is from v29, and
+   v31's new low-size path passed 140/140 MIB-clean held-out cases.
 2. ✅ Cross-hardware determinism (2-core VM reproduces 48-core results exactly).
-3. Optional (recommended, ~1h): rebuild the binary on/for Debian 13 in a container
-   with Python 3.12/3.13 and re-run the 100-case gate, to remove the residual
-   glibc/build-host risk (Ubuntu 24.04 glibc 2.39 → Debian 13 glibc 2.41 is
-   forward-compatible, so this is belt-and-suspenders).
-4. Optional (~30 min): extend `scripts/fuzz_binary.py` to 2,000+ instances overnight.
+3. ✅ Build is now guarded to AMD x86-64 on Debian 13/Python 3.13 and rejects
+   a wrong-architecture ELF before packaging.
+4. Optional: run `scripts/fuzz_binary.py` on an AMD64 host (or through a
+   configured QEMU launcher here) for 2,000+ instances overnight.
 
 **P2 — quality improvements (ACTIVE, no time limit)**
 - Run as `docs/CAMPAIGN_GOLDEN.md`. Every candidate must beat the runtime-adjusted
@@ -132,9 +148,9 @@ leverage table and progress log when the engine lands.
 
 | Risk | Assessment | Mitigation |
 |---|---|---|
-| Field median runtime < 0.8s (floor not reached) | Unlikely: every executable submission pays spawn per case; ML entries pay torch/model-load per case (seconds) | Even at RF=1 exactly, 1.6181 with 100/100 is a sound entry |
-| Hidden-set infeasibility | 5,000-instance solve() fuzz + 400-instance binary fuzz, 0 failures; crash-proof fallback in binary | Accepted residual |
-| Eval-host incompatibility (glibc/arch) | Built on glibc 2.39 for 2.41 target (forward-compatible); onedir bundles libpython | P1.3 container rebuild if time |
+| Field median runtime < 0.8s (floor not reached) | Unlikely: every executable submission pays spawn per case; ML entries pay torch/model-load per case (seconds) | Even at RF=1 exactly, 1.6166 with 100/100 is a sound entry |
+| Hidden-set infeasibility | Historical 5,000-instance solve() fuzz + v29 400-instance native binary fuzz had 0 failures; v31 has exact wrapper parity, 100/100 target-binary QEMU fuzz, and a 140/140 clean holdout; crash-proof fallback remains | Run a larger v31 fuzz natively before final upload |
+| Eval-host incompatibility (glibc/arch) | Prior ARM64 artifact was invalid; build now targets AMD x86-64 on Debian 13 and verifies the ELF header | Never upload an archive that has not passed the guarded build and target-host smoke test |
 | Organizers run source instead of binary | Source fallback in package is the same solver, stdlib-only | README documents both paths |
 | Wrapper protocol drift (organizers change op_wrapper) | We ship their exact wrapper + a schema-conform binary | Monitor the FloorSet repo/Q&A until deadline |
 
@@ -146,6 +162,8 @@ cp -r submission/dist packaging/op_wrapper.py external/FloorSet/iccad2026contest
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate op_wrapper.py \
     --output ../../../results/wrapper_check.json
-# REQUIRED: Total Score 1.6181, Feasible 100, and 0 position diffs vs results/integrated_v29.json
-cd ../../.. && .venv/bin/python scripts/fuzz_binary.py --num 400   # REQUIRED: 0 failures
+# REQUIRED: Total Score 1.6166, Feasible 100, and 0 position diffs vs results/integrated_v31.json
+cd ../../..
+# On an AMD64 host (or with --binary set to a configured x86 launcher):
+.venv/bin/python scripts/fuzz_binary.py --num 400   # REQUIRED: 0 failures
 ```

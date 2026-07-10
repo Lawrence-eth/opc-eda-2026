@@ -42,7 +42,11 @@ tensor_to_list = optimizer_module._tensor_to_list
 should_try_anchored_third_pass = (
     optimizer_module._should_try_anchored_third_pass
 )
+should_try_preplaced_aspect_pass = (
+    optimizer_module._should_try_preplaced_aspect_pass
+)
 dissect_module = importlib.import_module("dissect")
+topology_polish_module = importlib.import_module("topology_polish")
 
 
 def _constraints(block_count):
@@ -101,6 +105,74 @@ def test_anchored_third_pass_feature_gate_is_narrow():
         (102, 34, 1, 2184, 101),
     ]
     assert not any(should_try_anchored_third_pass(*case) for case in rejected)
+
+
+def test_preplaced_aspect_pass_feature_gate_is_narrow():
+    assert should_try_preplaced_aspect_pass(82, 22, 7, 336, 1367)
+    rejected = [
+        (77, 22, 7, 336, 1367),
+        (87, 22, 7, 336, 1367),
+        (82, 25, 7, 336, 1367),
+        (82, 22, 5, 336, 1367),
+        (82, 22, 7, 501, 1367),
+        (82, 22, 7, 336, 999),
+        (82, 22, 7, 336, 1801),
+    ]
+    assert not any(should_try_preplaced_aspect_pass(*case) for case in rejected)
+
+
+def test_group_components_requires_exact_positive_length_edge_contact():
+    opt = MyOptimizer()
+    exact = [(0.0, 0.0, 1.0, 1.0), (1.0, 0.25, 1.0, 0.5)]
+    tiny_gap = [(0.0, 0.0, 1.0, 1.0), (1.0 + 5e-7, 0.25, 1.0, 0.5)]
+    corner_only = [(0.0, 0.0, 1.0, 1.0), (1.0, 1.0, 1.0, 1.0)]
+
+    assert opt._group_components(exact, [0, 1]) == 1
+    assert opt._group_components(tiny_gap, [0, 1]) == 2
+    assert opt._group_components(corner_only, [0, 1]) == 2
+
+
+def test_fixed_topology_polish_reduces_hpwl_without_changing_bbox_or_dims():
+    positions = [
+        (0.0, 0.0, 1.0, 1.0),
+        (4.0, 0.0, 1.0, 1.0),
+        (9.0, 0.0, 1.0, 1.0),
+    ]
+    constraints = [[0.0] * 5 for _ in positions]
+    polished = topology_polish_module.polish_fixed_topology(
+        positions,
+        [(1, 2, 1.0)],
+        [],
+        [],
+        constraints,
+    )
+
+    assert polished[1][0] == 8.0
+    assert [(p[2], p[3]) for p in polished] == [(1.0, 1.0)] * 3
+    assert min(p[0] for p in polished) == 0.0
+    assert max(p[0] + p[2] for p in polished) == 10.0
+    assert MyOptimizer()._is_feasible(
+        polished, torch.tensor(constraints), torch.ones(3), None
+    )
+
+
+def test_fixed_topology_polish_keeps_preplaced_coordinate():
+    positions = [
+        (0.0, 0.0, 1.0, 1.0),
+        (4.0, 0.0, 1.0, 1.0),
+        (9.0, 0.0, 1.0, 1.0),
+    ]
+    constraints = [[0.0] * 5 for _ in positions]
+    constraints[1][1] = 1.0
+    polished = topology_polish_module.polish_fixed_topology(
+        positions,
+        [(1, 2, 1.0)],
+        [],
+        [],
+        constraints,
+    )
+
+    assert polished[1][:2] == positions[1][:2]
 
 
 def test_clamped_row_backfill_uses_queued_unit_that_fits_short_slab():

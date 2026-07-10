@@ -2,8 +2,8 @@
 
 > Single-source overview: problem, solution, results, methodology, honest
 > assessment. Each section ≈ one slide. Numbers verified against
-> `results/integrated_v29.json` (current) and `results/v9_locked.json`
-> (pre-campaign baseline). Updated 2026-07-09.
+> `results/integrated_v31.json` (current) and `results/v9_locked.json`
+> (pre-campaign baseline). Updated 2026-07-10.
 
 ---
 
@@ -61,11 +61,11 @@ from the structure (w = area/height). Then:
 
 | Metric | Pre-campaign (v9) | **Current** |
 |---|---|---|
-| Official score (RF=1) | 2.7182 | **1.6181** (-40%) |
+| Official score (RF=1) | 2.7182 | **1.6166** (-41%) |
 | Feasible | 100/100 | **100/100** |
-| Runtime | 0.18s avg | **0.173s avg** |
-| Runtime-adjusted @ median 1s | 2.110 | **1.174** (-44%; v28 paired window: 1.176) |
-| Packaged binary, official command | — | 1.618110, 0 position diffs, 0.218s incl. spawn |
+| Runtime | 0.18s avg | **0.179s avg** |
+| Runtime-adjusted @ median 1s | 2.110 | **1.175** (-44%; paired v30 control) |
+| Packaged binary | — | AMD64 Debian 13, exact 100-case wrapper parity |
 
 Calibration: golden-equivalent play = 1.108 (RF=1) / 0.776 (at the runtime
 floor); theoretical bound 0.70. Golden itself violates soft constraints on
@@ -75,10 +75,13 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 
 - Official evaluator, all 100 validation cases, reproduced bit-identically
   across machines (2-core VM vs 48-core dev box).
-- The shipped PyInstaller binary re-verified through the organizers' exact
-  command after every engine change: identical positions, 400/400
-  training-instance feasibility fuzz.
-- 56 regression tests + result audit + release gate on every commit; every
+- The v31 PyInstaller binary re-verified through the organizers' exact command:
+  all 100 placements and quality metrics match the in-process result exactly.
+  The v31 target binary also passes a 100-case random training fuzz under QEMU
+  (timings ignored); the latest 400-case native binary fuzz was v29. v31 passes
+  a 140/140 MIB-clean low-size source holdout, with 121 quality wins and no
+  regression vs v30.
+- 78 regression tests + result audit + release gate; every
   experiment, including reverted probes, logged with verdicts.
 
 ## 6. Methodology / rigor (1 slide)
@@ -97,7 +100,7 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 - **Strengths:** 100% feasible, deterministic, fast (runtime-floor-friendly
   even through the per-case-spawn harness), structurally sound constraint
   handling, 40% quality improvement banked in the same speed class.
-- **Remaining gap:** weighted hpwl_gap 0.562 / area_gap 0.145 —
+- **Remaining gap:** weighted hpwl_gap 0.560 / area_gap 0.145 —
   ~0.40 runtime-adjusted points above golden-equivalent play at median 1s. Ranked leads
   with evidence: `HANDOFF.md` §6.
 - **Risk:** field median runtime unknown; if the field is slow, dormant
@@ -108,10 +111,12 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 ```bash
 # bootstrap: HANDOFF.md §5 (venv + FloorSet + auto-downloaded validation data)
 cp contest_solution/my_optimizer.py contest_solution/dissect.py \
+   contest_solution/topology_polish.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
-# -> Total Score: 1.6181, Feasible: 100
-python -m pytest                                    # 56/56
-python scripts/check_public_release.py              # PASS
+# -> Total Score: 1.6166, Feasible: 100
+cd ../../..
+.venv/bin/python -m pytest                          # 78/78
+.venv/bin/python scripts/check_public_release.py    # PASS
 ```

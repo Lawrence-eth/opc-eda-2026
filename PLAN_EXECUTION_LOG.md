@@ -1,5 +1,106 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-10 integrated v31 + hardened AMD64 release — ✅ PROMOTED
+- Solver: exact grouping-score fidelity plus one fixed-topology weighted-median
+  HPWL sweep for n≤90. Official score **1.6166380548**, 100/100 feasible;
+  65/100 public placements change and all 65 improve. The paired v30 control
+  passes runtime-adjusted gates at field medians 1/2/3s.
+- Generalization: a separate 140-case MIB-clean n=21..90 holdout is 140/140
+  feasible. v31 improves 121 cases, ties 19, regresses none, and moves score
+  **1.838371 → 1.831746** versus an otherwise identical no-polish control.
+- Package: rebuilt in AMD64 Debian 13/Python 3.13, normalized archive modes and
+  owner metadata, and verified every bundled ELF as x86-64. A complete official
+  wrapper run under qemu matches all **28,200 position scalars**, every quality
+  metric, average cost, and total score exactly; only runtime/name/timestamp
+  metadata differ. QEMU runtime is deliberately not used as target performance.
+  A separate random training-instance run exercises the same target binary and
+  JSON protocol: **100/100 hard-feasible**, zero failures (QEMU timings ignored).
+  Archive SHA-256: `777f5eac7ac44d2d6025c313c03a0d1597cdef9b31f81257bbe57c4a8fa7caac`.
+
+### 2026-07-10 v30 target-host packaging audit — ✅ FATAL BLOCKER FIXED
+- Finding: every previously generated PyInstaller archive on this machine was
+  ARM64, while the published evaluation host is an Intel Ice Lake Xeon
+  (AMD64). The organizer wrapper executes only the binary and never invokes
+  `source_fallback`, so the prior archive would fail with `Exec format error`.
+- Fix: `packaging/build_submission.sh` now re-enters an amd64 Debian 13 /
+  Python 3.13 container on non-x86 hosts, uses an architecture-specific build
+  venv, verifies ELF `e_machine == 62`, and rejects torch leakage. The build
+  script is executable and the package README identifies the target.
+- Verification: the rebuilt artifact is x86-64, glibc 2.41, Python 3.13.14.
+  A full official-wrapper run under qemu produced **1.6171159405**, 100/100
+  feasible, with **zero position or metric differences** from in-process v30.
+  Archive SHA-256: `f0cb1f2476447ea8d1b97929d680aed373c7666c25429f62936f6c879c04cea5`.
+
+### 2026-07-10 held-out quality gate — ✅ v30 RETAINED, OVERFIT QUANTIFIED
+- Motivation: v10-v30 feature pockets were chosen on the single public case
+  for each size; feasibility fuzz did not test hidden-quality transfer.
+- Added `scripts/evaluate_training_holdout.py`: reproducible per-size sampling,
+  official scoring of solver and golden layouts, historical solver loading,
+  saved-index replay, and filtering for the known training MIB corruption.
+- Primary gate: five MIB-valid unseen layouts for every size 100-120
+  (105 cases), all hard-feasible. v30 scored **1.798552** versus golden
+  **1.103197**; weighted hg/ag/V were **0.730/0.218/0.096**. This is worse
+  than public validation 1.617116 and proves material public-set overfitting.
+- Historical replay on the same cases: G4 2.175817, v9 1.915995, v16
+  1.834481, v20 1.808083, v25 1.797941, v30 1.798552. The broad campaign
+  improvements largely transfer; only the late narrow pockets are near-flat.
+- Three independent MIB-clean seeds (315 cases) compare v30 mean **1.790325**
+  against v25 mean **1.790877**. v30 changes 12/315 cases (7 wins, 5 losses)
+  and has the better aggregate, so v30 remains the beta candidate. Further
+  tuning must pass this holdout gate, not public validation alone.
+
+### 2026-07-10 exact grouping-score fidelity — ✅ KEPT, OUTPUT-NEUTRAL
+- Finding: the internal selector counted gaps smaller than 1e-6 as grouping
+  contacts, but the official Shapely union requires exact edge coincidence.
+  On held-out case 338240 this made an oracle selector predict cost 1.9797 for
+  a candidate whose official cost was 2.0380.
+- Fix: both internal grouping-component paths now require exact equality and
+  positive-length overlap, matching the official scorer. A regression test
+  covers exact contact, a 5e-7 gap, and corner-only contact.
+- Gate: 78/78 tests pass; public v30 and the primary 105-case holdout retain
+  exactly the same positions and scores. The targeted internal/official count
+  now agrees (8/8; cost 1.983121 on both).
+
+### 2026-07-10 fixed-topology HPWL polish — ✅ n≤90 DEPLOYED AS v31
+- Probe: freeze incumbent dimensions, bbox, preplaced locations, satisfied
+  boundary equalities, one non-overlap relation per pair, and a spanning
+  forest of exact grouping contacts; then minimize weighted L1 HPWL by fast
+  component-wise weighted-median coordinate descent.
+- One sweep is hard-feasible and improves 94/100 public cases:
+  **1.617116 -> 1.611194**, mean polish time 0.024s on this 2-core ARM VM.
+  On the primary 105-case unseen holdout it improves
+  **1.798552 -> 1.793614** (93 wins, zero failures), so the signal transfers.
+- Runtime verdict: broad deployment loses at assumed field median 1s
+  (1.17264 -> 1.20157) but wins at 2s/3s (~1.12784). A conservative n<=90
+  gate wins at both 1s and 2s and is promoted as v31. The broad n>90 path
+  remains out until beta reveals the field median or it becomes cheaper.
+
+### 2026-07-09 preplaced-heavy limit-40 anchored pass — ✅ REPLACEMENT KEPT AS v30
+- Hypothesis: the deferred case-61 upper bound is both material and narrowly
+  predictable. The widened input-only gate `78<=n<=86`, boundary<=24,
+  preplaced>=6, b2b<=500, and `1000<=p2b<=1800` selects only case 61 on
+  validation; its nearest structural neighbor misses multiple bounds.
+- Probe: add one incumbent-anchored strong pin-pull pass with active-slab
+  aspect limit 40 under that gate, keep it selector-gated, and run full
+  official quality/timing gates against v29.
+- Interim result: two full runs are deterministic at **1.617160**, 100/100
+  feasible, changing only case 61 from **2.411925** to **2.130020**. Run an
+  immediate v29 control after the confirmation to resolve the 1s timing gate.
+- Result: three-run per-case medians lose the 1s gate
+  (**1.173775** versus v29 **1.169611**) despite winning at 2s/3s
+  (**1.132012** versus **1.132677**). Isolating the actual case-61 runtime
+  still wins, so the quality signal is valid but the added construction is
+  not deployable.
+- Verdict: reject the extra pass. Reuse the same feature gate to replace the
+  active-slab aspect limit inside case 61's existing portfolio, preserving
+  candidate count and testing the quality signal without added construction.
+- Replacement result: two full runs are deterministic at **1.617116**,
+  100/100 feasible, changing only case 61 from **2.411925** to
+  **2.116931**. Two-run per-case median runtime-adjusted scores
+  {0.5,1,2,3}s are **1.389116/1.171468/1.131981/1.131981** versus v29
+  **1.393364/1.171946/1.132677/1.132677**.
+- Final verdict: keep the runtime-neutral replacement as v30.
+
 ### 2026-07-09 case-81 anchored-pass convergence scan — ✅ KEPT AS v29
 - Hypothesis: replaying the v28 strong anchored pass from its promoted
   case-81 layout produces another deterministic cost reduction

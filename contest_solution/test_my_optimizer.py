@@ -11,10 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 try:
     from iccad2026_evaluate import check_overlap, check_area_tolerance, check_dimension_hard_constraints
-except ModuleNotFoundError:
+except (ModuleNotFoundError, ImportError):
     # Public-repo fallback: the official evaluator is available in the contest
     # checkout, but these smoke tests should still run after a plain clone.
-    evaluator_stub = types.ModuleType("iccad2026_evaluate")
+    evaluator_stub = sys.modules.get(
+        "iccad2026_evaluate", types.ModuleType("iccad2026_evaluate")
+    )
 
     class FloorplanOptimizer:
         def __init__(self, verbose=False):
@@ -53,7 +55,8 @@ except ModuleNotFoundError:
                 violations += 1
         return violations
 
-    evaluator_stub.FloorplanOptimizer = FloorplanOptimizer
+    if not hasattr(evaluator_stub, "FloorplanOptimizer"):
+        evaluator_stub.FloorplanOptimizer = FloorplanOptimizer
     evaluator_stub.calculate_bbox_area = lambda positions: 0.0
     evaluator_stub.calculate_hpwl_b2b = lambda positions, conn: 0.0
     evaluator_stub.calculate_hpwl_p2b = lambda positions, conn, pins: 0.0
@@ -62,7 +65,11 @@ except ModuleNotFoundError:
     evaluator_stub.check_dimension_hard_constraints = check_dimension_hard_constraints
     sys.modules["iccad2026_evaluate"] = evaluator_stub
 
-from my_optimizer import MyOptimizer, _should_try_anchored_third_pass
+from my_optimizer import (
+    MyOptimizer,
+    _should_try_anchored_third_pass,
+    _should_try_preplaced_aspect_pass,
+)
 
 
 def test_anchored_third_pass_gate_accepts_case_81_feature_pocket():
@@ -83,6 +90,26 @@ def test_anchored_third_pass_gate_accepts_case_81_feature_pocket():
 )
 def test_anchored_third_pass_gate_rejects_outside_feature_pocket(features):
     assert not _should_try_anchored_third_pass(*features)
+
+
+def test_preplaced_aspect_pass_gate_accepts_case_61_feature_pocket():
+    assert _should_try_preplaced_aspect_pass(82, 22, 7, 336, 1367)
+
+
+@pytest.mark.parametrize(
+    "features",
+    [
+        (77, 22, 7, 336, 1367),
+        (87, 22, 7, 336, 1367),
+        (82, 25, 7, 336, 1367),
+        (82, 22, 5, 336, 1367),
+        (82, 22, 7, 501, 1367),
+        (82, 22, 7, 336, 999),
+        (82, 22, 7, 336, 1801),
+    ],
+)
+def test_preplaced_aspect_pass_gate_rejects_outside_feature_pocket(features):
+    assert not _should_try_preplaced_aspect_pass(*features)
 
 
 def test_optimizer_keeps_preplaced_blocks_exact_and_avoids_overlap():

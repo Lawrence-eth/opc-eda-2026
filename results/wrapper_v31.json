@@ -1,6 +1,6 @@
 {
-  "submission_name": "my_optimizer",
-  "timestamp": "2026-07-10T08:03:55.117611",
+  "submission_name": "op_wrapper",
+  "timestamp": "2026-07-10T08:34:01.443076",
   "total_score": 1.6166380547746888,
   "test_results": [
     {
@@ -10,7 +10,7 @@
       "hpwl_gap": 0.48773521806063863,
       "area_gap": 0.015205643202295395,
       "violations_relative": 0.17391304347826086,
-      "runtime_seconds": 0.04123377799987793,
+      "runtime_seconds": 2.1776747703552246,
       "cost": 1.772064571513185,
       "positions": [
         [
@@ -140,32 +140,7 @@
           35.54929577464789
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 2,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 9,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 11,
-      "constraint_boundary_codes": {
-        "1": 1,
-        "2": 1,
-        "4": 1,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 44,
-      "p2b_edges": 85,
-      "boundary_violations": 2,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 23,
-      "recomputed_violations_relative": 0.17391304347826086
+      "error": null
     },
     {
       "test_id": 1,
@@ -174,7 +149,7 @@
       "hpwl_gap": 0.548375495762206,
       "area_gap": 0.11689866016292019,
       "violations_relative": 0.18518518518518517,
-      "runtime_seconds": 0.040816545486450195,
+      "runtime_seconds": 2.160208225250244,
       "cost": 1.9300195162351286,
       "positions": [
         [
@@ -310,32 +285,7 @@
           44.40159635080043
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 1,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 12,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 15,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 2,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 29,
-      "p2b_edges": 133,
-      "boundary_violations": 3,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 27,
-      "recomputed_violations_relative": 0.18518518518518517
+      "error": null
     },
     {
       "test_id": 2,
@@ -344,7 +294,7 @@
       "hpwl_gap": 1.6328740983329006,
       "area_gap": 0.8693592572926806,
       "violations_relative": 0.1111111111111111,
-      "runtime_seconds": 0.04179835319519043,
+      "runtime_seconds": 2.256920099258423,
       "cost": 2.8113045170773274,
       "positions": [
         [
@@ -486,32 +436,7 @@
           7.745966692414833
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 1,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 10,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 15,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 1,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 52,
-      "p2b_edges": 180,
-      "boundary_violations": 1,
-      "grouping_violations": 2,
-      "mib_violations": 0,
-      "total_soft_violations": 3,
-      "max_possible_violations": 27,
-      "recomputed_violations_relative": 0.1111111111111111
+      "error": null
     },
     {
       "test_id": 3,
@@ -520,7 +445,7 @@
       "hpwl_gap": 0.24937703799740896,
       "area_gap": 0.17231618433026907,
       "violations_relative": 0.19230769230769232,
-      "runtime_seconds": 0.039839744567871094,
+      "runtime_seconds": 2.161867380142212,
       "cost": 1.7787932380050513,
       "positions": [
         [
@@ -668,32 +593,7 @@
           11.166877772783693
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 1,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 10,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 14,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 2,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 34,
-      "p2b_edges": 3,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 5,
-      "max_possible_violations": 26,
-      "recomputed_violations_relative": 0.19230769230769232
+      "error": null
     },
     {
       "test_id": 4,
@@ -702,7 +602,7 @@
       "hpwl_gap": 0.7158233683518451,
       "area_gap": 0.6895113383593218,
       "violations_relative": 0.16666666666666666,
-      "runtime_seconds": 0.050885677337646484,
+      "runtime_seconds": 2.3561007976531982,
       "cost": 2.3762637141314995,
       "positions": [
         [
@@ -856,32 +756,7 @@
           20.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 1,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 13,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 15,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 2,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 131,
-      "p2b_edges": 111,
-      "boundary_violations": 3,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 30,
-      "recomputed_violations_relative": 0.16666666666666666
+      "error": null
     },
     {
       "test_id": 5,
@@ -890,7 +765,7 @@
       "hpwl_gap": 0.8918820611131767,
       "area_gap": 0.23451386008939376,
       "violations_relative": 0.13043478260869565,
-      "runtime_seconds": 0.05403304100036621,
+      "runtime_seconds": 2.3175997734069824,
       "cost": 2.029122153633402,
       "positions": [
         [
@@ -1050,32 +925,7 @@
           26.147378787528734
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 13,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 12,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 1,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 74,
-      "p2b_edges": 183,
-      "boundary_violations": 1,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 3,
-      "max_possible_violations": 23,
-      "recomputed_violations_relative": 0.13043478260869565
+      "error": null
     },
     {
       "test_id": 6,
@@ -1084,7 +934,7 @@
       "hpwl_gap": 0.2799093914777501,
       "area_gap": 0.08383773264151904,
       "violations_relative": 0.14285714285714285,
-      "runtime_seconds": 0.04633355140686035,
+      "runtime_seconds": 2.2403311729431152,
       "cost": 1.5727335648733032,
       "positions": [
         [
@@ -1250,32 +1100,7 @@
           46.80534470287776
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 2,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 11,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 15,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 1,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 145,
-      "p2b_edges": 34,
-      "boundary_violations": 3,
-      "grouping_violations": 1,
-      "mib_violations": 0,
-      "total_soft_violations": 4,
-      "max_possible_violations": 28,
-      "recomputed_violations_relative": 0.14285714285714285
+      "error": null
     },
     {
       "test_id": 7,
@@ -1284,7 +1109,7 @@
       "hpwl_gap": 0.274791451155491,
       "area_gap": 0.23173206779490785,
       "violations_relative": 0.09090909090909091,
-      "runtime_seconds": 0.05685758590698242,
+      "runtime_seconds": 2.363554000854492,
       "cost": 1.5031572691445634,
       "positions": [
         [
@@ -1456,32 +1281,7 @@
           50.29432636781816
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 2,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 14,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 18,
-      "constraint_boundary_codes": {
-        "1": 5,
-        "2": 2,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 384,
-      "p2b_edges": 5,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 3,
-      "max_possible_violations": 33,
-      "recomputed_violations_relative": 0.09090909090909091
+      "error": null
     },
     {
       "test_id": 8,
@@ -1490,7 +1290,7 @@
       "hpwl_gap": 0.8294126348877914,
       "area_gap": 0.39993879696663287,
       "violations_relative": 0.21428571428571427,
-      "runtime_seconds": 0.05214834213256836,
+      "runtime_seconds": 2.4201743602752686,
       "cost": 2.478628963462537,
       "positions": [
         [
@@ -1668,32 +1468,7 @@
           10.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 4,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 10,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 15,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 2,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 176,
-      "p2b_edges": 60,
-      "boundary_violations": 5,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 6,
-      "max_possible_violations": 28,
-      "recomputed_violations_relative": 0.21428571428571427
+      "error": null
     },
     {
       "test_id": 9,
@@ -1702,7 +1477,7 @@
       "hpwl_gap": 0.1323777990249547,
       "area_gap": 0.07324659108886934,
       "violations_relative": 0.10714285714285714,
-      "runtime_seconds": 0.05481147766113281,
+      "runtime_seconds": 2.3247876167297363,
       "cost": 1.3663585011587513,
       "positions": [
         [
@@ -1886,32 +1661,7 @@
           43.017712364407394
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 2,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 13,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 17,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 3,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 189,
-      "p2b_edges": 50,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 3,
-      "max_possible_violations": 28,
-      "recomputed_violations_relative": 0.10714285714285714
+      "error": null
     },
     {
       "test_id": 10,
@@ -1920,7 +1670,7 @@
       "hpwl_gap": 0.35508130231982454,
       "area_gap": 0.18730337188346566,
       "violations_relative": 0.16666666666666666,
-      "runtime_seconds": 0.06388330459594727,
+      "runtime_seconds": 2.6085188388824463,
       "cost": 1.7740918203332807,
       "positions": [
         [
@@ -2110,32 +1860,7 @@
           8.425011420686154
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 2,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 13,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 13,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 2,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 57,
-      "p2b_edges": 226,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 4,
-      "max_possible_violations": 24,
-      "recomputed_violations_relative": 0.16666666666666666
+      "error": null
     },
     {
       "test_id": 11,
@@ -2144,7 +1869,7 @@
       "hpwl_gap": 0.2969042375515356,
       "area_gap": 0.12080037669289652,
       "violations_relative": 0.17857142857142858,
-      "runtime_seconds": 0.05792999267578125,
+      "runtime_seconds": 2.5269570350646973,
       "cost": 1.7277401106199033,
       "positions": [
         [
@@ -2340,32 +2065,7 @@
           18.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 2,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 14,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 16,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 4,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 102,
-      "p2b_edges": 7,
-      "boundary_violations": 5,
-      "grouping_violations": 0,
-      "mib_violations": 0,
-      "total_soft_violations": 5,
-      "max_possible_violations": 28,
-      "recomputed_violations_relative": 0.17857142857142858
+      "error": null
     },
     {
       "test_id": 12,
@@ -2374,7 +2074,7 @@
       "hpwl_gap": 0.17915877422683615,
       "area_gap": 0.18301698301698338,
       "violations_relative": 0.18181818181818182,
-      "runtime_seconds": 0.06946778297424316,
+      "runtime_seconds": 2.681769847869873,
       "cost": 1.699055160191506,
       "positions": [
         [
@@ -2576,32 +2276,7 @@
           21.428571428571427
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 9,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 14,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 1,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 76,
-      "p2b_edges": 367,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 22,
-      "recomputed_violations_relative": 0.18181818181818182
+      "error": null
     },
     {
       "test_id": 13,
@@ -2610,7 +2285,7 @@
       "hpwl_gap": 0.45008844116562086,
       "area_gap": 0.1666690445508101,
       "violations_relative": 0.06896551724137931,
-      "runtime_seconds": 0.0704653263092041,
+      "runtime_seconds": 2.9910261631011963,
       "cost": 1.5018832255744674,
       "positions": [
         [
@@ -2818,32 +2493,7 @@
           28.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 13,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 15,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 1,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 138,
-      "p2b_edges": 161,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 2,
-      "max_possible_violations": 29,
-      "recomputed_violations_relative": 0.06896551724137931
+      "error": null
     },
     {
       "test_id": 14,
@@ -2852,7 +2502,7 @@
       "hpwl_gap": 0.30550757680899354,
       "area_gap": 0.16669064766184088,
       "violations_relative": 0.14285714285714285,
-      "runtime_seconds": 0.06647825241088867,
+      "runtime_seconds": 2.690383195877075,
       "cost": 1.6448921659055105,
       "positions": [
         [
@@ -3066,32 +2716,7 @@
           30.69823982378315
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 10,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 19,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 3,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 257,
-      "p2b_edges": 85,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 28,
-      "recomputed_violations_relative": 0.14285714285714285
+      "error": null
     },
     {
       "test_id": 15,
@@ -3100,7 +2725,7 @@
       "hpwl_gap": 0.9323795061613565,
       "area_gap": 0.4928217346965772,
       "violations_relative": 0.125,
-      "runtime_seconds": 0.06982851028442383,
+      "runtime_seconds": 2.665816068649292,
       "cost": 2.1990227252659884,
       "positions": [
         [
@@ -3320,32 +2945,7 @@
           9.520271584227809
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 2,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 11,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 19,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 3,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 272,
-      "p2b_edges": 79,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 32,
-      "recomputed_violations_relative": 0.125
+      "error": null
     },
     {
       "test_id": 16,
@@ -3354,7 +2954,7 @@
       "hpwl_gap": 0.6217303726762686,
       "area_gap": 0.29204878869615636,
       "violations_relative": 0.2647058823529412,
-      "runtime_seconds": 0.08407974243164062,
+      "runtime_seconds": 2.9944372177124023,
       "cost": 2.473701232285686,
       "positions": [
         [
@@ -3580,32 +3180,7 @@
           26.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 14,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 19,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 4,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 273,
-      "p2b_edges": 58,
-      "boundary_violations": 7,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 9,
-      "max_possible_violations": 34,
-      "recomputed_violations_relative": 0.2647058823529412
+      "error": null
     },
     {
       "test_id": 17,
@@ -3614,7 +3189,7 @@
       "hpwl_gap": 0.9904711671823422,
       "area_gap": 0.6392330289458649,
       "violations_relative": 0.06060606060606061,
-      "runtime_seconds": 0.07007193565368652,
+      "runtime_seconds": 2.857736587524414,
       "cost": 2.0487218214050658,
       "positions": [
         [
@@ -3846,32 +3421,7 @@
           13.142403799786402
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 13,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 19,
-      "constraint_boundary_codes": {
-        "1": 4,
-        "2": 4,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 101,
-      "p2b_edges": 73,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 2,
-      "max_possible_violations": 33,
-      "recomputed_violations_relative": 0.06060606060606061
+      "error": null
     },
     {
       "test_id": 18,
@@ -3880,7 +3430,7 @@
       "hpwl_gap": 0.7189159248882713,
       "area_gap": 0.11044661670639329,
       "violations_relative": 0.1,
-      "runtime_seconds": 0.07537436485290527,
+      "runtime_seconds": 2.9645512104034424,
       "cost": 1.727895606069396,
       "positions": [
         [
@@ -4118,32 +3668,7 @@
           27.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 12,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 18,
-      "constraint_boundary_codes": {
-        "1": 2,
-        "2": 2,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 91,
-      "p2b_edges": 87,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 3,
-      "max_possible_violations": 30,
-      "recomputed_violations_relative": 0.1
+      "error": null
     },
     {
       "test_id": 19,
@@ -4152,7 +3677,7 @@
       "hpwl_gap": 0.2297369990238266,
       "area_gap": 0.11809997206733358,
       "violations_relative": 0.125,
-      "runtime_seconds": 0.07635903358459473,
+      "runtime_seconds": 2.867117404937744,
       "cost": 1.507341172560106,
       "positions": [
         [
@@ -4396,32 +3921,7 @@
           19.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 12,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 20,
-      "constraint_boundary_codes": {
-        "1": 5,
-        "2": 3,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 176,
-      "p2b_edges": 85,
-      "boundary_violations": 1,
-      "grouping_violations": 1,
-      "mib_violations": 2,
-      "total_soft_violations": 4,
-      "max_possible_violations": 32,
-      "recomputed_violations_relative": 0.125
+      "error": null
     },
     {
       "test_id": 20,
@@ -4430,7 +3930,7 @@
       "hpwl_gap": 0.9306660033101759,
       "area_gap": 0.40610245269366657,
       "violations_relative": 0.1875,
-      "runtime_seconds": 0.08680224418640137,
+      "runtime_seconds": 3.3236875534057617,
       "cost": 2.427484728027211,
       "positions": [
         [
@@ -4680,32 +4180,7 @@
           29.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 4,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 16,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 15,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 1,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 100,
-      "p2b_edges": 481,
-      "boundary_violations": 4,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 6,
-      "max_possible_violations": 32,
-      "recomputed_violations_relative": 0.1875
+      "error": null
     },
     {
       "test_id": 21,
@@ -4714,7 +4189,7 @@
       "hpwl_gap": 0.6008481000728717,
       "area_gap": 0.13448022571494017,
       "violations_relative": 0.11764705882352941,
-      "runtime_seconds": 0.08040761947631836,
+      "runtime_seconds": 2.8461480140686035,
       "cost": 1.7304792819805495,
       "positions": [
         [
@@ -4970,32 +4445,7 @@
           6.987301136363636
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 4,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 15,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 18,
-      "constraint_boundary_codes": {
-        "1": 4,
-        "2": 2,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 123,
-      "p2b_edges": 374,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 3,
-      "total_soft_violations": 4,
-      "max_possible_violations": 34,
-      "recomputed_violations_relative": 0.11764705882352941
+      "error": null
     },
     {
       "test_id": 22,
@@ -5004,7 +4454,7 @@
       "hpwl_gap": 0.6318455162671225,
       "area_gap": 0.1210298917746461,
       "violations_relative": 0.22857142857142856,
-      "runtime_seconds": 0.0866694450378418,
+      "runtime_seconds": 3.122101068496704,
       "cost": 2.1741583952023897,
       "positions": [
         [
@@ -5266,32 +4716,7 @@
           12.432978640853618
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 17,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 18,
-      "constraint_boundary_codes": {
-        "1": 4,
-        "2": 3,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 221,
-      "p2b_edges": 87,
-      "boundary_violations": 6,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 8,
-      "max_possible_violations": 35,
-      "recomputed_violations_relative": 0.22857142857142856
+      "error": null
     },
     {
       "test_id": 23,
@@ -5300,7 +4725,7 @@
       "hpwl_gap": 0.4180689513942582,
       "area_gap": 0.14490114464099912,
       "violations_relative": 0.15625,
-      "runtime_seconds": 0.11128735542297363,
+      "runtime_seconds": 3.622162103652954,
       "cost": 1.7515823846774188,
       "positions": [
         [
@@ -5568,32 +4993,7 @@
           11.029126540507777
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 17,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 17,
-      "constraint_boundary_codes": {
-        "1": 4,
-        "2": 2,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 948,
-      "p2b_edges": 399,
-      "boundary_violations": 4,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 32,
-      "recomputed_violations_relative": 0.15625
+      "error": null
     },
     {
       "test_id": 24,
@@ -5602,7 +5002,7 @@
       "hpwl_gap": 0.9550707968414307,
       "area_gap": 0.2983088562527814,
       "violations_relative": 0.25,
-      "runtime_seconds": 0.10122203826904297,
+      "runtime_seconds": 3.2824952602386475,
       "cost": 2.681958117859716,
       "positions": [
         [
@@ -5876,32 +5276,7 @@
           53.52370743950902
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 4,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 13,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 15,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 2,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 202,
-      "p2b_edges": 318,
-      "boundary_violations": 5,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 7,
-      "max_possible_violations": 28,
-      "recomputed_violations_relative": 0.25
+      "error": null
     },
     {
       "test_id": 25,
@@ -5910,7 +5285,7 @@
       "hpwl_gap": 1.2272496936507769,
       "area_gap": 0.2206999867690078,
       "violations_relative": 0.11764705882352941,
-      "runtime_seconds": 0.11530399322509766,
+      "runtime_seconds": 3.5024302005767822,
       "cost": 2.1813123605772007,
       "positions": [
         [
@@ -6190,32 +5565,7 @@
           16.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 18,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 17,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 3,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 444,
-      "p2b_edges": 149,
-      "boundary_violations": 3,
-      "grouping_violations": 1,
-      "mib_violations": 0,
-      "total_soft_violations": 4,
-      "max_possible_violations": 34,
-      "recomputed_violations_relative": 0.11764705882352941
+      "error": null
     },
     {
       "test_id": 26,
@@ -6224,7 +5574,7 @@
       "hpwl_gap": 0.3776152492173726,
       "area_gap": 0.14634787057128365,
       "violations_relative": 0.14285714285714285,
-      "runtime_seconds": 0.09315872192382812,
+      "runtime_seconds": 3.207517147064209,
       "cost": 1.679334254705016,
       "positions": [
         [
@@ -6510,32 +5860,7 @@
           39.88001858390073
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 16,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 17,
-      "constraint_boundary_codes": {
-        "1": 5,
-        "2": 2,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 220,
-      "p2b_edges": 109,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 5,
-      "max_possible_violations": 35,
-      "recomputed_violations_relative": 0.14285714285714285
+      "error": null
     },
     {
       "test_id": 27,
@@ -6544,7 +5869,7 @@
       "hpwl_gap": 0.3163392133786694,
       "area_gap": 0.07639263446804105,
       "violations_relative": 0.07692307692307693,
-      "runtime_seconds": 0.09578227996826172,
+      "runtime_seconds": 3.026763916015625,
       "cost": 1.3953352640314745,
       "positions": [
         [
@@ -6836,32 +6161,7 @@
           38.41497124809928
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 17,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 21,
-      "constraint_boundary_codes": {
-        "1": 4,
-        "2": 4,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 276,
-      "p2b_edges": 92,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 3,
-      "max_possible_violations": 39,
-      "recomputed_violations_relative": 0.07692307692307693
+      "error": null
     },
     {
       "test_id": 28,
@@ -6870,7 +6170,7 @@
       "hpwl_gap": 0.4178516812012058,
       "area_gap": 0.21025145717608734,
       "violations_relative": 0.030303030303030304,
-      "runtime_seconds": 0.11340641975402832,
+      "runtime_seconds": 3.1320364475250244,
       "cost": 1.396153877716596,
       "positions": [
         [
@@ -7168,32 +6468,7 @@
           21.765765765765767
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 15,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 18,
-      "constraint_boundary_codes": {
-        "1": 4,
-        "2": 3,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 120,
-      "p2b_edges": 525,
-      "boundary_violations": 0,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 1,
-      "max_possible_violations": 33,
-      "recomputed_violations_relative": 0.030303030303030304
+      "error": null
     },
     {
       "test_id": 29,
@@ -7202,7 +6477,7 @@
       "hpwl_gap": 0.6053040921806258,
       "area_gap": 0.21234452268952123,
       "violations_relative": 0.15789473684210525,
-      "runtime_seconds": 0.09744095802307129,
+      "runtime_seconds": 3.0797057151794434,
       "cost": 1.9319792696445828,
       "positions": [
         [
@@ -7506,32 +6781,7 @@
           31.033382611733078
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 17,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 21,
-      "constraint_boundary_codes": {
-        "1": 4,
-        "2": 3,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 175,
-      "p2b_edges": 111,
-      "boundary_violations": 3,
-      "grouping_violations": 2,
-      "mib_violations": 1,
-      "total_soft_violations": 6,
-      "max_possible_violations": 38,
-      "recomputed_violations_relative": 0.15789473684210525
+      "error": null
     },
     {
       "test_id": 30,
@@ -7540,7 +6790,7 @@
       "hpwl_gap": 0.511239851920347,
       "area_gap": 0.08138995294507148,
       "violations_relative": 0.1794871794871795,
-      "runtime_seconds": 0.1151425838470459,
+      "runtime_seconds": 3.3481686115264893,
       "cost": 1.8561415686393417,
       "positions": [
         [
@@ -7850,31 +7100,7 @@
           40.468468468468465
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 3,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 19,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 20,
-      "constraint_boundary_codes": {
-        "1": 3,
-        "2": 5,
-        "4": 5,
-        "5": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 520,
-      "p2b_edges": 497,
-      "boundary_violations": 6,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 7,
-      "max_possible_violations": 39,
-      "recomputed_violations_relative": 0.1794871794871795
+      "error": null
     },
     {
       "test_id": 31,
@@ -7883,7 +7109,7 @@
       "hpwl_gap": 0.9930215120696295,
       "area_gap": 0.3737435764162227,
       "violations_relative": 0.2,
-      "runtime_seconds": 0.1277768611907959,
+      "runtime_seconds": 3.5995421409606934,
       "cost": 2.511311655079796,
       "positions": [
         [
@@ -8199,32 +7425,7 @@
           22.147743076718214
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 18,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 20,
-      "constraint_boundary_codes": {
-        "1": 5,
-        "2": 4,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 540,
-      "p2b_edges": 754,
-      "boundary_violations": 5,
-      "grouping_violations": 1,
-      "mib_violations": 2,
-      "total_soft_violations": 8,
-      "max_possible_violations": 40,
-      "recomputed_violations_relative": 0.2
+      "error": null
     },
     {
       "test_id": 32,
@@ -8233,7 +7434,7 @@
       "hpwl_gap": 0.40019083377091086,
       "area_gap": 0.2553959034792372,
       "violations_relative": 0.125,
-      "runtime_seconds": 0.10347151756286621,
+      "runtime_seconds": 3.3238089084625244,
       "cost": 1.7049204334240304,
       "positions": [
         [
@@ -8555,32 +7756,7 @@
           28.984962406015036
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 19,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 21,
-      "constraint_boundary_codes": {
-        "1": 5,
-        "2": 3,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 337,
-      "p2b_edges": 19,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 5,
-      "max_possible_violations": 40,
-      "recomputed_violations_relative": 0.125
+      "error": null
     },
     {
       "test_id": 33,
@@ -8589,7 +7765,7 @@
       "hpwl_gap": 0.4533287030206958,
       "area_gap": 0.18458199146585302,
       "violations_relative": 0.13157894736842105,
-      "runtime_seconds": 0.10672926902770996,
+      "runtime_seconds": 3.4809858798980713,
       "cost": 1.71600328329564,
       "positions": [
         [
@@ -8917,32 +8093,7 @@
           19.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 14,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 5,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 291,
-      "p2b_edges": 199,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 5,
-      "max_possible_violations": 38,
-      "recomputed_violations_relative": 0.13157894736842105
+      "error": null
     },
     {
       "test_id": 34,
@@ -8951,7 +8102,7 @@
       "hpwl_gap": 0.7050999386429995,
       "area_gap": 0.07104122491974725,
       "violations_relative": 0.0975609756097561,
-      "runtime_seconds": 0.10869526863098145,
+      "runtime_seconds": 3.359705686569214,
       "cost": 1.6871431646833495,
       "positions": [
         [
@@ -9285,32 +8436,7 @@
           19.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 20,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 19,
-      "constraint_boundary_codes": {
-        "1": 4,
-        "2": 3,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 211,
-      "p2b_edges": 223,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 4,
-      "max_possible_violations": 41,
-      "recomputed_violations_relative": 0.0975609756097561
+      "error": null
     },
     {
       "test_id": 35,
@@ -9319,7 +8445,7 @@
       "hpwl_gap": 0.5680236150096095,
       "area_gap": 0.15885432098765453,
       "violations_relative": 0.13513513513513514,
-      "runtime_seconds": 0.11050629615783691,
+      "runtime_seconds": 3.717585563659668,
       "cost": 1.7865393620549486,
       "positions": [
         [
@@ -9659,32 +8785,7 @@
           27.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 13,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 21,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 3,
-        "4": 1,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 188,
-      "p2b_edges": 190,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 3,
-      "total_soft_violations": 5,
-      "max_possible_violations": 37,
-      "recomputed_violations_relative": 0.13513513513513514
+      "error": null
     },
     {
       "test_id": 36,
@@ -9693,7 +8794,7 @@
       "hpwl_gap": 0.519586084511999,
       "area_gap": 0.15718101499897286,
       "violations_relative": 0.07692307692307693,
-      "runtime_seconds": 0.12523579597473145,
+      "runtime_seconds": 4.449265956878662,
       "cost": 1.5609720457844578,
       "positions": [
         [
@@ -10039,32 +9140,7 @@
           34.393277416124185
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 17,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 5,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 324,
-      "p2b_edges": 504,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 3,
-      "max_possible_violations": 39,
-      "recomputed_violations_relative": 0.07692307692307693
+      "error": null
     },
     {
       "test_id": 37,
@@ -10073,7 +9149,7 @@
       "hpwl_gap": 0.6645499097664084,
       "area_gap": 0.2051644963824991,
       "violations_relative": 0.04878048780487805,
-      "runtime_seconds": 0.1334395408630371,
+      "runtime_seconds": 3.3921172618865967,
       "cost": 1.5818994520217795,
       "positions": [
         [
@@ -10425,31 +9501,7 @@
           13.672260834166142
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 4,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 19,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 3,
-        "4": 6,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 370,
-      "p2b_edges": 615,
-      "boundary_violations": 0,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 2,
-      "max_possible_violations": 41,
-      "recomputed_violations_relative": 0.04878048780487805
+      "error": null
     },
     {
       "test_id": 38,
@@ -10458,7 +9510,7 @@
       "hpwl_gap": 0.7454340027838704,
       "area_gap": 0.3063698968282783,
       "violations_relative": 0.1590909090909091,
-      "runtime_seconds": 0.1360771656036377,
+      "runtime_seconds": 3.560894012451172,
       "cost": 2.097544753879691,
       "positions": [
         [
@@ -10816,32 +9868,7 @@
           40.94254409320579
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 20,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 5,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 696,
-      "p2b_edges": 265,
-      "boundary_violations": 4,
-      "grouping_violations": 1,
-      "mib_violations": 2,
-      "total_soft_violations": 7,
-      "max_possible_violations": 44,
-      "recomputed_violations_relative": 0.1590909090909091
+      "error": null
     },
     {
       "test_id": 39,
@@ -10850,7 +9877,7 @@
       "hpwl_gap": 0.5188681700318932,
       "area_gap": 0.24381329618402683,
       "violations_relative": 0.02631578947368421,
-      "runtime_seconds": 0.1357729434967041,
+      "runtime_seconds": 3.6204822063446045,
       "cost": 1.4559901027677853,
       "positions": [
         [
@@ -11214,32 +10241,7 @@
           12.64710800820137
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 15,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 4,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 756,
-      "p2b_edges": 190,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 0,
-      "total_soft_violations": 1,
-      "max_possible_violations": 38,
-      "recomputed_violations_relative": 0.02631578947368421
+      "error": null
     },
     {
       "test_id": 40,
@@ -11248,7 +10250,7 @@
       "hpwl_gap": 0.45363217594793465,
       "area_gap": 0.22859951720479788,
       "violations_relative": 0.19047619047619047,
-      "runtime_seconds": 0.13777804374694824,
+      "runtime_seconds": 3.4995901584625244,
       "cost": 1.962961632414133,
       "positions": [
         [
@@ -11618,32 +10620,7 @@
           10.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 19,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 5,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 3,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 223,
-      "p2b_edges": 782,
-      "boundary_violations": 6,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 8,
-      "max_possible_violations": 42,
-      "recomputed_violations_relative": 0.19047619047619047
+      "error": null
     },
     {
       "test_id": 41,
@@ -11652,7 +10629,7 @@
       "hpwl_gap": 0.5348248546057773,
       "area_gap": 0.21161267612266413,
       "violations_relative": 0.08888888888888889,
-      "runtime_seconds": 0.12488770484924316,
+      "runtime_seconds": 3.3307886123657227,
       "cost": 1.6403919803942566,
       "positions": [
         [
@@ -12028,32 +11005,7 @@
           21.065167899829255
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 4,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 17,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 7,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 384,
-      "p2b_edges": 262,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 45,
-      "recomputed_violations_relative": 0.08888888888888889
+      "error": null
     },
     {
       "test_id": 42,
@@ -12062,7 +11014,7 @@
       "hpwl_gap": 0.49512028639876554,
       "area_gap": 0.09142075263807041,
       "violations_relative": 0.08333333333333333,
-      "runtime_seconds": 0.1242666244506836,
+      "runtime_seconds": 3.340334177017212,
       "cost": 1.5278185948852465,
       "positions": [
         [
@@ -12444,32 +11396,7 @@
           15.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 15,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 22,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 5,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 198,
-      "p2b_edges": 265,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 0,
-      "total_soft_violations": 3,
-      "max_possible_violations": 36,
-      "recomputed_violations_relative": 0.08333333333333333
+      "error": null
     },
     {
       "test_id": 43,
@@ -12478,7 +11405,7 @@
       "hpwl_gap": 0.7418621743259199,
       "area_gap": 0.4136875399081556,
       "violations_relative": 0.15,
-      "runtime_seconds": 0.1360616683959961,
+      "runtime_seconds": 3.5063724517822266,
       "cost": 2.1297732872514032,
       "positions": [
         [
@@ -12866,32 +11793,7 @@
           26.206370154192943
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 15,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 5,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 491,
-      "p2b_edges": 190,
-      "boundary_violations": 5,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 6,
-      "max_possible_violations": 40,
-      "recomputed_violations_relative": 0.15
+      "error": null
     },
     {
       "test_id": 44,
@@ -12900,7 +11802,7 @@
       "hpwl_gap": 0.765172446773185,
       "area_gap": 0.11978449111000214,
       "violations_relative": 0.043478260869565216,
-      "runtime_seconds": 0.1529703140258789,
+      "runtime_seconds": 3.734424352645874,
       "cost": 1.5735265566480874,
       "positions": [
         [
@@ -13294,32 +12196,7 @@
           18.972972972972972
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 4,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 20,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 24,
-      "constraint_boundary_codes": {
-        "1": 5,
-        "2": 6,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 887,
-      "p2b_edges": 382,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 0,
-      "total_soft_violations": 2,
-      "max_possible_violations": 46,
-      "recomputed_violations_relative": 0.043478260869565216
+      "error": null
     },
     {
       "test_id": 45,
@@ -13328,7 +12205,7 @@
       "hpwl_gap": 0.8438315369136292,
       "area_gap": 0.14541207325553063,
       "violations_relative": 0.13953488372093023,
-      "runtime_seconds": 0.15683937072753906,
+      "runtime_seconds": 3.826298952102661,
       "cost": 1.9757399157797089,
       "positions": [
         [
@@ -13728,32 +12605,7 @@
           17.972224565133086
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 9,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 22,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 20,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 3,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 522,
-      "p2b_edges": 683,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 3,
-      "total_soft_violations": 6,
-      "max_possible_violations": 43,
-      "recomputed_violations_relative": 0.13953488372093023
+      "error": null
     },
     {
       "test_id": 46,
@@ -13762,7 +12614,7 @@
       "hpwl_gap": 0.6551858402543072,
       "area_gap": 0.32931544410732067,
       "violations_relative": 0.09090909090909091,
-      "runtime_seconds": 0.16220521926879883,
+      "runtime_seconds": 3.79390549659729,
       "cost": 1.7897996034914696,
       "positions": [
         [
@@ -14168,32 +13020,7 @@
           29.605808587048266
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 9,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 20,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 22,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 4,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 224,
-      "p2b_edges": 1276,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 4,
-      "max_possible_violations": 44,
-      "recomputed_violations_relative": 0.09090909090909091
+      "error": null
     },
     {
       "test_id": 47,
@@ -14202,7 +13029,7 @@
       "hpwl_gap": 0.3503245951390112,
       "area_gap": 0.06638408638307301,
       "violations_relative": 0.08888888888888889,
-      "runtime_seconds": 0.1339094638824463,
+      "runtime_seconds": 3.3978829383850098,
       "cost": 1.443451560708368,
       "positions": [
         [
@@ -14614,32 +13441,7 @@
           30.21329572250362
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 17,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 28,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 4,
-        "4": 7,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 323,
-      "p2b_edges": 31,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 45,
-      "recomputed_violations_relative": 0.08888888888888889
+      "error": null
     },
     {
       "test_id": 48,
@@ -14648,7 +13450,7 @@
       "hpwl_gap": 0.8331797278956025,
       "area_gap": 0.19687862369247153,
       "violations_relative": 0.12,
-      "runtime_seconds": 0.16821527481079102,
+      "runtime_seconds": 3.9385600090026855,
       "cost": 1.9259795524403074,
       "positions": [
         [
@@ -15066,32 +13868,7 @@
           10.820073439412484
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 23,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 26,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 5,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 523,
-      "p2b_edges": 915,
-      "boundary_violations": 5,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 6,
-      "max_possible_violations": 50,
-      "recomputed_violations_relative": 0.12
+      "error": null
     },
     {
       "test_id": 49,
@@ -15100,7 +13877,7 @@
       "hpwl_gap": 0.6218023542605164,
       "area_gap": 0.21153123035377858,
       "violations_relative": 0.16666666666666666,
-      "runtime_seconds": 0.15726304054260254,
+      "runtime_seconds": 3.8151986598968506,
       "cost": 1.9771177775507098,
       "positions": [
         [
@@ -15524,32 +14301,7 @@
           8.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 24,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 25,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 6,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 588,
-      "p2b_edges": 248,
-      "boundary_violations": 4,
-      "grouping_violations": 2,
-      "mib_violations": 2,
-      "total_soft_violations": 8,
-      "max_possible_violations": 48,
-      "recomputed_violations_relative": 0.16666666666666666
+      "error": null
     },
     {
       "test_id": 50,
@@ -15558,7 +14310,7 @@
       "hpwl_gap": 0.7944578380941919,
       "area_gap": 0.07668369708134463,
       "violations_relative": 0.0851063829787234,
-      "runtime_seconds": 0.14168071746826172,
+      "runtime_seconds": 3.527240037918091,
       "cost": 1.7019510739648827,
       "positions": [
         [
@@ -15988,32 +14740,7 @@
           19.16922468972561
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 9,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 16,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 28,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 9,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 252,
-      "p2b_edges": 221,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 47,
-      "recomputed_violations_relative": 0.0851063829787234
+      "error": null
     },
     {
       "test_id": 51,
@@ -16022,7 +14749,7 @@
       "hpwl_gap": 0.9699321992824403,
       "area_gap": 0.3903664302600473,
       "violations_relative": 0.058823529411764705,
-      "runtime_seconds": 0.18822574615478516,
+      "runtime_seconds": 4.126254558563232,
       "cost": 1.8899109775358136,
       "positions": [
         [
@@ -16458,32 +15185,7 @@
           29.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 23,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 6,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 311,
-      "p2b_edges": 1539,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 0,
-      "total_soft_violations": 3,
-      "max_possible_violations": 51,
-      "recomputed_violations_relative": 0.058823529411764705
+      "error": null
     },
     {
       "test_id": 52,
@@ -16492,7 +15194,7 @@
       "hpwl_gap": 0.34616712881627676,
       "area_gap": 0.06949425645823587,
       "violations_relative": 0.17391304347826086,
-      "runtime_seconds": 0.16295313835144043,
+      "runtime_seconds": 3.914027690887451,
       "cost": 1.7102713147834692,
       "positions": [
         [
@@ -16934,32 +15636,7 @@
           24.004583333333336
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 18,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 26,
-      "constraint_boundary_codes": {
-        "1": 9,
-        "2": 6,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 586,
-      "p2b_edges": 246,
-      "boundary_violations": 7,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 8,
-      "max_possible_violations": 46,
-      "recomputed_violations_relative": 0.17391304347826086
+      "error": null
     },
     {
       "test_id": 53,
@@ -16968,7 +15645,7 @@
       "hpwl_gap": 0.7171443118903758,
       "area_gap": 0.2213749846267372,
       "violations_relative": 0.18181818181818182,
-      "runtime_seconds": 0.18582797050476074,
+      "runtime_seconds": 4.419672966003418,
       "cost": 2.11360495033409,
       "positions": [
         [
@@ -17416,32 +16093,7 @@
           11.825462012320328
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 18,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 5,
-        "2": 7,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1149,
-      "p2b_edges": 287,
-      "boundary_violations": 5,
-      "grouping_violations": 0,
-      "mib_violations": 3,
-      "total_soft_violations": 8,
-      "max_possible_violations": 44,
-      "recomputed_violations_relative": 0.18181818181818182
+      "error": null
     },
     {
       "test_id": 54,
@@ -17450,7 +16102,7 @@
       "hpwl_gap": 0.8548872616557144,
       "area_gap": 0.2059149259522735,
       "violations_relative": 0.20408163265306123,
-      "runtime_seconds": 0.16611671447753906,
+      "runtime_seconds": 3.8411810398101807,
       "cost": 2.301803898366852,
       "positions": [
         [
@@ -17904,32 +16556,7 @@
           69.63291139240506
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 11,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 25,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 24,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 6,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 281,
-      "p2b_edges": 470,
-      "boundary_violations": 7,
-      "grouping_violations": 2,
-      "mib_violations": 1,
-      "total_soft_violations": 10,
-      "max_possible_violations": 49,
-      "recomputed_violations_relative": 0.20408163265306123
+      "error": null
     },
     {
       "test_id": 55,
@@ -17938,7 +16565,7 @@
       "hpwl_gap": 0.840308448626881,
       "area_gap": 0.2837319809401967,
       "violations_relative": 0.1875,
-      "runtime_seconds": 0.20931553840637207,
+      "runtime_seconds": 4.732391357421875,
       "cost": 2.2727260019701276,
       "positions": [
         [
@@ -18398,32 +17025,7 @@
           25.286342890115453
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 24,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 23,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 3,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1155,
-      "p2b_edges": 912,
-      "boundary_violations": 6,
-      "grouping_violations": 1,
-      "mib_violations": 2,
-      "total_soft_violations": 9,
-      "max_possible_violations": 48,
-      "recomputed_violations_relative": 0.1875
+      "error": null
     },
     {
       "test_id": 56,
@@ -18432,7 +17034,7 @@
       "hpwl_gap": 0.7186858933562045,
       "area_gap": 0.15543497532343786,
       "violations_relative": 0.12244897959183673,
-      "runtime_seconds": 0.16014313697814941,
+      "runtime_seconds": 3.754412889480591,
       "cost": 1.8358316999527595,
       "positions": [
         [
@@ -18898,32 +17500,7 @@
           23.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 20,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 7,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 296,
-      "p2b_edges": 231,
-      "boundary_violations": 5,
-      "grouping_violations": 1,
-      "mib_violations": 0,
-      "total_soft_violations": 6,
-      "max_possible_violations": 49,
-      "recomputed_violations_relative": 0.12244897959183673
+      "error": null
     },
     {
       "test_id": 57,
@@ -18932,7 +17509,7 @@
       "hpwl_gap": 0.5134799414357513,
       "area_gap": 0.13690476190476192,
       "violations_relative": 0.05,
-      "runtime_seconds": 0.23202061653137207,
+      "runtime_seconds": 5.093313455581665,
       "cost": 1.4645640479222441,
       "positions": [
         [
@@ -19404,32 +17981,7 @@
           10.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 15,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 25,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 6,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1216,
-      "p2b_edges": 1380,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 2,
-      "max_possible_violations": 40,
-      "recomputed_violations_relative": 0.05
+      "error": null
     },
     {
       "test_id": 58,
@@ -19438,7 +17990,7 @@
       "hpwl_gap": 0.1718839134703249,
       "area_gap": 0.13088136892496158,
       "violations_relative": 0.09523809523809523,
-      "runtime_seconds": 0.17205405235290527,
+      "runtime_seconds": 3.993417739868164,
       "cost": 1.392972157784644,
       "positions": [
         [
@@ -19916,32 +18468,7 @@
           28.66998983909419
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 11,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 16,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 26,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 5,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 374,
-      "p2b_edges": 376,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 42,
-      "recomputed_violations_relative": 0.09523809523809523
+      "error": null
     },
     {
       "test_id": 59,
@@ -19950,7 +18477,7 @@
       "hpwl_gap": 0.6117115705426192,
       "area_gap": 0.08731025687250234,
       "violations_relative": 0.22448979591836735,
-      "runtime_seconds": 0.26154494285583496,
+      "runtime_seconds": 5.928339242935181,
       "cost": 2.1142958645481778,
       "positions": [
         [
@@ -20434,32 +18961,7 @@
           18.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 5,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 20,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 26,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 5,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 3136,
-      "p2b_edges": 234,
-      "boundary_violations": 8,
-      "grouping_violations": 1,
-      "mib_violations": 2,
-      "total_soft_violations": 11,
-      "max_possible_violations": 49,
-      "recomputed_violations_relative": 0.22448979591836735
+      "error": null
     },
     {
       "test_id": 60,
@@ -20468,7 +18970,7 @@
       "hpwl_gap": 0.5397842056772435,
       "area_gap": 0.06169581134329174,
       "violations_relative": 0.045454545454545456,
-      "runtime_seconds": 0.19132113456726074,
+      "runtime_seconds": 4.337814092636108,
       "cost": 1.424530706542756,
       "positions": [
         [
@@ -20958,32 +19460,7 @@
           27.315942993193847
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 19,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 5,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 721,
-      "p2b_edges": 30,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 2,
-      "max_possible_violations": 44,
-      "recomputed_violations_relative": 0.045454545454545456
+      "error": null
     },
     {
       "test_id": 61,
@@ -20992,7 +19469,7 @@
       "hpwl_gap": 0.8966124197612931,
       "area_gap": 0.3480072463768116,
       "violations_relative": 0.13043478260869565,
-      "runtime_seconds": 0.20658659934997559,
+      "runtime_seconds": 4.472808122634888,
       "cost": 2.1058528128270475,
       "positions": [
         [
@@ -21488,32 +19965,7 @@
           3.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 12,
-      "constraint_preplaced_blocks": 7,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 23,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 22,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 3,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 336,
-      "p2b_edges": 1367,
-      "boundary_violations": 2,
-      "grouping_violations": 3,
-      "mib_violations": 1,
-      "total_soft_violations": 6,
-      "max_possible_violations": 46,
-      "recomputed_violations_relative": 0.13043478260869565
+      "error": null
     },
     {
       "test_id": 62,
@@ -21522,7 +19974,7 @@
       "hpwl_gap": 0.6450371807944195,
       "area_gap": 0.15961473148682895,
       "violations_relative": 0.018867924528301886,
-      "runtime_seconds": 0.21868205070495605,
+      "runtime_seconds": 4.751652479171753,
       "cost": 1.4562550473647853,
       "positions": [
         [
@@ -22024,32 +20476,7 @@
           8.49010193528995
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 11,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 27,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 26,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 5,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1377,
-      "p2b_edges": 348,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 0,
-      "total_soft_violations": 1,
-      "max_possible_violations": 53,
-      "recomputed_violations_relative": 0.018867924528301886
+      "error": null
     },
     {
       "test_id": 63,
@@ -22058,7 +20485,7 @@
       "hpwl_gap": 0.6471307784995249,
       "area_gap": 0.25072337962962965,
       "violations_relative": 0.1276595744680851,
-      "runtime_seconds": 0.20160436630249023,
+      "runtime_seconds": 4.5150980949401855,
       "cost": 1.8703816220364986,
       "positions": [
         [
@@ -22566,32 +20993,7 @@
           21.66966966966967
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 12,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 24,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 25,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 6,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 776,
-      "p2b_edges": 260,
-      "boundary_violations": 5,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 6,
-      "max_possible_violations": 47,
-      "recomputed_violations_relative": 0.1276595744680851
+      "error": null
     },
     {
       "test_id": 64,
@@ -22600,7 +21002,7 @@
       "hpwl_gap": 0.6012188533910439,
       "area_gap": 0.1499067330754769,
       "violations_relative": 0.14285714285714285,
-      "runtime_seconds": 0.2294771671295166,
+      "runtime_seconds": 4.879821300506592,
       "cost": 1.8304781873102465,
       "positions": [
         [
@@ -23114,32 +21516,7 @@
           30.379924947812224
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 5,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 28,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 26,
-      "constraint_boundary_codes": {
-        "1": 9,
-        "2": 4,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 722,
-      "p2b_edges": 1702,
-      "boundary_violations": 4,
-      "grouping_violations": 1,
-      "mib_violations": 3,
-      "total_soft_violations": 8,
-      "max_possible_violations": 56,
-      "recomputed_violations_relative": 0.14285714285714285
+      "error": null
     },
     {
       "test_id": 65,
@@ -23148,7 +21525,7 @@
       "hpwl_gap": 0.648848212403608,
       "area_gap": 0.10388083435450095,
       "violations_relative": 0.14814814814814814,
-      "runtime_seconds": 0.22361040115356445,
+      "runtime_seconds": 4.714041233062744,
       "cost": 1.8510293985163317,
       "positions": [
         [
@@ -23668,32 +22045,7 @@
           21.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 5,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 28,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 28,
-      "constraint_boundary_codes": {
-        "1": 6,
-        "2": 7,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 443,
-      "p2b_edges": 1362,
-      "boundary_violations": 6,
-      "grouping_violations": 2,
-      "mib_violations": 0,
-      "total_soft_violations": 8,
-      "max_possible_violations": 54,
-      "recomputed_violations_relative": 0.14814814814814814
+      "error": null
     },
     {
       "test_id": 66,
@@ -23702,7 +22054,7 @@
       "hpwl_gap": 0.8493252080244105,
       "area_gap": 0.28822327977078954,
       "violations_relative": 0.12,
-      "runtime_seconds": 0.19141602516174316,
+      "runtime_seconds": 4.2607808113098145,
       "cost": 1.994302924600928,
       "positions": [
         [
@@ -24228,32 +22580,7 @@
           8.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 12,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 23,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 25,
-      "constraint_boundary_codes": {
-        "1": 10,
-        "2": 5,
-        "4": 2,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 529,
-      "p2b_edges": 291,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 3,
-      "total_soft_violations": 6,
-      "max_possible_violations": 50,
-      "recomputed_violations_relative": 0.12
+      "error": null
     },
     {
       "test_id": 67,
@@ -24262,7 +22589,7 @@
       "hpwl_gap": 0.43439826811240034,
       "area_gap": 0.16638364555400598,
       "violations_relative": 0.09803921568627451,
-      "runtime_seconds": 0.1995398998260498,
+      "runtime_seconds": 4.319063663482666,
       "cost": 1.5820846666469668,
       "positions": [
         [
@@ -24794,32 +23121,7 @@
           28.06498987170831
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 12,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 24,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 29,
-      "constraint_boundary_codes": {
-        "1": 9,
-        "2": 7,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 387,
-      "p2b_edges": 515,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 5,
-      "max_possible_violations": 51,
-      "recomputed_violations_relative": 0.09803921568627451
+      "error": null
     },
     {
       "test_id": 68,
@@ -24828,7 +23130,7 @@
       "hpwl_gap": 0.6614230610502573,
       "area_gap": 0.02901983373994817,
       "violations_relative": 0.11538461538461539,
-      "runtime_seconds": 0.22100281715393066,
+      "runtime_seconds": 4.673279762268066,
       "cost": 1.6943986094216823,
       "positions": [
         [
@@ -25366,32 +23668,7 @@
           13.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 5,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 28,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 26,
-      "constraint_boundary_codes": {
-        "1": 10,
-        "2": 5,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 475,
-      "p2b_edges": 1089,
-      "boundary_violations": 4,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 6,
-      "max_possible_violations": 52,
-      "recomputed_violations_relative": 0.11538461538461539
+      "error": null
     },
     {
       "test_id": 69,
@@ -25400,7 +23677,7 @@
       "hpwl_gap": 0.8997216265114839,
       "area_gap": 0.2735721201630513,
       "violations_relative": 0.09615384615384616,
-      "runtime_seconds": 0.24738526344299316,
+      "runtime_seconds": 5.183173418045044,
       "cost": 1.9230848646529364,
       "positions": [
         [
@@ -25944,32 +24221,7 @@
           26.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 13,
-      "constraint_preplaced_blocks": 6,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 27,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 6,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1701,
-      "p2b_edges": 426,
-      "boundary_violations": 3,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 52,
-      "recomputed_violations_relative": 0.09615384615384616
+      "error": null
     },
     {
       "test_id": 70,
@@ -25978,7 +24230,7 @@
       "hpwl_gap": 1.19785480986883,
       "area_gap": 0.252341509623063,
       "violations_relative": 0.1864406779661017,
-      "runtime_seconds": 0.21149873733520508,
+      "runtime_seconds": 4.596560955047607,
       "cost": 2.504690838102592,
       "positions": [
         [
@@ -26528,32 +24780,7 @@
           5.526357700270744
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 13,
-      "constraint_preplaced_blocks": 7,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 30,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 7,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 496,
-      "p2b_edges": 1498,
-      "boundary_violations": 6,
-      "grouping_violations": 2,
-      "mib_violations": 3,
-      "total_soft_violations": 11,
-      "max_possible_violations": 59,
-      "recomputed_violations_relative": 0.1864406779661017
+      "error": null
     },
     {
       "test_id": 71,
@@ -26562,7 +24789,7 @@
       "hpwl_gap": 0.6391465337200045,
       "area_gap": 0.11025733326953106,
       "violations_relative": 0.09803921568627451,
-      "runtime_seconds": 0.2477405071258545,
+      "runtime_seconds": 5.51960825920105,
       "cost": 1.6724930596937218,
       "positions": [
         [
@@ -27118,32 +25345,7 @@
           14.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 6,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 21,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 11,
-        "2": 5,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1692,
-      "p2b_edges": 1738,
-      "boundary_violations": 4,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 51,
-      "recomputed_violations_relative": 0.09803921568627451
+      "error": null
     },
     {
       "test_id": 72,
@@ -27152,7 +25354,7 @@
       "hpwl_gap": 0.5438105047489931,
       "area_gap": 0.3090114242734213,
       "violations_relative": 0.08771929824561403,
-      "runtime_seconds": 0.3618037700653076,
+      "runtime_seconds": 5.645756006240845,
       "cost": 1.6999520943488573,
       "positions": [
         [
@@ -27714,32 +25916,7 @@
           10.232802225750305
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 24,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 33,
-      "constraint_boundary_codes": {
-        "1": 10,
-        "2": 10,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1729,
-      "p2b_edges": 2057,
-      "boundary_violations": 2,
-      "grouping_violations": 2,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 57,
-      "recomputed_violations_relative": 0.08771929824561403
+      "error": null
     },
     {
       "test_id": 73,
@@ -27748,7 +25925,7 @@
       "hpwl_gap": 0.3273439059503554,
       "area_gap": 0.0745582594663569,
       "violations_relative": 0.08928571428571429,
-      "runtime_seconds": 0.2627530097961426,
+      "runtime_seconds": 5.749182224273682,
       "cost": 1.4357469556530715,
       "positions": [
         [
@@ -28316,32 +26493,7 @@
           10.90111628261208
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 9,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 30,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 28,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 8,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1767,
-      "p2b_edges": 2200,
-      "boundary_violations": 5,
-      "grouping_violations": 0,
-      "mib_violations": 0,
-      "total_soft_violations": 5,
-      "max_possible_violations": 56,
-      "recomputed_violations_relative": 0.08928571428571429
+      "error": null
     },
     {
       "test_id": 74,
@@ -28350,7 +26502,7 @@
       "hpwl_gap": 0.7852866481749067,
       "area_gap": 0.12341721529871098,
       "violations_relative": 0.09090909090909091,
-      "runtime_seconds": 0.21198678016662598,
+      "runtime_seconds": 4.407504081726074,
       "cost": 1.744344037912762,
       "positions": [
         [
@@ -28924,32 +27076,7 @@
           22.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 31,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 35,
-      "constraint_boundary_codes": {
-        "1": 12,
-        "2": 9,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 451,
-      "p2b_edges": 1875,
-      "boundary_violations": 2,
-      "grouping_violations": 1,
-      "mib_violations": 3,
-      "total_soft_violations": 6,
-      "max_possible_violations": 66,
-      "recomputed_violations_relative": 0.09090909090909091
+      "error": null
     },
     {
       "test_id": 75,
@@ -28958,7 +27085,7 @@
       "hpwl_gap": 0.7515399886087383,
       "area_gap": 0.10738478559839643,
       "violations_relative": 0.08620689655172414,
-      "runtime_seconds": 0.1902759075164795,
+      "runtime_seconds": 4.268512010574341,
       "cost": 1.698443449374182,
       "positions": [
         [
@@ -29538,32 +27665,7 @@
           26.365865447994025
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 13,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 29,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 30,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 7,
-        "4": 6,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 645,
-      "p2b_edges": 497,
-      "boundary_violations": 3,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 58,
-      "recomputed_violations_relative": 0.08620689655172414
+      "error": null
     },
     {
       "test_id": 76,
@@ -29572,7 +27674,7 @@
       "hpwl_gap": 0.5049650023042802,
       "area_gap": 0.13532749385928355,
       "violations_relative": 0.13559322033898305,
-      "runtime_seconds": 0.22133851051330566,
+      "runtime_seconds": 4.889555931091309,
       "cost": 1.731397637230772,
       "positions": [
         [
@@ -30158,32 +28260,7 @@
           14.50344827586207
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 14,
-      "constraint_preplaced_blocks": 4,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 31,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 7,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 658,
-      "p2b_edges": 2054,
-      "boundary_violations": 6,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 8,
-      "max_possible_violations": 59,
-      "recomputed_violations_relative": 0.13559322033898305
+      "error": null
     },
     {
       "test_id": 77,
@@ -30192,7 +28269,7 @@
       "hpwl_gap": 0.7845410063293236,
       "area_gap": 0.14016960377664273,
       "violations_relative": 0.07547169811320754,
-      "runtime_seconds": 0.33768558502197266,
+      "runtime_seconds": 7.390384197235107,
       "cost": 1.7006180685803012,
       "positions": [
         [
@@ -30784,32 +28861,7 @@
           31.081116831135432
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 23,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 29,
-      "constraint_boundary_codes": {
-        "1": 10,
-        "2": 6,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 4705,
-      "p2b_edges": 642,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 4,
-      "max_possible_violations": 53,
-      "recomputed_violations_relative": 0.07547169811320754
+      "error": null
     },
     {
       "test_id": 78,
@@ -30818,7 +28870,7 @@
       "hpwl_gap": 0.39550575760438966,
       "area_gap": 0.11961722488038301,
       "violations_relative": 0.03278688524590164,
-      "runtime_seconds": 0.3610265254974365,
+      "runtime_seconds": 7.620797395706177,
       "cost": 1.3427883254260877,
       "positions": [
         [
@@ -31416,32 +29468,7 @@
           15.943964821687915
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 31,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 31,
-      "constraint_boundary_codes": {
-        "1": 9,
-        "2": 8,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 4802,
-      "p2b_edges": 1746,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 0,
-      "total_soft_violations": 2,
-      "max_possible_violations": 61,
-      "recomputed_violations_relative": 0.03278688524590164
+      "error": null
     },
     {
       "test_id": 79,
@@ -31450,7 +29477,7 @@
       "hpwl_gap": 0.8661836001940578,
       "area_gap": 0.16836747818028472,
       "violations_relative": 0.09090909090909091,
-      "runtime_seconds": 0.20151996612548828,
+      "runtime_seconds": 4.335821628570557,
       "cost": 1.8198143674147316,
       "positions": [
         [
@@ -32054,32 +30081,7 @@
           16.236849622526012
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 10,
-      "constraint_preplaced_blocks": 7,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 24,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 30,
-      "constraint_boundary_codes": {
-        "1": 9,
-        "2": 9,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 700,
-      "p2b_edges": 75,
-      "boundary_violations": 4,
-      "grouping_violations": 1,
-      "mib_violations": 0,
-      "total_soft_violations": 5,
-      "max_possible_violations": 55,
-      "recomputed_violations_relative": 0.09090909090909091
+      "error": null
     },
     {
       "test_id": 80,
@@ -32088,7 +30090,7 @@
       "hpwl_gap": 0.6933050900744516,
       "area_gap": 0.25571993349190025,
       "violations_relative": 0.07936507936507936,
-      "runtime_seconds": 0.357635498046875,
+      "runtime_seconds": 7.733158588409424,
       "cost": 1.7281605784508667,
       "positions": [
         [
@@ -32698,32 +30700,7 @@
           19.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 15,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 32,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 30,
-      "constraint_boundary_codes": {
-        "1": 9,
-        "2": 8,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 4998,
-      "p2b_edges": 40,
-      "boundary_violations": 2,
-      "grouping_violations": 1,
-      "mib_violations": 2,
-      "total_soft_violations": 5,
-      "max_possible_violations": 63,
-      "recomputed_violations_relative": 0.07936507936507936
+      "error": null
     },
     {
       "test_id": 81,
@@ -32732,7 +30709,7 @@
       "hpwl_gap": 0.2807382184922919,
       "area_gap": 0.10675920758928571,
       "violations_relative": 0.05172413793103448,
-      "runtime_seconds": 0.35294628143310547,
+      "runtime_seconds": 6.927012920379639,
       "cost": 1.3238535115802765,
       "positions": [
         [
@@ -33348,32 +31325,7 @@
           28.86687061990622
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 24,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 34,
-      "constraint_boundary_codes": {
-        "1": 14,
-        "2": 8,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 2184,
-      "p2b_edges": 45,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 3,
-      "max_possible_violations": 58,
-      "recomputed_violations_relative": 0.05172413793103448
+      "error": null
     },
     {
       "test_id": 82,
@@ -33382,7 +31334,7 @@
       "hpwl_gap": 0.5989463956601234,
       "area_gap": 0.3898147671997038,
       "violations_relative": 0.11864406779661017,
-      "runtime_seconds": 0.3556349277496338,
+      "runtime_seconds": 7.3208839893341064,
       "cost": 1.8945852133048624,
       "positions": [
         [
@@ -34004,32 +31956,7 @@
           31.610639057479474
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 10,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 32,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 28,
-      "constraint_boundary_codes": {
-        "1": 10,
-        "2": 5,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 2227,
-      "p2b_edges": 2943,
-      "boundary_violations": 6,
-      "grouping_violations": 1,
-      "mib_violations": 0,
-      "total_soft_violations": 7,
-      "max_possible_violations": 59,
-      "recomputed_violations_relative": 0.11864406779661017
+      "error": null
     },
     {
       "test_id": 83,
@@ -34038,7 +31965,7 @@
       "hpwl_gap": 0.4957971419188165,
       "area_gap": 0.10726618705035977,
       "violations_relative": 0.01818181818181818,
-      "runtime_seconds": 0.22298884391784668,
+      "runtime_seconds": 4.858018159866333,
       "cost": 1.3497311314739415,
       "positions": [
         [
@@ -34666,32 +32593,7 @@
           17.090382762875443
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 10,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 25,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 31,
-      "constraint_boundary_codes": {
-        "1": 11,
-        "2": 5,
-        "4": 6,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1081,
-      "p2b_edges": 613,
-      "boundary_violations": 0,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 1,
-      "max_possible_violations": 55,
-      "recomputed_violations_relative": 0.01818181818181818
+      "error": null
     },
     {
       "test_id": 84,
@@ -34700,7 +32602,7 @@
       "hpwl_gap": 0.5939456400725159,
       "area_gap": 0.11204862599941054,
       "violations_relative": 0.11290322580645161,
-      "runtime_seconds": 0.23296761512756348,
+      "runtime_seconds": 5.027938604354858,
       "cost": 1.6957560385544763,
       "positions": [
         [
@@ -35334,32 +33236,7 @@
           13.287775052944864
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 14,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 32,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 31,
-      "constraint_boundary_codes": {
-        "1": 11,
-        "2": 7,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1102,
-      "p2b_edges": 712,
-      "boundary_violations": 4,
-      "grouping_violations": 1,
-      "mib_violations": 2,
-      "total_soft_violations": 7,
-      "max_possible_violations": 62,
-      "recomputed_violations_relative": 0.11290322580645161
+      "error": null
     },
     {
       "test_id": 85,
@@ -35368,7 +33245,7 @@
       "hpwl_gap": 0.5517411435326052,
       "area_gap": 0.09972705322498768,
       "violations_relative": 0.03125,
-      "runtime_seconds": 0.31757378578186035,
+      "runtime_seconds": 6.428730487823486,
       "cost": 1.411236601722693,
       "positions": [
         [
@@ -36008,32 +33885,7 @@
           24.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 30,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 32,
-      "constraint_boundary_codes": {
-        "1": 12,
-        "2": 8,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 2359,
-      "p2b_edges": 982,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 2,
-      "max_possible_violations": 64,
-      "recomputed_violations_relative": 0.03125
+      "error": null
     },
     {
       "test_id": 86,
@@ -36042,7 +33894,7 @@
       "hpwl_gap": 0.49415222072628,
       "area_gap": 0.22335474791862148,
       "violations_relative": 0.10909090909090909,
-      "runtime_seconds": 0.33199596405029297,
+      "runtime_seconds": 7.058802366256714,
       "cost": 1.6900355124370408,
       "positions": [
         [
@@ -36688,32 +34540,7 @@
           22.11015885548212
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 9,
-      "constraint_preplaced_blocks": 5,
-      "constraint_mib_blocks": 5,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 28,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 27,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 4,
-        "4": 6,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 2289,
-      "p2b_edges": 2399,
-      "boundary_violations": 2,
-      "grouping_violations": 1,
-      "mib_violations": 3,
-      "total_soft_violations": 6,
-      "max_possible_violations": 55,
-      "recomputed_violations_relative": 0.10909090909090909
+      "error": null
     },
     {
       "test_id": 87,
@@ -36722,7 +34549,7 @@
       "hpwl_gap": 0.34414728434783315,
       "area_gap": 0.1553780312987223,
       "violations_relative": 0.06976744186046512,
-      "runtime_seconds": 0.26578307151794434,
+      "runtime_seconds": 5.910571336746216,
       "cost": 1.4369007587012717,
       "positions": [
         [
@@ -37374,32 +35201,7 @@
           27.933145470097813
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 15,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 17,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 26,
-      "constraint_boundary_codes": {
-        "1": 7,
-        "2": 5,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1283,
-      "p2b_edges": 852,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 3,
-      "max_possible_violations": 43,
-      "recomputed_violations_relative": 0.06976744186046512
+      "error": null
     },
     {
       "test_id": 88,
@@ -37408,7 +35210,7 @@
       "hpwl_gap": 0.9198828591972781,
       "area_gap": 0.21991995699668687,
       "violations_relative": 0.1746031746031746,
-      "runtime_seconds": 0.32315802574157715,
+      "runtime_seconds": 4.991732835769653,
       "cost": 2.226028751982826,
       "positions": [
         [
@@ -38066,32 +35868,7 @@
           39.98969072164948
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 15,
-      "constraint_preplaced_blocks": 6,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 25,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 36,
-      "constraint_boundary_codes": {
-        "1": 12,
-        "2": 9,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1425,
-      "p2b_edges": 841,
-      "boundary_violations": 5,
-      "grouping_violations": 5,
-      "mib_violations": 1,
-      "total_soft_violations": 11,
-      "max_possible_violations": 63,
-      "recomputed_violations_relative": 0.1746031746031746
+      "error": null
     },
     {
       "test_id": 89,
@@ -38100,7 +35877,7 @@
       "hpwl_gap": 0.8065259876940176,
       "area_gap": 0.10026154876897884,
       "violations_relative": 0.16981132075471697,
-      "runtime_seconds": 0.27629899978637695,
+      "runtime_seconds": 5.837560176849365,
       "cost": 2.041171674005972,
       "positions": [
         [
@@ -38764,32 +36541,7 @@
           12.515151515151516
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 7,
-      "constraint_preplaced_blocks": 9,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 25,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 29,
-      "constraint_boundary_codes": {
-        "1": 8,
-        "2": 6,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1452,
-      "p2b_edges": 2799,
-      "boundary_violations": 7,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 9,
-      "max_possible_violations": 53,
-      "recomputed_violations_relative": 0.16981132075471697
+      "error": null
     },
     {
       "test_id": 90,
@@ -38798,7 +36550,7 @@
       "hpwl_gap": 0.7827429950284621,
       "area_gap": 0.19696020949369855,
       "violations_relative": 0.15151515151515152,
-      "runtime_seconds": 0.27652931213378906,
+      "runtime_seconds": 5.9634926319122314,
       "cost": 2.0171927603009805,
       "positions": [
         [
@@ -39468,32 +37220,7 @@
           33.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 15,
-      "constraint_preplaced_blocks": 5,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 35,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 29,
-      "constraint_boundary_codes": {
-        "1": 11,
-        "2": 6,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 2464,
-      "p2b_edges": 50,
-      "boundary_violations": 6,
-      "grouping_violations": 1,
-      "mib_violations": 3,
-      "total_soft_violations": 10,
-      "max_possible_violations": 66,
-      "recomputed_violations_relative": 0.15151515151515152
+      "error": null
     },
     {
       "test_id": 91,
@@ -39502,7 +37229,7 @@
       "hpwl_gap": 0.21413617520923445,
       "area_gap": 0.11932248721383486,
       "violations_relative": 0.10344827586206896,
-      "runtime_seconds": 0.43932318687438965,
+      "runtime_seconds": 9.78414535522461,
       "cost": 1.4349082969081326,
       "positions": [
         [
@@ -40178,32 +37905,7 @@
           46.25423539486912
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 11,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 6,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 23,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 33,
-      "constraint_boundary_codes": {
-        "1": 13,
-        "2": 5,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 7,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 6146,
-      "p2b_edges": 695,
-      "boundary_violations": 3,
-      "grouping_violations": 0,
-      "mib_violations": 3,
-      "total_soft_violations": 6,
-      "max_possible_violations": 58,
-      "recomputed_violations_relative": 0.10344827586206896
+      "error": null
     },
     {
       "test_id": 92,
@@ -40212,7 +37914,7 @@
       "hpwl_gap": 0.6169356274573093,
       "area_gap": 0.19475778280219389,
       "violations_relative": 0.05357142857142857,
-      "runtime_seconds": 0.2471637725830078,
+      "runtime_seconds": 5.237020254135132,
       "cost": 1.5648384870741134,
       "positions": [
         [
@@ -40894,32 +38596,7 @@
           6.601678687330914
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 16,
-      "constraint_preplaced_blocks": 2,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 23,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 33,
-      "constraint_boundary_codes": {
-        "1": 13,
-        "2": 7,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 766,
-      "p2b_edges": 1153,
-      "boundary_violations": 2,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 3,
-      "max_possible_violations": 56,
-      "recomputed_violations_relative": 0.05357142857142857
+      "error": null
     },
     {
       "test_id": 93,
@@ -40928,7 +38605,7 @@
       "hpwl_gap": 0.3800672673361767,
       "area_gap": 0.0547096133728317,
       "violations_relative": 0.03225806451612903,
-      "runtime_seconds": 0.27300286293029785,
+      "runtime_seconds": 5.781184673309326,
       "cost": 1.2985185928208445,
       "positions": [
         [
@@ -41616,32 +39293,7 @@
           6.832285115303983
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 11,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 30,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 34,
-      "constraint_boundary_codes": {
-        "1": 10,
-        "2": 11,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1299,
-      "p2b_edges": 652,
-      "boundary_violations": 1,
-      "grouping_violations": 1,
-      "mib_violations": 0,
-      "total_soft_violations": 2,
-      "max_possible_violations": 62,
-      "recomputed_violations_relative": 0.03225806451612903
+      "error": null
     },
     {
       "test_id": 94,
@@ -41650,7 +39302,7 @@
       "hpwl_gap": 0.6813896768999717,
       "area_gap": 0.14989166961217457,
       "violations_relative": 0.07692307692307693,
-      "runtime_seconds": 0.26240038871765137,
+      "runtime_seconds": 5.425604343414307,
       "cost": 1.6510779127791368,
       "positions": [
         [
@@ -42344,32 +39996,7 @@
           32.0
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 16,
-      "constraint_preplaced_blocks": 5,
-      "constraint_mib_blocks": 3,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 32,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 35,
-      "constraint_boundary_codes": {
-        "1": 12,
-        "2": 10,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 6,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 661,
-      "p2b_edges": 2863,
-      "boundary_violations": 4,
-      "grouping_violations": 0,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 65,
-      "recomputed_violations_relative": 0.07692307692307693
+      "error": null
     },
     {
       "test_id": 95,
@@ -42378,7 +40005,7 @@
       "hpwl_gap": 0.5488386949744398,
       "area_gap": 0.10504724721326338,
       "violations_relative": 0.07575757575757576,
-      "runtime_seconds": 0.2924923896789551,
+      "runtime_seconds": 6.047996520996094,
       "cost": 1.5440254430513352,
       "positions": [
         [
@@ -43078,32 +40705,7 @@
           10.083438659574325
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 10,
-      "constraint_preplaced_blocks": 6,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 26,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 37,
-      "constraint_boundary_codes": {
-        "1": 12,
-        "2": 13,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 4,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1345,
-      "p2b_edges": 4181,
-      "boundary_violations": 3,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 5,
-      "max_possible_violations": 66,
-      "recomputed_violations_relative": 0.07575757575757576
+      "error": null
     },
     {
       "test_id": 96,
@@ -43112,7 +40714,7 @@
       "hpwl_gap": 0.36275577511213236,
       "area_gap": 0.10587479178741699,
       "violations_relative": 0.046153846153846156,
-      "runtime_seconds": 0.44464540481567383,
+      "runtime_seconds": 9.50174331665039,
       "cost": 1.3536763078452945,
       "positions": [
         [
@@ -43818,32 +41420,7 @@
           37.9108305160604
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 17,
-      "constraint_preplaced_blocks": 1,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 33,
-      "constraint_cluster_groups": 4,
-      "constraint_boundary_blocks": 33,
-      "constraint_boundary_codes": {
-        "1": 14,
-        "2": 6,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 6707,
-      "p2b_edges": 93,
-      "boundary_violations": 1,
-      "grouping_violations": 0,
-      "mib_violations": 2,
-      "total_soft_violations": 3,
-      "max_possible_violations": 65,
-      "recomputed_violations_relative": 0.046153846153846156
+      "error": null
     },
     {
       "test_id": 97,
@@ -43852,7 +41429,7 @@
       "hpwl_gap": 0.567383100453565,
       "area_gap": 0.1130815496749131,
       "violations_relative": 0.06666666666666667,
-      "runtime_seconds": 0.3345627784729004,
+      "runtime_seconds": 7.043304204940796,
       "cost": 1.5313907495830201,
       "positions": [
         [
@@ -44564,32 +42141,7 @@
           30.55269229472345
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 3,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 27,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 33,
-      "constraint_boundary_codes": {
-        "1": 11,
-        "2": 9,
-        "4": 4,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 2784,
-      "p2b_edges": 3299,
-      "boundary_violations": 2,
-      "grouping_violations": 1,
-      "mib_violations": 1,
-      "total_soft_violations": 4,
-      "max_possible_violations": 60,
-      "recomputed_violations_relative": 0.06666666666666667
+      "error": null
     },
     {
       "test_id": 98,
@@ -44598,7 +42150,7 @@
       "hpwl_gap": 0.43817358731850625,
       "area_gap": 0.09944359886925659,
       "violations_relative": 0.038461538461538464,
-      "runtime_seconds": 0.3266277313232422,
+      "runtime_seconds": 6.166451454162598,
       "cost": 1.3702612586635534,
       "positions": [
         [
@@ -45316,32 +42868,7 @@
           30.632640619589438
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 8,
-      "constraint_preplaced_blocks": 7,
-      "constraint_mib_blocks": 4,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 21,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 31,
-      "constraint_boundary_codes": {
-        "1": 12,
-        "2": 7,
-        "4": 3,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 1699,
-      "p2b_edges": 908,
-      "boundary_violations": 1,
-      "grouping_violations": 1,
-      "mib_violations": 0,
-      "total_soft_violations": 2,
-      "max_possible_violations": 52,
-      "recomputed_violations_relative": 0.038461538461538464
+      "error": null
     },
     {
       "test_id": 99,
@@ -45350,7 +42877,7 @@
       "hpwl_gap": 0.5288181955631417,
       "area_gap": 0.16190695664698274,
       "violations_relative": 0.1044776119402985,
-      "runtime_seconds": 0.5672192573547363,
+      "runtime_seconds": 9.694407939910889,
       "cost": 1.6580111371637154,
       "positions": [
         [
@@ -46074,61 +43601,13 @@
           15.840679866001537
         ]
       ],
-      "error": null,
-      "constraint_fixed_blocks": 10,
-      "constraint_preplaced_blocks": 6,
-      "constraint_mib_blocks": 7,
-      "constraint_mib_groups": 1,
-      "constraint_cluster_blocks": 28,
-      "constraint_cluster_groups": 3,
-      "constraint_boundary_blocks": 36,
-      "constraint_boundary_codes": {
-        "1": 13,
-        "2": 9,
-        "4": 5,
-        "5": 1,
-        "6": 1,
-        "8": 5,
-        "9": 1,
-        "10": 1
-      },
-      "b2b_edges": 7056,
-      "p2b_edges": 3524,
-      "boundary_violations": 6,
-      "grouping_violations": 1,
-      "mib_violations": 0,
-      "total_soft_violations": 7,
-      "max_possible_violations": 67,
-      "recomputed_violations_relative": 0.1044776119402985
+      "error": null
     }
   ],
   "summary": {
     "num_tests": 100,
     "num_feasible": 100,
     "avg_cost": 1.7927957564628698,
-    "avg_runtime": 0.1794050908088684
-  },
-  "diagnostics": {
-    "enriched_soft_counts": {
-      "source_result": "results/integrated_v31.json",
-      "fields": [
-        "boundary_violations",
-        "grouping_violations",
-        "mib_violations",
-        "total_soft_violations",
-        "max_possible_violations",
-        "recomputed_violations_relative",
-        "constraint_fixed_blocks",
-        "constraint_preplaced_blocks",
-        "constraint_boundary_blocks",
-        "constraint_boundary_codes",
-        "constraint_cluster_blocks",
-        "constraint_cluster_groups",
-        "constraint_mib_blocks",
-        "constraint_mib_groups",
-        "b2b_edges",
-        "p2b_edges"
-      ]
-    }
+    "avg_runtime": 4.314097180366516
   }
 }

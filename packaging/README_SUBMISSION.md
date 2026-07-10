@@ -6,7 +6,7 @@ submission guidelines (2026-06-16) and Q&A (2026-06-18).
 ## Contents
 
 ```
-dist/my_optimizer/my_optimizer   PyInstaller --onedir executable (self-contained)
+dist/my_optimizer/my_optimizer   x86-64 Debian 13 PyInstaller executable
 op_wrapper.py                    the organizers' example wrapper, verbatim
 source_fallback/                 pure-Python source (stdlib only), same solver
 requirements.txt                 nothing to install for the executable path
@@ -42,9 +42,9 @@ Exactly the `solve()` schema of `optimizer_template.py`, transported as JSON
 
 - Single-threaded, CPU-only, deterministic (fixed seeds); no GPU, no network,
   no filesystem writes.
-- No external dependencies: the executable bundles a minimal Python runtime;
-  the source fallback runs on any Python ≥3.9 with the standard library only
-  (it does not import torch — inputs arrive as JSON lists).
+- No external dependencies: the x86-64 executable bundles a minimal Python runtime;
+  the source fallback runs on any Python ≥3.10 with the standard library only
+  (it does not import real torch — inputs arrive as JSON lists).
 - Never crashes: on any internal error it emits a conservative feasible
   layout rather than failing the case.
 - Typical runtime ≈0.2–0.4 s per case end-to-end (including process start),
@@ -54,7 +54,8 @@ Exactly the `solve()` schema of `optimizer_template.py`, transported as JSON
 
 If the executable cannot be used, `source_fallback/solver_main.py` is the
 same solver as plain Python (reads the same JSON on stdin; `my_optimizer.py`
-+ `dissect.py` are the algorithm, `torch.py`/`iccad2026_evaluate.py` are
++ `dissect.py` + `topology_polish.py` are the algorithm;
+`torch.py`/`iccad2026_evaluate.py` are
 self-contained stand-ins for the imports). It can also be
 adapted to the import-based interface: `source_fallback/my_optimizer.py`
 contains the `MyOptimizer(FloorplanOptimizer)` class with the standard

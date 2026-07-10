@@ -12,14 +12,18 @@ pip install -U pip
 # Install the official contest dependencies (torch, numpy, shapely, matplotlib,
 # tqdm, requests) plus pytest, rather than an ad-hoc list.
 pip install -r external/FloorSet/iccad2026contest/requirements.txt pytest
-cp contest_solution/my_optimizer.py dissect.py external/FloorSet/iccad2026contest/my_optimizer.py dissect.py
-cp contest_solution/test_my_optimizer.py dissect.py external/FloorSet/iccad2026contest/test_my_optimizer.py dissect.py
+cp contest_solution/my_optimizer.py external/FloorSet/iccad2026contest/my_optimizer.py
+cp contest_solution/dissect.py external/FloorSet/iccad2026contest/dissect.py
+cp contest_solution/topology_polish.py external/FloorSet/iccad2026contest/topology_polish.py
+cp contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/sequence_pair_sa.py
+cp contest_solution/test_my_optimizer.py external/FloorSet/iccad2026contest/test_my_optimizer.py
 cd external/FloorSet
 PYTHONPATH=. python lite_dataset_test.py
 cd iccad2026contest
-PYTHONPATH=.. ../../../.venv/bin/python -m pytest test_my_optimizer.py dissect.py -q
-PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --validate my_optimizer.py dissect.py
+PYTHONPATH=.. ../../../.venv/bin/python -m pytest test_my_optimizer.py -q
+PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --validate my_optimizer.py
 mkdir -p "$ROOT/results"
-PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py dissect.py --verbose --save-solutions --output "$ROOT/results/v9_locked.json"
+OUTPUT="${OUTPUT:-$ROOT/results/setup_evaluation.json}"
+PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py --verbose --save-solutions --output "$OUTPUT"
 cd "$ROOT"
-python scripts/audit_results.py results/v9_locked.json --expected-cases 100 --require-positions
+python scripts/audit_results.py "$OUTPUT" --expected-cases 100 --require-positions

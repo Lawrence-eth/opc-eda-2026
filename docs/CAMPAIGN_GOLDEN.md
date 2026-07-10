@@ -5,14 +5,14 @@ limit. Full rebuilds allowed. The verified submission package is the safe
 floor and must never regress; everything new integrates behind per-case
 best-of gates on exact contest cost.
 
-**Status (2026-07-09, round 22): official 1.6181, 100/100, rt avg 0.173s.
-Paired-window radj@1s 1.174 vs v9's 2.110 (-44%); v28 was 1.176. G3 V_rel
+**Status (2026-07-10, round 24): official 1.6166, 100/100, rt avg 0.179s.
+Paired-control radj@1s 1.175 vs v9's 2.110 (-44%). G3 V_rel
 gate met (n≥100 vr 0.085).
-Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328 → 1.6225 → 1.6207 → 1.6190 → 1.6181.
+Trajectory: 2.7182 → 2.1204 → 1.9573 → 1.9352 → 1.8975 → 1.8074 → 1.7978 → 1.7952 → 1.7903 → 1.7827 → 1.7368 → 1.7027 → 1.6960 → 1.6845 → 1.6651 → 1.6568 → 1.6507 → 1.6483 → 1.6385 → 1.6328 → 1.6225 → 1.6207 → 1.6190 → 1.6181 → 1.6171 → 1.6166.
 Open leads: ag 0.154 on n≥100 (case-70-class snowball mitigated by a gated
 candidate), hg 0.560 on n≥100 integrated score drivers (ordering),
-grouping 54 / MIB 126 residuals. Exact v29 soft ledger is boundary 324,
-grouping 54, MIB 126, total 504/4478 (`results/enriched_diagnostics.json`).
+grouping 55 / MIB 126 residuals. Exact v31 soft ledger is boundary 323,
+grouping 55, MIB 126, total 504/4478 (`results/enriched_diagnostics.json`).
 Golden mining says MIB should be exact, clusters should almost always connect,
 and some boundary misses are inherent or cost-optimal (including 13
 preplaced-boundary misses). Package refreshed after each engine change (§G5).**
@@ -381,6 +381,19 @@ runtime floor even with the executable spawn overhead (~0.11s).
   Official **1.6181**, 100/100; paired-window radj@{1,2,3}s =
   **1.174/1.133/1.133** vs v28 **1.176/1.133/1.133**. Package rebuilt +
   exact parity at 1.618110; binary fuzz 400/400 feasible.
+- Round 23: reuse the existing portfolio with a 40:1 active-slab aspect limit
+  in one preplaced-heavy input feature pocket. Official **1.6171**, 100/100;
+  three-seed MIB-clean holdout replay confirms v30 is marginally better than
+  the less-tuned v25 aggregate (1.790325 vs 1.790877).
+- Round 24: align internal grouping connectivity with exact Shapely contacts,
+  then add one fixed-topology weighted-median HPWL sweep only for n≤90.
+  Official **1.6166**, 100/100; 65 changed cases all improve. The paired v30
+  control passes runtime-adjusted gates at medians 1/2/3s. On a separate
+  140-case MIB-clean n=21..90 holdout, v31 is 140/140 feasible and improves
+  121 cases with zero regressions (1.838371→1.831746 vs the no-polish control).
+  A broad version
+  transfers on the heavy holdout (1.798552→1.793614) but remains dormant
+  because it loses the pessimistic 1s runtime gate.
 - 2026-07-07: dissection engine v2 built (`contest_solution/dissect.py`):
   exact-fill rows; frame = one-row bottom/top bands + L/R row-end injection;
   obstacle slabs; cluster lanes; MIB slots; barycenter ordering. Iterations:

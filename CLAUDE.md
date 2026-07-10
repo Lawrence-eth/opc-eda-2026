@@ -20,7 +20,7 @@ never regress it; improve on top of it behind gates.
 ## Hard rules (from the operator + verified evidence)
 
 - **Never regress HEAD.** The committed solver (shelf + dissection portfolio)
-  is the floor: **1.6181 official, 100/100 feasible**, deterministic. New ideas
+  is the floor: **1.6166 official, 100/100 feasible**, deterministic. New ideas
   integrate behind the per-case feasibility-gated selection in `solve()`; keep
   a change only if it wins runtime-adjusted at median ∈ {1,2,3}s
   (`HANDOFF.md` §5.3).
@@ -57,9 +57,12 @@ never regress it; improve on top of it behind gates.
 |---|---|
 | `contest_solution/my_optimizer.py` | THE solver (shelf + dissection portfolio + selector) |
 | `contest_solution/dissect.py` | exact-area dissection engine (the campaign's core) |
+| `contest_solution/topology_polish.py` | fixed-topology HPWL polish enabled for n≤90 |
 | `packaging/` | submission package sources (torch-free executable; see SUBMISSION_PLAN.md) |
 | `scripts/` | evaluation/analysis/audit/fuzz tooling (each has a docstring) |
-| `results/integrated_v29.json` | the CURRENT verified result (1.6181) |
+| `results/integrated_v31.json` | the CURRENT verified result (1.6166) |
+| `results/training_holdout_v30_mib_clean.json` | held-out heavy-case quality gate |
+| `results/training_holdout_low_v31_mib_clean.json` | 140-case low-size v31 generalization gate |
 | `results/v9_locked.json` | pre-campaign locked result (2.7182) |
 | `results/golden_scored.json` | golden layouts scored by the official evaluator (per case) |
 | `results/retrieval_scan.json` | proof that validation ∉ training (1M scanned, 0 hits) |

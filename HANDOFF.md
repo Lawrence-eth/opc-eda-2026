@@ -1,7 +1,7 @@
 # HANDOFF — ICCAD 2026 Problem C (FloorSet Challenge)
 
 > For the next agent taking over this project. Current head was measured on
-> 2026-07-09 after integrated v29. Nothing is aspirational.
+> 2026-07-10 after integrated v31. Nothing is aspirational.
 > Operator's standing orders: **the only goal is to WIN. No time limit. Never
 > regress the verified state.**
 
@@ -11,19 +11,19 @@
 
 | Metric | Value | Artifact |
 |---|---|---|
-| Official validation score (RF=1) | **1.6181** | `results/integrated_v29.json` |
+| Official validation score (RF=1) | **1.6166** | `results/integrated_v31.json` |
 | Feasible | **100 / 100** | same |
-| Runtime | avg 0.173s/case, max 0.553s (in-process) | same |
-| Runtime-adjusted @ median {0.5, 1, 2, 3}s | 1.401 / **1.174** / 1.133 / 1.133 (paired window) | recompute per §5.3 |
-| Packaged binary via official command | **1.618110, 0/100 position diffs**, avg 0.218s incl. spawn | `results/wrapper_v29.json` |
-| Binary fuzz (400 training instances, wrapper protocol) | 400/400 hard-feasible, avg 0.213s, p95 0.369s, max 0.530s | rerun per §5.5 |
-| Tests / audit / release gate | 56/56 PASS / PASS / PASS | `pytest`, §5.6 |
+| Runtime | avg 0.179s/case, max 0.567s (in-process confirmation) | same |
+| Runtime-adjusted @ median {1, 2, 3}s | **1.175 / 1.132 / 1.132** (paired v30 control) | recompute per §5.3 |
+| Packaged binary | AMD64 Debian 13/Python 3.13; exact 100-case target-arch wrapper parity | `submission/iccad2026_submission.tar.gz` |
+| Binary fuzz | v31 target binary: 100/100 hard-feasible under QEMU; historical v29: 400/400 native | QEMU timings are nonrepresentative; rerun per §5.5 |
+| Tests / audit / release gate | 78/78 PASS / PASS / PASS | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
 Golden-equivalent play = 1.108 RF=1 / 0.776 at the runtime floor (the golden
 layouts themselves violate soft constraints on 90/100 cases —
 `results/golden_scored.json`). Absolute bound 0.70. **Distance travelled:
-2.718 → 1.618; distance remaining to golden-equivalent: 1.618 → 1.108.**
+2.718 → 1.617; distance remaining to golden-equivalent: 1.617 → 1.108.**
 
 ## 2. Read these, in order
 
@@ -113,13 +113,21 @@ layouts themselves violate soft constraints on 90/100 cases —
    `1800<=b2b<=2500`, and `p2b<=100`. The selector accepts it only when
    feasible and better. v29 permits one additional selected iteration and
    stops at the first rejection; validation changes only case 81.
-18. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
+18. **Preplaced-heavy aspect replacement** (v30): one hidden-computable
+   feature pocket raises the active-slab aspect limit inside an existing
+   portfolio run, improving case 61 without adding a candidate.
+19. **Fixed-topology HPWL polish** (v31): for n≤90, one stdlib
+   weighted-median sweep freezes bbox, dimensions, preplaced coordinates,
+   satisfied boundaries, non-overlap relations, and grouping contact forests.
+   Its gate requires lower HPWL with no bbox or soft increase. It improves
+   65/100 public cases, with no regressions.
+20. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
    With golden baselines absent (deployment) it normalizes against the first
    candidate and uses **SIGNED gaps** (clamping against a non-golden reference
    censors improvements — this bug cost a day; don't reintroduce it).
-19. If the fast shelf won, the **full-SA shelf** is run and the selection
+21. If the fast shelf won, the **full-SA shelf** is run and the selection
    redone. The dissection family wins most cases; shelf remains the fallback.
-20. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
+22. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
    local search (`_REFINE_BUDGET=0.0` — see §6 for why).
 
 `dissect.py` — the campaign engine (exact-area dissection):
@@ -199,6 +207,7 @@ mkdir -p external && git clone https://github.com/IntelLabs/FloorSet.git externa
 5.1 **Official evaluation** (the number that counts):
 ```bash
 cp contest_solution/my_optimizer.py contest_solution/dissect.py \
+   contest_solution/topology_polish.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
@@ -223,7 +232,7 @@ def radj(path, med):
         tot+=c*w
     return tot/Z
 for m in (0.5,1,2,3):
-        print(m, radj('results/<candidate>.json', m), radj('results/integrated_v29.json', m))
+        print(m, radj('results/<candidate>.json', m), radj('results/integrated_v31.json', m))
 EOF
 ```
 KEEP iff it beats the incumbent at median ∈ {1,2,3}s AND stays 100/100.
@@ -238,19 +247,21 @@ PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
 # REQUIRED: same total as the in-process run and 0 position diffs
 ```
 
-5.5 **Binary fuzz** (hidden-set insurance): `.venv/bin/python scripts/fuzz_binary.py --num 400` → must be 0 failures.
+5.5 **Binary fuzz** (hidden-set insurance): on an AMD64 host, run
+`.venv/bin/python scripts/fuzz_binary.py --num 400` → must be 0 failures. On
+this ARM host, pass `--binary` pointing at a configured x86/QEMU launcher.
 
-5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (56 tests) and
+5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (78 tests) and
 `.venv/bin/python scripts/check_public_release.py` (defaults now point at
-`results/integrated_v29.json`, max-score 1.635 — bump the threshold when you
-beat it).
+`results/integrated_v31.json`, max-score 1.6167 — tighten the threshold when
+you beat it).
 
 ## 6. Open leads, ranked (with the evidence)
 
-Current integrated v29 decomposition (n≥100): **hg 0.560, ag 0.154,
-vr 0.085**. Score-weighted averages: **hg 0.562, ag 0.145,
-vr 0.085**. Exact v29 soft ledger (`results/enriched_diagnostics.json`):
-boundary 324, grouping 54, MIB 126, total 504/4478. Score-weighted soft
+Current integrated v31 decomposition (n≥100): **hg 0.560, ag 0.154,
+vr 0.085**. Score-weighted averages: **hg 0.560, ag 0.145,
+vr 0.085**. Exact v31 soft ledger (`results/enriched_diagnostics.json`):
+boundary 323, grouping 55, MIB 126, total 504/4478. Score-weighted soft
 counts in the top-20 focus band: boundary 3.117, MIB 1.127, grouping 0.773.
 A chunk of boundary violations are preplaced-with-boundary-codes,
 which are UNFIXABLE by rule and golden pays them too.
@@ -273,7 +284,7 @@ of area/HPWL, and don't chase generic "floater" insertion as a primary lead.
    but still runtime-cheap predictor or a segmented band layout that improves
    the remaining ag residuals without firing on the large-case regressions
    (88/98/99 were red flags in the broad attempt).
-2. **hg 0.65 (still the biggest single lever).** Recursive bisection and
+2. **hg 0.56 (still the biggest single lever).** Recursive bisection and
    graph-chain ordering were already rejected; do not retry them. Remaining
    ordering ideas need to be construction-cheap: better within-row second pass,
    safer edge/interior co-ordering, or a learned/golden-derived row assignment.
@@ -285,7 +296,7 @@ of area/HPWL, and don't chase generic "floater" insertion as a primary lead.
    The reverted global-square candidate proves that a blunt extra candidate is
    worse; the useful version is a hidden-safe shape planner that selects one
    (w,h) per group without exploding area or width on large cases.
-5. **Grouping 58**: golden connects 350/360 groups and every preplaced cluster
+5. **Grouping 55**: golden connects 350/360 groups and every preplaced cluster
    member touches its cluster. The reverted preplaced-bridge probe found real
    upper-bound wins but no deployable selector; a stronger rigid-component
    bridge oracle also improved only -0.0079 weighted and the deployable
@@ -315,13 +326,13 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 
 - The uploadable artifact is `submission/iccad2026_submission.tar.gz`
   (rebuilt + parity-verified for the current engine). Contents: PyInstaller
-  `--onedir` executable (21MB, torch-free, crash-proof fallback), organizers'
+  `--onedir` executable (53MB; 23MB archive, no real torch, crash-proof fallback), organizers'
   `op_wrapper.py` verbatim, README, stdlib-only source fallback.
 - Eval host: Debian 13, Python 3.13.14, torch 2.12.0+cu130, 48-core Icelake,
   A100 80GB, 128GB RAM, no internet, cases sequential
   (`docs/extracted/C_Submission_Guidelines_20260616.txt`, `C_QA_20260618.txt`).
-- Optional belt-and-suspenders: rebuild the binary in a Debian 13 container
-  (glibc 2.39→2.41 is forward-compatible, so this is low-risk polish).
+- The guarded build already runs in an AMD64 Debian 13/Python 3.13 container
+  on this ARM host and rejects any non-x86-64 artifact.
 - Upload channel + credentials: only the operator has these
   (iccad-contest.org). Monitor the FloorSet GitHub issues for rule updates.
 
@@ -331,14 +342,18 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 |---|---|
 | `contest_solution/my_optimizer.py` | THE solver (shelf + dissection portfolio + selector) |
 | `contest_solution/dissect.py` | the campaign engine (exact-area dissection) |
+| `contest_solution/topology_polish.py` | fixed-topology HPWL polish enabled for n≤90 |
 | `contest_solution/sequence_pair_sa.py` | dormant SP-SA (historical) |
 | `packaging/` | executable package sources + build script + organizers' wrapper |
 | `scripts/dissect_eval.py` | fast engine-only eval vs v9 per case |
 | `scripts/fuzz_binary.py` | wrapper-protocol feasibility fuzz on training data |
 | `scripts/match_validation_in_training.py` | retrieval scan (result: 0/1,008,000 — don't redo) |
 | `scripts/check_public_release.py` | release gate (audit + docs scan) |
-| `results/integrated_v29.json` | CURRENT official result (1.6181) |
-| `results/wrapper_v29.json` | packaged-binary parity run (1.618110) |
+| `results/integrated_v31.json` | CURRENT official result (1.6166) |
+| `results/wrapper_v31.json` | AMD64 packaged-binary parity run |
+| `results/training_holdout_low_v31_mib_clean.json` | 140-case low-size MIB-clean generalization gate |
+| `results/integrated_v29.json` | historical pre-v30 result (1.6181) |
+| `results/wrapper_v29.json` | historical packaged-binary parity run (1.618110) |
 | `results/integrated_v28.json` | previous official result (1.6190) |
 | `results/wrapper_v28.json` | previous packaged-binary parity run (1.619032) |
 | `results/integrated_v27.json` | previous official result (1.6207) |
@@ -376,7 +391,8 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `results/v9_locked.json` | pre-campaign locked result (2.7182) |
 | `results/golden_scored.json` | golden layouts scored officially (the target) |
 | `results/golden_structure.json` | mined golden structure priors + scorer cross-check |
-| `results/enriched_diagnostics.json` | v29 sidecar with official boundary/grouping/MIB attribution |
+| `results/enriched_diagnostics.json` | v31 sidecar with official boundary/grouping/MIB attribution |
+| `results/training_holdout_v30_mib_clean.json` | 105-case hidden-quality/generalization gate |
 | `results/retrieval_scan.json` | proof hidden set can't be looked up |
 | `docs/CAMPAIGN_GOLDEN.md` | campaign plan + measured milestones |
 | `docs/extracted/` | problem v10 + Q&A 06-18 + submission guidelines (text) |

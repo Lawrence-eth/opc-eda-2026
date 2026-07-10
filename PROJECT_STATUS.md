@@ -1,16 +1,16 @@
 # Project Status
 
-**Updated 2026-07-09. For the full handoff, read [`HANDOFF.md`](HANDOFF.md).**
+**Updated 2026-07-10. For the full handoff, read [`HANDOFF.md`](HANDOFF.md).**
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v29`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v31`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.6181** | 2.7182 |
+| Score (RF=1) | **1.6166** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.173s / 0.553s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.174 / 1.133 / 1.133** (paired window) | 2.110 / 1.924 / 1.903 |
-| Packaged binary (official command, incl. spawn) | 1.618110, 0 position diffs, avg 0.218s | — |
+| Runtime avg / max | 0.179s / 0.567s | 0.18s / 0.9s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.175 / 1.132 / 1.132** (paired control) | 2.110 / 1.924 / 1.903 |
+| Packaged binary | AMD64 Debian 13 build; exact 100-case wrapper parity | — |
 
 ## What the solver is
 
@@ -58,6 +58,10 @@ high-boundary, low-p2b 100-103-block feature pocket. The selector accepts the
 case-81 ordering gain and changes no other validation placement.
 v29 repeats that pass once when selected and stops at the first rejection,
 capturing the next case-81 ordering gain without broadening the feature gate.
+v30 reuses an existing portfolio pass with a relaxed aspect guard for one
+preplaced-heavy feature pocket. v31 makes grouping selection match exact
+Shapely contact and applies a topology-preserving weighted-median HPWL polish
+only for n≤90; 65 public cases improve and none regress.
 The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -69,20 +73,24 @@ Key structural properties (why it beats everything previous):
 - boundary demands satisfied by frame structure (bands / row-end slots /
   edge stacks), preplaced blocks carved around and never moved.
 
-## Verification state (2026-07-09)
+## Verification state (2026-07-10)
 
-- 56/56 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v29.json`, max-score 1.635).
-- Submission package rebuilt + parity-verified (0/100 position diffs through
-  the organizers' op_wrapper path); 400/400 training-instance binary fuzz.
+- 78/78 tests pass; result audit PASS; release gate PASS
+  (defaults: `results/integrated_v31.json`, max-score 1.6167).
+- Submission package rebuilt for AMD64 and parity-verified: 100/100 feasible,
+  all 28,200 position scalars and every quality metric exact through the
+  organizers' `op_wrapper.py` path. The v31 target binary also passed 100/100
+  random training instances under QEMU (timings nonrepresentative); the latest
+  400-case native binary fuzz was v29. v31 additionally passed a 140/140
+  MIB-clean low-size source holdout.
 - Cross-hardware determinism verified (bit-identical results reproduced on a
   fresh 2-core VM vs the original 48-core box, for the v9 baseline).
 
 ## Where the remaining score is
 
 Current n≥100 averages: hpwl_gap 0.560, area_gap 0.154, V_rel 0.085.
-Score-weighted averages: hpwl_gap 0.562, area_gap 0.145, V_rel 0.085.
-Exact v29 soft ledger: boundary 324, grouping 54, MIB 126, total 504/4478
+Score-weighted averages: hpwl_gap 0.560, area_gap 0.145, V_rel 0.085.
+Exact v31 soft ledger: boundary 323, grouping 55, MIB 126, total 504/4478
 (`results/enriched_diagnostics.json`). Score-weighted soft counts in the
 top-20 focus band are boundary 3.117, MIB 1.127, grouping 0.773.
 Ranked open leads with evidence: `HANDOFF.md` §6. Golden-equivalent
