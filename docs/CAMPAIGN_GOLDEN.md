@@ -1,4 +1,8 @@
-# CAMPAIGN: GOLDEN — the active plan to a winning score
+# CAMPAIGN: GOLDEN — prior dissection campaign
+
+> Tactical history and evidence for the dissection campaign. The broader
+> beta-to-final strategy, model/teacher tracks, and current promotion gates are
+> now authoritative in [`WINNING_PLAN.md`](WINNING_PLAN.md).
 
 **Standing orders (operator, 2026-07-07):** the only goal is to win. No time
 limit. Full rebuilds allowed. The verified submission package is the safe

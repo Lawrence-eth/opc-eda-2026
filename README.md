@@ -6,7 +6,11 @@ Deterministic heuristic optimizer for data-driven SoC floorplanning (21–120 bl
 >
 > **📦 Submission: [`SUBMISSION_PLAN.md`](SUBMISSION_PLAN.md)** — organizer requirements (PyInstaller executable via `op_wrapper.py`), the verified torch-free package (`packaging/`, build with `packaging/build_submission.sh`), and the rebuild gate.
 >
-> **🤝 Handoff: [`HANDOFF.md`](HANDOFF.md)** — complete state, workflows, and ranked open leads for whoever continues the work. **🏁 Active plan: [`docs/CAMPAIGN_GOLDEN.md`](docs/CAMPAIGN_GOLDEN.md).**
+> **🤝 Handoff: [`HANDOFF.md`](HANDOFF.md)** — complete state, workflows, and ranked open leads for whoever continues the work.
+>
+> **🏆 Winning strategy: [`docs/WINNING_PLAN.md`](docs/WINNING_PLAN.md)** —
+> authoritative beta-to-final research plan, promotion gates, architecture,
+> and execution calendar. This supersedes narrower tactical conclusions.
 
 ## Current Result (submission candidate)
 
@@ -52,23 +56,28 @@ contest_solution/
 ├── my_optimizer.py          # THE solver: shelf + dissection portfolio + selector
 ├── dissect.py               # Exact-area dissection engine (CAMPAIGN_GOLDEN)
 ├── topology_polish.py       # Fixed-topology weighted-median HPWL polish (n≤90)
+├── learned_order.py         # Input-only, permutation-equivariant order features
 ├── sequence_pair_sa.py      # Dormant SP-SA floorplanner (historical)
 ├── iccad2026_evaluate.py    # Official evaluator (working copy)
 └── *dataset*.py             # Dataset loaders + tests
 packaging/                   # Submission executable sources + build script + organizers' op_wrapper
-scripts/                     # dissect_eval / fuzz_binary / analyze / audit / release-check / retrieval scan
-tests/                       # Regression + unit tests (78)
-results/                     # Curated result artifacts (integrated_v31.json = current)
+scripts/                     # evaluation, fold/model training, audit, compare, and release tools
+tests/                       # Regression + unit tests (160)
+results/                     # Curated evidence (integrated_v31.json = current public result)
+├── folds/                   # Immutable heavy folds, baselines, selector audits
+└── models/                  # Reproducible learned-model artifacts and provenance
 external/FloorSet/           # Contest framework + datasets (gitignored; see HANDOFF bootstrap)
 docs/
-├── CAMPAIGN_GOLDEN.md       # ACTIVE plan: evidence, milestones, open leads
+├── README.md               # Documentation index and source-of-truth map
+├── WINNING_PLAN.md          # AUTHORITATIVE first-place strategy + execution gates
+├── CAMPAIGN_GOLDEN.md       # Prior dissection campaign: evidence and milestones
 ├── extracted/               # Problem statement v10 + Q&A 2026-06-18 + submission guidelines
 └── archive/                 # Superseded plans/reports (history)
 
 HANDOFF.md                   # Complete handoff: state, workflows, ranked open leads
 CLAUDE.md                    # Agent onboarding + hard rules
 SUBMISSION_PLAN.md           # Submission mechanics + package verification + rebuild gate
-MASTER_PLAYBOOK.md           # Historical strategy (dead-end list still binding)
+MASTER_PLAYBOOK.md           # History (exact failed variants remain dead ends)
 PLAN_EXECUTION_LOG.md        # Chronological experiment log (newest at top)
 PROJECT_STATUS.md            # One-page status summary
 ```
@@ -96,7 +105,7 @@ all workflows: `HANDOFF.md` §5.)
 
 ```bash
 .venv/bin/python -m pytest                          # all tests pass (torch-dependent tests skip if torch absent)
-.venv/bin/python scripts/check_public_release.py    # PASS (defaults: results/integrated_v31.json, --max-score 1.6167)
+.venv/bin/python scripts/check_public_release.py    # PASS (defaults + hashes: results/release_manifest.json)
 ```
 
 ## Documentation
@@ -104,9 +113,11 @@ all workflows: `HANDOFF.md` §5.)
 | Doc | Purpose |
 |-----|---------|
 | [`HANDOFF.md`](HANDOFF.md) | **Complete handoff** — state, workflows, ranked open leads (start here) |
-| [`docs/CAMPAIGN_GOLDEN.md`](docs/CAMPAIGN_GOLDEN.md) | Active campaign — evidence, measured milestones |
+| [`docs/WINNING_PLAN.md`](docs/WINNING_PLAN.md) | **Authoritative winning plan** — research tracks, kill gates, beta/final calendar |
+| [`docs/README.md`](docs/README.md) | Documentation index — active sources of truth vs snapshots/history |
+| [`docs/CAMPAIGN_GOLDEN.md`](docs/CAMPAIGN_GOLDEN.md) | Prior dissection campaign — evidence, measured milestones |
 | [`docs/SUMMARY.md`](docs/SUMMARY.md) | Presentation overview — problem, solution, results, insights |
-| [`MASTER_PLAYBOOK.md`](MASTER_PLAYBOOK.md) | Full strategy & decision trail (authoritative current state at top) |
+| [`MASTER_PLAYBOOK.md`](MASTER_PLAYBOOK.md) | Historical strategy and decision trail |
 | [`PLAN_EXECUTION_LOG.md`](PLAN_EXECUTION_LOG.md) | Chronological experiment log |
 | [`PROJECT_STATUS.md`](PROJECT_STATUS.md) | Status summary |
 | `docs/extracted/` | Contest problem statement + official Q&A |

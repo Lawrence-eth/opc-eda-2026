@@ -75,8 +75,9 @@ Key structural properties (why it beats everything previous):
 
 ## Verification state (2026-07-10)
 
-- 78/78 tests pass; result audit PASS; release gate PASS
-  (defaults: `results/integrated_v31.json`, max-score 1.6167).
+- 160/160 tests pass; result audit PASS; release gate PASS
+  (`results/release_manifest.json` binds the incumbent sources, result,
+  package, score, and FloorSet commit).
 - Submission package rebuilt for AMD64 and parity-verified: 100/100 feasible,
   all 28,200 position scalars and every quality metric exact through the
   organizers' `op_wrapper.py` path. The v31 target binary also passed 100/100

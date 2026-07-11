@@ -1,5 +1,108 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-10 strategic reset + file-disjoint validation — 🏆 EXECUTING
+- Reset the campaign around the final hidden ranking rather than incremental
+  public tuning. Added `docs/WINNING_PLAN.md`: a beta-to-final architecture,
+  quantitative promotion/kill gates, teacher/model/decoder/runtime tracks, and
+  the July 24 / August 21 execution calendar. v31 remains the pushed safety
+  floor, not the assumed final design.
+- Re-audited the official state: FloorSet remains at `aadddcc`; no newer Problem
+  C document is posted; beta remains 2026-07-24 GMT+8 and final remains
+  2026-08-21 GMT+8. Open issue #12 still has no organizer response, so corrupted
+  training MIB labels remain an explicit mask requirement.
+- Added `scripts/build_holdout_folds.py` and regression tests. The primary
+  compatibility manifest, `results/folds/heavy_clean_v1.json`, contains **five
+  source-file-disjoint folds**, each with exactly five input-selected,
+  MIB-compatible cases for every n=100..120: **525 cases / 522 source files**.
+  Construction examined 637,392 layouts and rejected 46,980 cases whose MIB
+  area intervals or hard targets could not share one shape. Free-block golden
+  shapes do not affect admission; golden MIB violations are reported outcomes.
+  Schema-3 manifest SHA-256:
+  `48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895`.
+  Audit correction: 522/525 selected cases are offset 0, so this is a clean
+  compatibility stratum, not a representative raw-data panel.
+- Added `heavy_raw_hash_v1.json`: exactly one label-blind SHA-256-selected
+  offset per source, five cases per n/fold, **525 cases / 525 sources**, all
+  112 offsets represented (6 offset-0). v31 is 525/525 hard-feasible with
+  pooled score **1.848364** versus **1.778134** on the clean stratum. The
+  supplied golden layouts violate MIB in **519/525** raw cases, so raw absolute
+  cost is not a clean target; use paired deltas and excess-soft attribution.
+  Raw manifest SHA-256:
+  `9b4ff6a36e1945718411a83045f598228c2b301fdfa22340e33c297da9ac41ec`.
+- Learned-order evidence motivating the reset: a first input-only ridge model
+  cuts held-out y-order inversions from roughly 27% to 7%. On the original
+  105-case clean heavy set, a learned hybrid plus an **offline golden-baseline
+  oracle** scores **1.788169 vs 1.798552**, selecting 29 official wins and zero
+  losses. This is candidate headroom, not yet a deployable selector result. Golden
+  coordinate guidance through the same safe interface is the stronger teacher
+  upper bound: **1.745767**, 70/105 wins, all feasible.
+- Strategic challenge found during review: the shipped self-normalized selector
+  is feasibility-exact but not official-quality-exact without hidden golden
+  HPWL/area denominators. Different denominators and clamping can reverse an
+  HPWL/area tradeoff. Selector regret, false accepts, missed wins, calibrated
+  baseline/value prediction, Pareto dominance, and abstention are therefore a
+  first-class gate before any oracle-only learned gain can be promoted.
+- Candidate-attribution challenge: public heavy cases never select the five
+  base-width candidates, but unseen heavy cases select them 27/105 times. A
+  seemingly redundant public candidate is therefore not removable. The least
+  used heavy candidate (wf=1.1) wins only 1/105 and is the first defensible
+  learned-candidate replacement target; it still requires all five new folds
+  and paired runtime gates before integration.
+- v31 clean-stratum replay is **525/525 feasible** with pooled RF=1 score
+  **1.778134**. Fold scores are 1.797574 / 1.736764 / 1.749308 / 1.810148 /
+  1.796878. Fold 1 intentionally retains two cases where the supplied golden
+  layout has an MIB violation; the all-case clean-stratum score is primary and
+  the clean subset is reported separately. Roles are frozen: folds 0–2
+  development, fold 3 calibration, fold 4 sealed (v31 baseline only) until beta
+  freeze.
+- Added paired tournament tooling with source-cluster bootstrap, one-case-per-n
+  pseudo-tests, exact fold deltas, feasibility, and tail-risk attribution.
+  Added manifest/source/input/evaluator/solver provenance and pristine-tensor
+  scoring so optimizer mutation cannot invalidate the gate.
+- Audited the shipped primary portfolio selector against the pinned official
+  scorer on pristine snapshots (420 cases / 3,665 candidate options). It
+  matches the oracle in **412/420**, has **0 false accepts**, misses eight local
+  wins, and loses only **0.000202 weighted** versus the primary-pool oracle;
+  worst local regret is 0.03336. Thus selector calibration is mandatory for new candidate
+  distributions but is not the present v31 bottleneck.
+- Added the shared learned-order v3 feature path and deterministic streamed
+  ridge trainer. The 60-scalar input-only schema includes permutation-invariant
+  MIB/cluster hyperedge summaries, weighted pin medians/spreads, fused multi-hop
+  messages, and preplaced-obstacle geometry. It passes permutation, group-ID,
+  scale, schema, provenance, and malformed-input tests; dense n=112 extraction
+  is ~39 ms on the local Neoverse N1. The hardened v4 artifact excludes the
+  union of both heavy panels (**531 unique source files**) and uses 332,592
+  training blocks plus 68,184 validation blocks with every n=100..120 present;
+  validation pairwise inversion is 10.11% x / 8.48% y. Prediction ties count
+  as half-errors, and inference validates the full schema and canonical payload
+  digest. Model SHA-256:
+  `4058105b4fee368c8a7293ba74ff462e652dadee675f08b8dcc91a4a6786e19a`.
+  This remains an unmasked baseline because most nonzero-offset training MIB
+  memberships are incompatible; masked/compatible/hybrid ablations are next.
+- Historical-incumbent replay challenged v31 on folds 0–3. v25 is microscopically
+  better on folds 0/2/3 but loses fold 1: pooled **1.773958 vs v31 1.773449**
+  (delta +0.000510, source-bootstrap CI [-0.000419,+0.001629], pseudo-test win
+  probability 29%). v29 changes only three cases and improves -0.000017 with a
+  CI spanning both signs; v30 and v31 are identical on heavy cases. Since v31
+  also owns the independently proven n<=90 polish, it remains the robust floor
+  by evidence rather than chronology.
+- The completed fold-0 decoder oracle ladder shows the strongest immediate
+  ceiling is not naïve y sorting. A six-config ordinary two-pass control plus
+  offline selector reaches 1.757074 vs v31 1.797574. Golden direct-x adds
+  -0.013490 marginally; golden direct-y adds -0.010887; combined ranks add
+  -0.016685; exact golden prev adds -0.019333. Exact golden rigid shapes win
+  0/105 and score >3 without fallback, proving the current row/frame decoder
+  cannot exploit independent aspect labels. Prioritize learned within-row x and
+  topology/row decoding; do not equate low coordinate error with usable shape.
+- A fixed learned-x configuration (`wf=1.2`, `pin_scale=6`) produced diagnostic
+  final-incumbent proxy deltas of -0.02083 / -0.01155 / -0.01194 / -0.01237 on
+  folds 0–3, with every generated candidate feasible. Its marginal exact
+  headroom over the ordinary same-config control was much smaller and variable.
+  Critical integration correction: that proxy used the saved final v31 layout
+  as its normalization reference, whereas the production primary selector uses
+  its first shelf candidate. These are not equivalent. No learned candidate is
+  promoted until it runs end-to-end behind an explicit final-v31 gate.
+
 ### 2026-07-10 integrated v31 + hardened AMD64 release — ✅ PROMOTED
 - Solver: exact grouping-score fidelity plus one fixed-topology weighted-median
   HPWL sweep for n≤90. Official score **1.6166380548**, 100/100 feasible;

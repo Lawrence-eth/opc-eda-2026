@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "release": "incumbent_v31",
+  "verified_on": "2026-07-10",
+  "solver": {
+    "version": "v31",
+    "commit": "a3db2ac674a8efa7e6172d14974ad1179a0b06a7",
+    "entrypoint": "contest_solution/my_optimizer.py",
+    "sources": {
+      "contest_solution/dissect.py": "44a801b80c7cc166dcafeb7cfaab5b7ff3d899925ef2ece20bbf68ed2a6fb8e6",
+      "contest_solution/my_optimizer.py": "59306dfd7bf91a7caddd59b3ccf81367d3df47af86d5085d0e31fd7ff98613ec",
+      "contest_solution/topology_polish.py": "aca272d7b5463fca6d73e71a228291d890fc1f8c281e97487592bbd22510dad0"
+    }
+  },
+  "public_result": {
+    "path": "results/integrated_v31.json",
+    "sha256": "a6b7a37ebae7c7768c84deaf0e33c17a20cca545ee9a72a457472057273319e0",
+    "total_score": 1.6166380547746888,
+    "num_cases": 100,
+    "num_feasible": 100
+  },
+  "submission_package": {
+    "path": "submission/iccad2026_submission.tar.gz",
+    "sha256": "777f5eac7ac44d2d6025c313c03a0d1597cdef9b31f81257bbe57c4a8fa7caac"
+  },
+  "floorset": {
+    "repository": "https://github.com/IntelLabs/FloorSet.git",
+    "commit": "aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa"
+  }
+}

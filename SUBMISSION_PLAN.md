@@ -1,9 +1,9 @@
 # SUBMISSION PLAN — ICCAD 2026 Problem C (FloorSet Challenge)
 
-**Status date: 2026-07-10. Operator directive: no deadline pressure — the only
-goal is to win.** This document covers the submission *mechanics*: the organizer
+**Status date: 2026-07-10. Operator directive: the only goal is to win; beta and
+final freeze dates remain hard operational constraints.** This document covers the submission *mechanics*: the organizer
 format, the verified package, and the rebuild gate. The active plan for winning
-score improvements is **`docs/CAMPAIGN_GOLDEN.md`** — the package documented here
+score improvements is **`docs/WINNING_PLAN.md`** — the package documented here
 is the safe floor that campaign work must never regress.
 
 ---
@@ -110,10 +110,10 @@ must be established against the leaderboard, not assumed from the public set.**
 | theoretical bound | 1.000 | 0.700 |
 
 **Decision (updated per operator directive):** the verified, feasibility-proof,
-runtime-floor entry is **banked as the floor**; the pursuit of golden-quality
-scores continues without a time limit as **`docs/CAMPAIGN_GOLDEN.md`** (exact-area
-dissection engine), integrated behind per-case best-of gates so the floor can
-only improve.
+runtime-floor entry is **banked as the rollback floor**; the pursuit of
+golden-quality scores continues under **`docs/WINNING_PLAN.md`**, with the
+dissection engine as one safe decoder. Promotion depends on deployable selector
+regret and runtime as well as offline candidate headroom.
 
 ## 5. Path to submission
 
@@ -135,11 +135,11 @@ only improve.
 4. Optional: run `scripts/fuzz_binary.py` on an AMD64 host (or through a
    configured QEMU launcher here) for 2,000+ instances overnight.
 
-**P2 — quality improvements (ACTIVE, no time limit)**
-- Run as `docs/CAMPAIGN_GOLDEN.md`. Every candidate must beat the runtime-adjusted
-  total at median ∈ {1,2,3}s AND keep 100/100, via per-case best-of gates, and pass
-  the §7 rebuild gate before becoming the submission. The playbook's dead-end list
-  remains binding.
+**P2 — quality improvements (ACTIVE)**
+- Run as `docs/WINNING_PLAN.md`. Every candidate must pass the sealed
+  generalization, selection-regret, tail-risk, feasibility, and runtime-scenario
+  gates before the §7 rebuild gate. Historical dead ends bind the exact failed
+  implementations, not materially different learned or structured methods.
 
 **P3 — presentation** — `docs/SUMMARY.md` is current; refresh from the campaign's
 leverage table and progress log when the engine lands.

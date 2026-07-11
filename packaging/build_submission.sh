@@ -18,6 +18,10 @@ PKG="$ROOT/packaging"
 SUB="$ROOT/submission"
 SRC="$SUB/src"
 TARGET_MACHINE="x86_64"
+BUILD_IMAGE="python:3.13.14-trixie@sha256:3c6de64d284d7cd73f91d8a959061da67030b0fbd8b964f8dad96fd73c2110c4"
+PIP_VERSION="26.1.2"
+PYINSTALLER_VERSION="6.21.0"
+PYINSTALLER_HOOKS_VERSION="2026.6"
 
 if [ "${ICCAD_AMD64_BUILD_CONTAINER:-0}" != "1" ] && [ "$(uname -m)" != "$TARGET_MACHINE" ]; then
   if ! command -v docker >/dev/null 2>&1; then
@@ -31,7 +35,7 @@ if [ "${ICCAD_AMD64_BUILD_CONTAINER:-0}" != "1" ] && [ "$(uname -m)" != "$TARGET
     -e HOME=/tmp \
     -v "$ROOT:/workspace" \
     -w /workspace \
-    python:3.13-trixie \
+    "$BUILD_IMAGE" \
     bash packaging/build_submission.sh
   exit 0
 fi
@@ -54,11 +58,15 @@ cp "$PKG/solver_main.py"                    "$SRC/solver_main.py"
 BUILD_VENV="$SUB/.buildvenv-amd64"
 
 echo "== build venv (pyinstaller only, no torch) =="
-if [ ! -x "$BUILD_VENV/bin/pyinstaller" ]; then
-  python3 -m venv "$BUILD_VENV"
-  "$BUILD_VENV/bin/pip" install --quiet --upgrade pip
-  "$BUILD_VENV/bin/pip" install --quiet pyinstaller
-fi
+rm -rf "$BUILD_VENV"
+python3 -m venv "$BUILD_VENV"
+"$BUILD_VENV/bin/pip" install --quiet --upgrade "pip==$PIP_VERSION"
+"$BUILD_VENV/bin/pip" install --quiet \
+  "pyinstaller==$PYINSTALLER_VERSION" \
+  "pyinstaller-hooks-contrib==$PYINSTALLER_HOOKS_VERSION" \
+  "altgraph==0.17.5" \
+  "packaging==26.2" \
+  "setuptools==83.0.0"
 
 echo "== pyinstaller (--onedir for fast startup) =="
 cd "$SUB"

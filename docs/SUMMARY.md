@@ -117,6 +117,6 @@ cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
 # -> Total Score: 1.6166, Feasible: 100
 cd ../../..
-.venv/bin/python -m pytest                          # 78/78
+.venv/bin/python -m pytest                          # 160/160
 .venv/bin/python scripts/check_public_release.py    # PASS
 ```

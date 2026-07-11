@@ -8,14 +8,18 @@ never regress it; improve on top of it behind gates.
 
 1. `HANDOFF.md` — **complete handoff**: current verified state, architecture,
    workflows, ranked open leads. Start here.
-2. `docs/CAMPAIGN_GOLDEN.md` — the active campaign: evidence, milestones (G1…),
+2. `docs/WINNING_PLAN.md` — the authoritative first-place strategy, research
+   tracks, promotion/kill gates, and beta-to-final calendar.
+3. `docs/CAMPAIGN_GOLDEN.md` — the prior tactical campaign: evidence, milestones (G1…),
    and measured gates.
-3. `SUBMISSION_PLAN.md` — the submission mechanics (organizer format, packaging,
+4. `SUBMISSION_PLAN.md` — the submission mechanics (organizer format, packaging,
    verification matrix, rebuild gate). The packaged entry is the safe floor.
-4. `MASTER_PLAYBOOK.md` — the strategy history: 8 quality approaches tried and
-   why each failed. **Its dead-end list (Part II.6) is binding** — do not retry
-   those. Its "v9 is final" conclusion is superseded by the campaign doc.
-5. `docs/SUMMARY.md` — presentation-level overview.
+5. `MASTER_PLAYBOOK.md` — the strategy history: 8 quality approaches tried and
+   why each failed. **Its dead-end list (Part II.6) binds the exact tested
+   implementations** — do not retry them unchanged. A materially different
+   representation/decoder may reopen an idea with explicit evidence and gates.
+   Its "v9 is final" conclusion is superseded by the winning plan.
+6. `docs/SUMMARY.md` — presentation-level overview.
 
 ## Hard rules (from the operator + verified evidence)
 
@@ -58,6 +62,7 @@ never regress it; improve on top of it behind gates.
 | `contest_solution/my_optimizer.py` | THE solver (shelf + dissection portfolio + selector) |
 | `contest_solution/dissect.py` | exact-area dissection engine (the campaign's core) |
 | `contest_solution/topology_polish.py` | fixed-topology HPWL polish enabled for n≤90 |
+| `docs/WINNING_PLAN.md` | authoritative beta/final winning plan |
 | `packaging/` | submission package sources (torch-free executable; see SUBMISSION_PLAN.md) |
 | `scripts/` | evaluation/analysis/audit/fuzz tooling (each has a docstring) |
 | `results/integrated_v31.json` | the CURRENT verified result (1.6166) |

@@ -17,7 +17,7 @@
 | Runtime-adjusted @ median {1, 2, 3}s | **1.175 / 1.132 / 1.132** (paired v30 control) | recompute per §5.3 |
 | Packaged binary | AMD64 Debian 13/Python 3.13; exact 100-case target-arch wrapper parity | `submission/iccad2026_submission.tar.gz` |
 | Binary fuzz | v31 target binary: 100/100 hard-feasible under QEMU; historical v29: 400/400 native | QEMU timings are nonrepresentative; rerun per §5.5 |
-| Tests / audit / release gate | 78/78 PASS / PASS / PASS | `pytest`, §5.6 |
+| Tests / audit / release gate | 160/160 PASS / PASS / PASS | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
 Golden-equivalent play = 1.108 RF=1 / 0.776 at the runtime floor (the golden
@@ -25,17 +25,27 @@ layouts themselves violate soft constraints on 90/100 cases —
 `results/golden_scored.json`). Absolute bound 0.70. **Distance travelled:
 2.718 → 1.617; distance remaining to golden-equivalent: 1.617 → 1.108.**
 
+Research contract: schema-3 `heavy_clean_v1.json` and
+`heavy_raw_hash_v1.json` each contain 525 source-file-disjoint n=100..120
+cases. v31 is 525/525 feasible on both, scoring 1.778134 clean and 1.848364
+raw. The raw supplied golden layouts violate MIB in 519/525 cases, so raw
+results are paired robustness evidence only. `order_ridge_v4.json` excludes
+the union of all 531 held-out sources and reproduces byte-for-byte.
+
 ## 2. Read these, in order
 
 1. `CLAUDE.md` (repo root) — hard rules + environment.
 2. This file.
-3. `docs/CAMPAIGN_GOLDEN.md` — the campaign: evidence, milestones G1–G7 with
+3. `docs/WINNING_PLAN.md` — authoritative first-place architecture, research
+   tracks, cross-validation gates, and beta/final execution calendar.
+4. `docs/CAMPAIGN_GOLDEN.md` — the prior tactical campaign: evidence, milestones G1–G7 with
    measured gates, open leads.
-4. `PLAN_EXECUTION_LOG.md` — every experiment with verdicts, **including the
+5. `PLAN_EXECUTION_LOG.md` — every experiment with verdicts, **including the
    reverted ones** (top of file = most recent).
-5. `SUBMISSION_PLAN.md` — organizer submission format + package + rebuild gate.
-6. `MASTER_PLAYBOOK.md` — historical strategy; **Part II.6 dead-end list is
-   still binding** (do not retry those approaches).
+6. `SUBMISSION_PLAN.md` — organizer submission format + package + rebuild gate.
+7. `MASTER_PLAYBOOK.md` — historical strategy; **Part II.6 binds the exact
+   failed implementations** (do not retry unchanged). New representations may
+   reopen a broad idea only with an explicit mechanism and fresh gates.
 
 ## 3. What the solver is now (architecture)
 
@@ -251,10 +261,10 @@ PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
 `.venv/bin/python scripts/fuzz_binary.py --num 400` → must be 0 failures. On
 this ARM host, pass `--binary` pointing at a configured x86/QEMU launcher.
 
-5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (78 tests) and
+5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (160 tests) and
 `.venv/bin/python scripts/check_public_release.py` (defaults now point at
-`results/integrated_v31.json`, max-score 1.6167 — tighten the threshold when
-you beat it).
+`results/release_manifest.json`, which binds the incumbent sources, result,
+package, score, and FloorSet commit).
 
 ## 6. Open leads, ranked (with the evidence)
 
@@ -310,6 +320,13 @@ of area/HPWL, and don't chase generic "floater" insertion as a primary lead.
 7. **If the field median proves slow** (leaderboard signal): re-enable
    `_REFINE_BUDGET` and/or the full-SA shelf unconditionally — there is
    headroom to spend runtime if everyone else is slow.
+8. **Calibrate candidate selection before expanding the portfolio.** The
+   current self-normalized selector is exact about feasibility but only a
+   proxy for official quality: hidden golden HPWL/area denominators determine
+   the true tradeoff and clamping. Measure its paired regret against an offline
+   oracle on file-disjoint candidate pools, then train an input-only baseline
+   or value model with Pareto-dominance and uncertainty abstention. Do not call
+   an oracle-only candidate win deployable evidence.
 
 **Do NOT retry** (measured dead ends this session): candidate-grid blowups
 (pin_scale × wf), flat +0.25s refinement budgets at median≤3s, clamped gaps in
@@ -343,58 +360,32 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `contest_solution/my_optimizer.py` | THE solver (shelf + dissection portfolio + selector) |
 | `contest_solution/dissect.py` | the campaign engine (exact-area dissection) |
 | `contest_solution/topology_polish.py` | fixed-topology HPWL polish enabled for n≤90 |
+| `docs/WINNING_PLAN.md` | authoritative beta-to-final winning strategy and gates |
 | `contest_solution/sequence_pair_sa.py` | dormant SP-SA (historical) |
 | `packaging/` | executable package sources + build script + organizers' wrapper |
 | `scripts/dissect_eval.py` | fast engine-only eval vs v9 per case |
 | `scripts/fuzz_binary.py` | wrapper-protocol feasibility fuzz on training data |
 | `scripts/match_validation_in_training.py` | retrieval scan (result: 0/1,008,000 — don't redo) |
-| `scripts/check_public_release.py` | release gate (audit + docs scan) |
+| `scripts/build_holdout_folds.py` | schema-3 clean/raw source-disjoint panel builder |
+| `scripts/evaluate_training_holdout.py` | pinned-official fail-closed holdout scorer |
+| `scripts/compare_fold_results.py` | paired bootstrap/pseudo-test promotion gate |
+| `scripts/audit_candidate_selector.py` | pristine official primary-selector regret audit |
+| `scripts/train_order_model.py` | deterministic streamed compact-model trainer |
+| `scripts/check_public_release.py` | manifest-bound release gate |
+| `results/release_manifest.json` | incumbent source/result/package/FloorSet identity |
 | `results/integrated_v31.json` | CURRENT official result (1.6166) |
 | `results/wrapper_v31.json` | AMD64 packaged-binary parity run |
 | `results/training_holdout_low_v31_mib_clean.json` | 140-case low-size MIB-clean generalization gate |
-| `results/integrated_v29.json` | historical pre-v30 result (1.6181) |
-| `results/wrapper_v29.json` | historical packaged-binary parity run (1.618110) |
-| `results/integrated_v28.json` | previous official result (1.6190) |
-| `results/wrapper_v28.json` | previous packaged-binary parity run (1.619032) |
-| `results/integrated_v27.json` | previous official result (1.6207) |
-| `results/wrapper_v27.json` | previous packaged-binary parity run (1.620687) |
-| `results/integrated_v26.json` | previous official result (1.6225) |
-| `results/wrapper_v26.json` | previous packaged-binary parity run (1.622518) |
-| `results/integrated_v25.json` | previous official result (1.6328) |
-| `results/wrapper_v25.json` | previous packaged-binary parity run (1.632775) |
-| `results/integrated_v24.json` | previous official result (1.6328) |
-| `results/wrapper_v24.json` | previous packaged-binary parity run (1.632775) |
-| `results/integrated_v23.json` | previous official result (1.6385) |
-| `results/wrapper_v23.json` | previous packaged-binary parity run (1.638545) |
-| `results/integrated_v22.json` | previous official result (1.6483) |
-| `results/wrapper_v22.json` | previous packaged-binary parity run (1.648337) |
-| `results/integrated_v21.json` | previous official result (1.6507) |
-| `results/wrapper_v21.json` | previous packaged-binary parity run (1.650715) |
-| `results/integrated_v20.json` | previous official result (1.6568) |
-| `results/wrapper_v20.json` | previous packaged-binary parity run (1.656802) |
-| `results/integrated_v18.json` | previous official result (1.6845) |
-| `results/wrapper_v18.json` | previous packaged-binary parity run (1.684492) |
-| `results/integrated_v17.json` | previous official result (1.6960) |
-| `results/wrapper_v17.json` | previous packaged-binary parity run (1.696014) |
-| `results/integrated_v16.json` | previous official result (1.7027) |
-| `results/wrapper_v16.json` | previous packaged-binary parity run (1.702727) |
-| `results/integrated_v15.json` | previous official result (1.7368) |
-| `results/wrapper_v15.json` | previous packaged-binary parity run (1.736800) |
-| `results/integrated_v14.json` | previous official result (1.7827) |
-| `results/wrapper_v14.json` | previous packaged-binary parity run (1.782689) |
-| `results/integrated_v13.json` | previous official result (1.7903) |
-| `results/wrapper_v13.json` | previous packaged-binary parity run (1.790330) |
-| `results/integrated_v12.json` | previous official result (1.7952) |
-| `results/integrated_v11.json` | previous official result (1.7978) |
-| `results/integrated_v10.json` | previous official result (1.8074) |
-| `results/wrapper_v10.json` | previous packaged-binary parity run (1.807413) |
+| `results/folds/README.md` | clean/raw evaluation contract, hashes, and commands |
+| `results/models/order_ridge_v4.json` | deterministic unmasked learned-order baseline |
 | `results/v9_locked.json` | pre-campaign locked result (2.7182) |
 | `results/golden_scored.json` | golden layouts scored officially (the target) |
 | `results/golden_structure.json` | mined golden structure priors + scorer cross-check |
 | `results/enriched_diagnostics.json` | v31 sidecar with official boundary/grouping/MIB attribution |
 | `results/training_holdout_v30_mib_clean.json` | 105-case hidden-quality/generalization gate |
 | `results/retrieval_scan.json` | proof hidden set can't be looked up |
-| `docs/CAMPAIGN_GOLDEN.md` | campaign plan + measured milestones |
+| `PLAN_EXECUTION_LOG.md` | complete chronological release/experiment history |
+| `docs/CAMPAIGN_GOLDEN.md` | prior campaign + measured milestones |
 | `docs/extracted/` | problem v10 + Q&A 06-18 + submission guidelines (text) |
 | known cruft | `dissect.py` has unused `_fill_rows`/`_fill_column` (pre-rewrite leftovers); `n6_poc.py`, `_skyline_*` are historical |
 

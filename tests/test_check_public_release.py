@@ -1,7 +1,62 @@
 import json
+import hashlib
 from pathlib import Path
 
 from scripts import check_public_release
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
+    source = tmp_path / "contest_solution" / "my_optimizer.py"
+    source.parent.mkdir()
+    source.write_text("def solve():\n    return []\n", encoding="utf-8")
+
+    result = tmp_path / "results" / "incumbent.json"
+    result.parent.mkdir()
+    result.write_text(
+        json.dumps(
+            {
+                "total_score": 2.0,
+                "summary": {"num_tests": 1, "num_feasible": 1},
+                "test_results": [{"is_feasible": True}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    package = tmp_path / "submission" / "submission.tar.gz"
+    package.parent.mkdir()
+    package.write_bytes(b"release package")
+
+    manifest = {
+        "schema_version": 1,
+        "release": "incumbent_test",
+        "verified_on": "2026-07-10",
+        "solver": {
+            "version": "test",
+            "commit": "1" * 40,
+            "entrypoint": "contest_solution/my_optimizer.py",
+            "sources": {"contest_solution/my_optimizer.py": _sha256(source)},
+        },
+        "public_result": {
+            "path": "results/incumbent.json",
+            "sha256": _sha256(result),
+            "total_score": 2.0,
+            "num_cases": 1,
+            "num_feasible": 1,
+        },
+        "submission_package": {
+            "path": "submission/submission.tar.gz",
+            "sha256": _sha256(package),
+        },
+        "floorset": {
+            "repository": "https://github.com/IntelLabs/FloorSet.git",
+            "commit": "2" * 40,
+        },
+    }
+    return manifest, source, result, package
 
 
 def test_public_safe_scan_uses_word_boundaries(tmp_path):
@@ -35,6 +90,53 @@ def test_optimizer_sync_detects_mismatch(tmp_path):
 
     assert not ok
     assert any("optimizer copies differ" in message for message in messages)
+
+
+def test_release_manifest_validates_artifact_bindings_and_supplies_defaults(tmp_path):
+    manifest, _, result, _ = _release_fixture(tmp_path)
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+    defaults = check_public_release.release_manifest_defaults(manifest, tmp_path)
+
+    assert ok
+    assert errors == []
+    assert defaults == (result, 1, 2.0, tmp_path / "contest_solution" / "my_optimizer.py")
+
+
+def test_release_manifest_rejects_artifact_drift(tmp_path):
+    manifest, source, _, package = _release_fixture(tmp_path)
+    source.write_text("def solve():\n    return [1]\n", encoding="utf-8")
+    package.write_bytes(b"stale package")
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+
+    assert not ok
+    assert any("solver.sources" in error and "hash mismatch" in error for error in errors)
+    assert any("submission_package.sha256 hash mismatch" in error for error in errors)
+
+
+def test_release_manifest_rejects_result_metadata_drift(tmp_path):
+    manifest, _, _, _ = _release_fixture(tmp_path)
+    manifest["public_result"]["total_score"] = 1.5
+    manifest["public_result"]["num_feasible"] = 0
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+
+    assert not ok
+    assert any("public_result.total_score does not match" in error for error in errors)
+    assert any("public_result.num_feasible does not match" in error for error in errors)
 
 
 def test_run_checks_combines_audit_scan_and_sync(tmp_path, monkeypatch):

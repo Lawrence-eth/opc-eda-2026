@@ -2,8 +2,9 @@
 """Run public-release checks for FloorSet result and documentation updates.
 
 This combines the cheap guards that should pass before publishing repository
-changes: result-artifact audit, public-safe wording scan, and optional optimizer
-copy synchronization against an official contest checkout.
+changes: release-manifest integrity, result-artifact audit, public-safe wording
+scan, and optional optimizer copy synchronization against an official contest
+checkout.
 
 Examples:
     python scripts/check_public_release.py
@@ -13,19 +14,23 @@ Examples:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import filecmp
+import hashlib
+import json
+import math
 import re
+import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts import audit_results, compare_results
 
-DEFAULT_RESULT = ROOT / "results" / "integrated_v31.json"
-DEFAULT_PUBLIC_OPTIMIZER = ROOT / "contest_solution" / "my_optimizer.py"
+DEFAULT_MANIFEST = ROOT / "results" / "release_manifest.json"
 DEFAULT_SCAN_PATHS = (
     ROOT / "README.md",
     ROOT / "PROJECT_STATUS.md",
@@ -65,6 +70,220 @@ TEXT_SUFFIXES = {
     ".yaml",
     ".yml",
 }
+
+SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def load_release_manifest(path: Path) -> dict[str, Any]:
+    """Load a release manifest with a useful error for malformed input."""
+
+    try:
+        with path.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"cannot load release manifest {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"release manifest {path} must contain a JSON object")
+    return data
+
+
+def _resolve_repo_path(root: Path, value: Any, field: str) -> Path:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field} must be a non-empty repository-relative path")
+    relative = Path(value)
+    if relative.is_absolute():
+        raise ValueError(f"{field} must be repository-relative, got {value!r}")
+    root = root.resolve()
+    resolved = (root / relative).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{field} escapes the repository root: {value!r}") from exc
+    return resolved
+
+
+def _manifest_section(manifest: dict[str, Any], name: str) -> dict[str, Any]:
+    section = manifest.get(name)
+    if not isinstance(section, dict):
+        raise ValueError(f"release manifest field {name!r} must be an object")
+    return section
+
+
+def release_manifest_defaults(
+    manifest: dict[str, Any], root: Path = ROOT
+) -> tuple[Path, int, float, Path]:
+    """Return CLI defaults supplied by a structurally valid release manifest."""
+
+    result = _manifest_section(manifest, "public_result")
+    solver = _manifest_section(manifest, "solver")
+    result_path = _resolve_repo_path(root, result.get("path"), "public_result.path")
+    optimizer_path = _resolve_repo_path(root, solver.get("entrypoint"), "solver.entrypoint")
+    num_cases = result.get("num_cases")
+    score = result.get("total_score")
+    if isinstance(num_cases, bool) or not isinstance(num_cases, int) or num_cases <= 0:
+        raise ValueError("public_result.num_cases must be a positive integer")
+    if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(float(score)):
+        raise ValueError("public_result.total_score must be a finite number")
+    return result_path, num_cases, float(score), optimizer_path
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _check_file_hash(path: Path, expected: Any, field: str, errors: list[str]) -> None:
+    if not isinstance(expected, str) or SHA256_RE.fullmatch(expected) is None:
+        errors.append(f"{field} must be a lowercase SHA-256 digest")
+        return
+    if not path.is_file():
+        errors.append(f"{field} file is missing: {path}")
+        return
+    actual = _sha256_file(path)
+    if actual != expected:
+        errors.append(f"{field} hash mismatch for {path}: expected {expected}, got {actual}")
+
+
+def validate_release_manifest(
+    manifest: dict[str, Any],
+    root: Path = ROOT,
+    *,
+    verify_solver_commit: bool = True,
+) -> tuple[bool, list[str]]:
+    """Validate release metadata and every incumbent artifact binding."""
+
+    errors: list[str] = []
+    if manifest.get("schema_version") != 1:
+        errors.append("schema_version must be 1")
+    if not isinstance(manifest.get("release"), str) or not manifest.get("release"):
+        errors.append("release must be a non-empty string")
+    verified_on = manifest.get("verified_on")
+    try:
+        if not isinstance(verified_on, str):
+            raise ValueError
+        dt.date.fromisoformat(verified_on)
+    except ValueError:
+        errors.append("verified_on must be an ISO 8601 calendar date")
+
+    try:
+        solver = _manifest_section(manifest, "solver")
+    except ValueError as exc:
+        errors.append(str(exc))
+        solver = {}
+    commit = solver.get("commit")
+    if not isinstance(commit, str) or GIT_COMMIT_RE.fullmatch(commit) is None:
+        errors.append("solver.commit must be a lowercase 40-character Git commit")
+    if not isinstance(solver.get("version"), str) or not solver.get("version"):
+        errors.append("solver.version must be a non-empty string")
+    sources = solver.get("sources")
+    if not isinstance(sources, dict) or not sources:
+        errors.append("solver.sources must be a non-empty path-to-SHA-256 object")
+        sources = {}
+    entrypoint = solver.get("entrypoint")
+    if not isinstance(entrypoint, str) or entrypoint not in sources:
+        errors.append("solver.entrypoint must name one of solver.sources")
+
+    commit_valid = isinstance(commit, str) and GIT_COMMIT_RE.fullmatch(commit) is not None
+    for source_name, expected_hash in sources.items():
+        try:
+            source_path = _resolve_repo_path(root, source_name, f"solver.sources[{source_name!r}]")
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        _check_file_hash(source_path, expected_hash, f"solver.sources[{source_name!r}]", errors)
+        if verify_solver_commit and commit_valid and isinstance(expected_hash, str) and SHA256_RE.fullmatch(expected_hash):
+            completed = subprocess.run(
+                ["git", "-C", str(root), "show", f"{commit}:{source_name}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.returncode != 0:
+                errors.append(f"solver commit does not contain {source_name!r} at {commit}")
+            else:
+                committed_hash = hashlib.sha256(completed.stdout).hexdigest()
+                if committed_hash != expected_hash:
+                    errors.append(
+                        f"solver commit hash mismatch for {source_name}: "
+                        f"expected {expected_hash}, got {committed_hash}"
+                    )
+
+    try:
+        public_result = _manifest_section(manifest, "public_result")
+        result_path = _resolve_repo_path(root, public_result.get("path"), "public_result.path")
+    except ValueError as exc:
+        errors.append(str(exc))
+        public_result = {}
+        result_path = None
+    if result_path is not None:
+        _check_file_hash(result_path, public_result.get("sha256"), "public_result.sha256", errors)
+        if result_path.is_file():
+            try:
+                result_data = audit_results.load_result(result_path)
+            except (OSError, json.JSONDecodeError, SystemExit) as exc:
+                errors.append(f"cannot inspect public result {result_path}: {exc}")
+            else:
+                actual_score = result_data.get("total_score")
+                expected_score = public_result.get("total_score")
+                if (
+                    isinstance(actual_score, bool)
+                    or not isinstance(actual_score, (int, float))
+                    or isinstance(expected_score, bool)
+                    or not isinstance(expected_score, (int, float))
+                    or not math.isclose(float(actual_score), float(expected_score), rel_tol=0.0, abs_tol=1e-12)
+                ):
+                    errors.append(
+                        f"public_result.total_score does not match {result_path}: "
+                        f"expected {expected_score!r}, got {actual_score!r}"
+                    )
+                cases = result_data.get("test_results")
+                expected_cases = public_result.get("num_cases")
+                actual_cases = len(cases) if isinstance(cases, list) else None
+                if isinstance(expected_cases, bool) or not isinstance(expected_cases, int) or actual_cases != expected_cases:
+                    errors.append(
+                        f"public_result.num_cases does not match {result_path}: "
+                        f"expected {expected_cases!r}, got {actual_cases!r}"
+                    )
+                expected_feasible = public_result.get("num_feasible")
+                actual_feasible = (
+                    sum(case.get("is_feasible") is True for case in cases if isinstance(case, dict))
+                    if isinstance(cases, list)
+                    else None
+                )
+                if (
+                    isinstance(expected_feasible, bool)
+                    or not isinstance(expected_feasible, int)
+                    or actual_feasible != expected_feasible
+                ):
+                    errors.append(
+                        f"public_result.num_feasible does not match {result_path}: "
+                        f"expected {expected_feasible!r}, got {actual_feasible!r}"
+                    )
+
+    try:
+        package = _manifest_section(manifest, "submission_package")
+        package_path = _resolve_repo_path(root, package.get("path"), "submission_package.path")
+    except ValueError as exc:
+        errors.append(str(exc))
+    else:
+        _check_file_hash(package_path, package.get("sha256"), "submission_package.sha256", errors)
+
+    try:
+        floorset = _manifest_section(manifest, "floorset")
+    except ValueError as exc:
+        errors.append(str(exc))
+        floorset = {}
+    floorset_commit = floorset.get("commit")
+    if not isinstance(floorset_commit, str) or GIT_COMMIT_RE.fullmatch(floorset_commit) is None:
+        errors.append("floorset.commit must be a lowercase 40-character Git commit")
+    if not isinstance(floorset.get("repository"), str) or not floorset.get("repository"):
+        errors.append("floorset.repository must be a non-empty string")
+
+    return not errors, errors
 
 
 def _iter_files(paths: Iterable[Path]) -> Iterable[Path]:
@@ -137,9 +356,22 @@ def run_checks(
     public_optimizer: Path,
     contest_optimizer: Path | None,
     candidate_json: Path | None,
+    release_manifest: dict[str, Any] | None = None,
+    manifest_root: Path = ROOT,
+    verify_manifest_commit: bool = True,
 ) -> tuple[bool, list[str]]:
     messages: list[str] = []
     ok = True
+
+    if release_manifest is not None:
+        manifest_ok, manifest_errors = validate_release_manifest(
+            release_manifest,
+            manifest_root,
+            verify_solver_commit=verify_manifest_commit,
+        )
+        messages.append(f"release_manifest={'PASS' if manifest_ok else 'FAIL'}")
+        messages.extend(f"  error: {error}" for error in manifest_errors)
+        ok = ok and manifest_ok
 
     data = audit_results.load_result(result_json)
     audit_ok, audit_errors, audit_warnings = audit_results.audit_result(
@@ -189,28 +421,63 @@ def run_checks(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--result", type=Path, default=DEFAULT_RESULT, help="Published full result JSON")
-    parser.add_argument("--expected-cases", type=int, default=100, help="Expected number of evaluated cases")
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=DEFAULT_MANIFEST,
+        help="Incumbent release manifest supplying validated defaults",
+    )
+    parser.add_argument(
+        "--result",
+        type=Path,
+        default=None,
+        help="Published full result JSON (default: public_result.path in manifest)",
+    )
+    parser.add_argument(
+        "--expected-cases",
+        type=int,
+        default=None,
+        help="Expected number of evaluated cases (default: public_result.num_cases in manifest)",
+    )
     parser.add_argument(
         "--max-score",
         type=float,
-        default=1.6167,
-        help="Maximum allowed published score (current integrated = 1.616638)",
+        default=None,
+        help="Maximum allowed published score (default: public_result.total_score in manifest)",
     )
     parser.add_argument("--allow-missing-positions", action="store_true", help="Do not require saved rectangles")
-    parser.add_argument("--public-optimizer", type=Path, default=DEFAULT_PUBLIC_OPTIMIZER)
+    parser.add_argument(
+        "--public-optimizer",
+        type=Path,
+        default=None,
+        help="Public optimizer source (default: solver.entrypoint in manifest)",
+    )
     parser.add_argument("--contest-optimizer", type=Path, default=None, help="Optional active contest optimizer to compare")
     parser.add_argument("--candidate", type=Path, default=None, help="Optional candidate full-result JSON to compare")
     args = parser.parse_args()
 
+    try:
+        manifest = load_release_manifest(args.manifest)
+        manifest_result, manifest_cases, manifest_score, manifest_optimizer = release_manifest_defaults(manifest)
+    except ValueError as exc:
+        print("Public release check: FAIL")
+        print(f"release_manifest=FAIL\n  error: {exc}")
+        sys.exit(1)
+
+    result_json = args.result if args.result is not None else manifest_result
+    expected_cases = args.expected_cases if args.expected_cases is not None else manifest_cases
+    max_score = args.max_score if args.max_score is not None else manifest_score
+    public_optimizer = args.public_optimizer if args.public_optimizer is not None else manifest_optimizer
+
     ok, messages = run_checks(
-        result_json=args.result,
-        expected_cases=args.expected_cases,
-        max_score=args.max_score,
+        result_json=result_json,
+        expected_cases=expected_cases,
+        max_score=max_score,
         require_positions=not args.allow_missing_positions,
-        public_optimizer=args.public_optimizer,
+        public_optimizer=public_optimizer,
         contest_optimizer=args.contest_optimizer,
         candidate_json=args.candidate,
+        release_manifest=manifest,
     )
     print("Public release check: " + ("PASS" if ok else "FAIL"))
     for message in messages:
