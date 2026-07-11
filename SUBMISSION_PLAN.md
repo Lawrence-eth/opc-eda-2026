@@ -1,6 +1,6 @@
 # SUBMISSION PLAN — ICCAD 2026 Problem C (FloorSet Challenge)
 
-**Status date: 2026-07-10. Operator directive: the only goal is to win; beta and
+**Status date: 2026-07-11. Operator directive: the only goal is to win; beta and
 final freeze dates remain hard operational constraints.** This document covers the submission *mechanics*: the organizer
 format, the verified package, and the rebuild gate. The active plan for winning
 score improvements is **`docs/WINNING_PLAN.md`** — the package documented here
@@ -23,7 +23,7 @@ submission that includes **process spawn + imports + JSON I/O every case**. A bi
 that bundles torch pays seconds of import per case and forfeits the 0.7× runtime
 floor that v9's whole strategy banks on. The package therefore had to be torch-free.
 
-## 2. What was verified on 2026-07-07 (all on a fresh 2-core VM, from a clean clone)
+## 2. Verification history (through 2026-07-11)
 
 | Check | Result |
 |---|---|
@@ -36,7 +36,7 @@ floor that v9's whole strategy banks on. The package therefore had to be torch-f
 | Binary fuzz on 400 random training instances (exact wrapper protocol) | **400/400 hard-feasible**, avg 0.205s, max 0.705s |
 | **Re-verified after CAMPAIGN_GOLDEN G4 engine** (2026-07-07): wrapper + rebuilt binary | **2.120411, 100/100, 0 position diffs** vs in-process; avg 0.33s/case incl. spawn (max 0.96s); fuzz 400/400 feasible (max 1.15s) |
 | **Historical (2026-07-09, integrated v29)**: wrapper + rebuilt binary | **1.618110, 100/100, 0 position diffs** vs `results/integrated_v29.json`; avg 0.218s/case incl. spawn (p95 0.407s, max 0.628s); fuzz 400/400 feasible |
-| **CURRENT (2026-07-10, integrated v31)** | **1.616638, 100/100**; AMD64 Debian 13/Python 3.13 package has exact target-arch wrapper parity (all 28,200 position scalars and every quality metric match) |
+| **CURRENT (2026-07-11, integrated v32)** | **1.615379, 100/100**; AMD64 Debian 13/Python 3.13 package has exact official-wrapper parity (all 28,200 position scalars and every quality metric match) |
 
 **2026-07-10 release blocker fixed:** the earlier archive was built
 on an ARM64 host even though the evaluation machine is an Intel Xeon.
@@ -46,7 +46,7 @@ Debian 13/Python 3.13 container when the host is not x86-64 and rejects any
 artifact whose ELF machine is not AMD x86-64. The current archive passes the
 guard; only a package produced by this build may be uploaded.
 Current hardened archive SHA-256:
-`777f5eac7ac44d2d6025c313c03a0d1597cdef9b31f81257bbe57c4a8fa7caac`.
+`72d8fc5b6c4831a6af3547bacc16f19c800f1991b413500efbe467db8aec72c3`.
 
 Fixed during packaging: `torch_stub.py` originally aliased `float`, shadowing the
 builtin inside the stub (all cases silently fell back → score 9.98). Caught by the
@@ -125,10 +125,11 @@ regret and runtime as well as offline candidate headroom.
    re-run the package once (`--evaluate op_wrapper.py`) as a checksum-level sanity pass.
 
 **P1 — final hardening (done unless noted)**
-1. ✅ Package built + 100-case target-arch equivalence verified. The v31 target
-   binary also passed 100/100 random training instances under QEMU; timings are
-   nonrepresentative. The latest 400-case native binary fuzz is from v29, and
-   v31's new low-size path passed 140/140 MIB-clean held-out cases.
+1. ✅ v32 package built + 100-case target-arch equivalence verified through the
+   organizers' wrapper. The v31 target binary also passed 100/100 random
+   training instances under QEMU; timings are nonrepresentative. The latest
+   400-case native binary fuzz is from v29, and v31's low-size path passed
+   140/140 MIB-clean held-out cases.
 2. ✅ Cross-hardware determinism (2-core VM reproduces 48-core results exactly).
 3. ✅ Build is now guarded to AMD x86-64 on Debian 13/Python 3.13 and rejects
    a wrong-architecture ELF before packaging.
@@ -148,8 +149,8 @@ leverage table and progress log when the engine lands.
 
 | Risk | Assessment | Mitigation |
 |---|---|---|
-| Field median runtime < 0.8s (floor not reached) | Unlikely: every executable submission pays spawn per case; ML entries pay torch/model-load per case (seconds) | Even at RF=1 exactly, 1.6166 with 100/100 is a sound entry |
-| Hidden-set infeasibility | Historical 5,000-instance solve() fuzz + v29 400-instance native binary fuzz had 0 failures; v31 has exact wrapper parity, 100/100 target-binary QEMU fuzz, and a 140/140 clean holdout; crash-proof fallback remains | Run a larger v31 fuzz natively before final upload |
+| Field median runtime < 0.8s (floor not reached) | Unlikely: every executable submission pays spawn per case; ML entries pay torch/model-load per case (seconds) | Even at RF=1 exactly, 1.6154 with 100/100 is a sound entry |
+| Hidden-set infeasibility | Historical 5,000-instance solve() fuzz + v29 400-instance native binary fuzz had 0 failures; v32 has exact wrapper parity and 1,050/1,050 feasible tournament evaluations; v31 also has 100/100 target-binary QEMU fuzz and a 140/140 clean holdout; crash-proof fallback remains | Run a larger current-engine fuzz natively before final upload |
 | Eval-host incompatibility (glibc/arch) | Prior ARM64 artifact was invalid; build now targets AMD x86-64 on Debian 13 and verifies the ELF header | Never upload an archive that has not passed the guarded build and target-host smoke test |
 | Organizers run source instead of binary | Source fallback in package is the same solver, stdlib-only | README documents both paths |
 | Wrapper protocol drift (organizers change op_wrapper) | We ship their exact wrapper + a schema-conform binary | Monitor the FloorSet repo/Q&A until deadline |
@@ -162,7 +163,7 @@ cp -r submission/dist packaging/op_wrapper.py external/FloorSet/iccad2026contest
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate op_wrapper.py \
     --output ../../../results/wrapper_check.json
-# REQUIRED: Total Score 1.6166, Feasible 100, and 0 position diffs vs results/integrated_v31.json
+# REQUIRED: Total Score 1.615379, Feasible 100, and 0 position diffs vs results/integrated_v32.json
 cd ../../..
 # On an AMD64 host (or with --binary set to a configured x86 launcher):
 .venv/bin/python scripts/fuzz_binary.py --num 400   # REQUIRED: 0 failures

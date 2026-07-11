@@ -1,7 +1,7 @@
 # FloorSet winning plan
 
-**Status:** active strategic plan, updated 2026-07-11. v32 has cleared the
-pre-beta promotion tournament; v31 remains the verified rollback floor. The objective is first
+**Status:** active strategic plan, updated 2026-07-11. v32 is the packaged,
+release-gated pre-beta incumbent; v31 remains the verified rollback floor. The objective is first
 place on the hidden final set.  Every intermediate metric exists only to make
 that outcome more likely.
 
@@ -384,7 +384,7 @@ decoder must also improve shape, obstacle use, MIB, and cluster structure.
 7. Verify beta submission-count limits and exactly which quality/runtime detail
    the leaderboard reveals; do not plan a Bayesian update around unavailable
    observations.
-8. Promote and push only a fully gated checkpoint; otherwise retain v31 and
+8. Promote and push only a fully gated checkpoint; otherwise retain v32 and
    iterate.
 
 ## 8. Repository and operational discipline

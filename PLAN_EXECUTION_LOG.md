@@ -20,6 +20,14 @@
   improves **1.7968780102 → 1.7864600720** and raw improves **1.8826113230 →
   1.8700174712**, both with 100% bootstrap improvement probability and
   105/105 feasibility.
+- Release hardening: the guarded Debian 13/Python 3.13 AMD64 build produced
+  archive SHA-256
+  `72d8fc5b6c4831a6af3547bacc16f19c800f1991b413500efbe467db8aec72c3`.
+  Through the organizers' `op_wrapper.py`, the packaged
+  binary reproduced the **1.6153787745** score, 100/100 feasibility, every
+  quality field, and all 28,200 position scalars exactly. Runtime from this
+  ARM-host AMD64 emulation pass is deliberately excluded from performance
+  claims.
 - Rejected challengers: broad additive two-pass and one-pass candidates failed
   the pessimistic 1s runtime gate; unconditional wf replacement and p1 swaps
   regressed clean folds; a global Shapely-overlap grouping-fidelity adjustment

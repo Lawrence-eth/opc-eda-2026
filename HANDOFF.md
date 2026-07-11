@@ -15,9 +15,9 @@
 | Feasible | **100 / 100** | same |
 | Runtime | paired avg **0.196s/case** (v31 control: 0.196s) | `results/v32_runtime_summary.json` |
 | Runtime-adjusted @ median {1, 2, 3}s | **1.1951 / 1.1312 / 1.1308**, all better than paired v31 | same |
-| Packaged binary | v32 rebuild in progress; v31 AMD64 rollback remains verified | `submission/iccad2026_submission.tar.gz` |
+| Packaged binary | v32 AMD64 build; exact 100-case official-wrapper parity | `submission/iccad2026_submission.tar.gz` |
 | Binary fuzz | v31 target binary: 100/100 hard-feasible under QEMU; historical v29: 400/400 native | QEMU timings are nonrepresentative; rerun per §5.5 |
-| Tests / audit / release gate | source and tournament PASS; v32 package/manifest refresh in progress | `pytest`, §5.6 |
+| Tests / audit / release gate | source, tournament, package parity, and manifest PASS | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
 Golden-equivalent play = 1.108 RF=1 / 0.776 at the runtime floor (the golden
@@ -248,11 +248,12 @@ def radj(path, med):
         c=10.0 if not r['is_feasible'] else min(base*max(0.7,(r['runtime_seconds']/med)**0.3),10-1e-6)
         tot+=c*w
     return tot/Z
-for m in (0.5,1,2,3):
-        print(m, radj('results/<candidate>.json', m), radj('results/integrated_v31.json', m))
+for m in (0.25,0.5,1,2,3):
+        print(m, radj('results/<candidate>.json', m), radj('results/integrated_v32.json', m))
 EOF
 ```
-KEEP iff it beats the incumbent at median ∈ {1,2,3}s AND stays 100/100.
+KEEP iff it beats the incumbent at median ∈ {0.25,0.5,1,2,3}s AND stays
+100/100.
 
 5.4 **Package rebuild + parity gate** (MANDATORY before any resubmission):
 ```bash
@@ -380,8 +381,8 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `scripts/train_order_model.py` | deterministic streamed compact-model trainer |
 | `scripts/check_public_release.py` | manifest-bound release gate |
 | `results/release_manifest.json` | incumbent source/result/package/FloorSet identity |
-| `results/integrated_v31.json` | CURRENT official result (1.6166) |
-| `results/wrapper_v31.json` | AMD64 packaged-binary parity run |
+| `results/integrated_v32.json` | CURRENT official result (1.615379) |
+| `results/wrapper_v32_amd64.json` | AMD64 packaged-binary official-wrapper parity run |
 | `results/training_holdout_low_v31_mib_clean.json` | 140-case low-size MIB-clean generalization gate |
 | `results/folds/README.md` | clean/raw evaluation contract, hashes, and commands |
 | `results/models/order_ridge_v4.json` | deterministic unmasked learned-order baseline |

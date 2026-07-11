@@ -81,9 +81,9 @@ Key structural properties (why it beats everything previous):
 
 ## Verification state (2026-07-11)
 
-- The v32 source tests and official evaluation gates pass. The release
-  manifest/package are being refreshed to bind the promoted sources, result,
-  score, and pinned FloorSet commit.
+- The v32 source tests, official evaluation, and release gates pass. The
+  manifest binds solver commit `d8f2c19`, the promoted result, the AMD64
+  archive, and pinned FloorSet commit `aadddcc`.
 - Submission package rebuilt for AMD64 and parity-verified: 100/100 feasible,
   all 28,200 position scalars and every quality metric exact through the
   organizers' `op_wrapper.py` path. The v31 target binary also passed 100/100
