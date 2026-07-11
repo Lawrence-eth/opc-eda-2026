@@ -1,7 +1,7 @@
 # HANDOFF — ICCAD 2026 Problem C (FloorSet Challenge)
 
 > For the next agent taking over this project. Current head was measured on
-> 2026-07-10 after integrated v31. Nothing is aspirational.
+> 2026-07-11 after the v32 promotion tournament. Nothing is aspirational.
 > Operator's standing orders: **the only goal is to WIN. No time limit. Never
 > regress the verified state.**
 
@@ -11,24 +11,26 @@
 
 | Metric | Value | Artifact |
 |---|---|---|
-| Official validation score (RF=1) | **1.6166** | `results/integrated_v31.json` |
+| Official validation score (RF=1) | **1.615379** | `results/integrated_v32.json` |
 | Feasible | **100 / 100** | same |
-| Runtime | avg 0.179s/case, max 0.567s (in-process confirmation) | same |
-| Runtime-adjusted @ median {1, 2, 3}s | **1.175 / 1.132 / 1.132** (paired v30 control) | recompute per §5.3 |
-| Packaged binary | AMD64 Debian 13/Python 3.13; exact 100-case target-arch wrapper parity | `submission/iccad2026_submission.tar.gz` |
+| Runtime | paired avg **0.196s/case** (v31 control: 0.196s) | `results/v32_runtime_summary.json` |
+| Runtime-adjusted @ median {1, 2, 3}s | **1.1951 / 1.1312 / 1.1308**, all better than paired v31 | same |
+| Packaged binary | v32 rebuild in progress; v31 AMD64 rollback remains verified | `submission/iccad2026_submission.tar.gz` |
 | Binary fuzz | v31 target binary: 100/100 hard-feasible under QEMU; historical v29: 400/400 native | QEMU timings are nonrepresentative; rerun per §5.5 |
-| Tests / audit / release gate | 160/160 PASS / PASS / PASS | `pytest`, §5.6 |
+| Tests / audit / release gate | source and tournament PASS; v32 package/manifest refresh in progress | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
 Golden-equivalent play = 1.108 RF=1 / 0.776 at the runtime floor (the golden
 layouts themselves violate soft constraints on 90/100 cases —
 `results/golden_scored.json`). Absolute bound 0.70. **Distance travelled:
-2.718 → 1.617; distance remaining to golden-equivalent: 1.617 → 1.108.**
+2.718 → 1.615; distance remaining to golden-equivalent: 1.615 → 1.108.**
 
 Research contract: schema-3 `heavy_clean_v1.json` and
 `heavy_raw_hash_v1.json` each contain 525 source-file-disjoint n=100..120
-cases. v31 is 525/525 feasible on both, scoring 1.778134 clean and 1.848364
-raw. The raw supplied golden layouts violate MIB in 519/525 cases, so raw
+cases. v32 is 525/525 feasible on both, scoring **1.767565 clean** and
+**1.834588 raw** versus v31's 1.778134 / 1.848364. Every one of the ten fold
+deltas improves, including the sealed fold 4. The raw supplied golden layouts
+violate MIB in 519/525 cases, so raw
 results are paired robustness evidence only. `order_ridge_v4.json` excludes
 the union of all 531 held-out sources and reproduces byte-for-byte.
 
@@ -131,13 +133,18 @@ the union of all 531 held-out sources and reproduces byte-for-byte.
    satisfied boundaries, non-overlap relations, and grouping contact forests.
    Its gate requires lower HPWL with no bbox or soft increase. It improves
    65/100 public cases, with no regressions.
-20. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
+20. **Reused first-pass final gate** (v32): the unconditional n≥100 strong-pin
+   two-pass candidate now returns both its normal result and its already-paid
+   first pass. The first pass is retained through primary selection and
+   boundary repair, then compared with the actual final incumbent. This adds
+   no dissection solve and improves all ten clean/raw heavy folds.
+21. **Selection**: `_select_candidate` — feasibility-gated exact-cost shape.
    With golden baselines absent (deployment) it normalizes against the first
    candidate and uses **SIGNED gaps** (clamping against a non-golden reference
    censors improvements — this bug cost a day; don't reintroduce it).
-21. If the fast shelf won, the **full-SA shelf** is run and the selection
+22. If the fast shelf won, the **full-SA shelf** is run and the selection
    redone. The dissection family wins most cases; shelf remains the fallback.
-22. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
+23. Dormant, behind flags: SP-SA (`_ENABLE_SP_SA=False`), order-refinement
    local search (`_REFINE_BUDGET=0.0` — see §6 for why).
 
 `dissect.py` — the campaign engine (exact-area dissection):
@@ -261,7 +268,7 @@ PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
 `.venv/bin/python scripts/fuzz_binary.py --num 400` → must be 0 failures. On
 this ARM host, pass `--binary` pointing at a configured x86/QEMU launcher.
 
-5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (160 tests) and
+5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (161 tests) and
 `.venv/bin/python scripts/check_public_release.py` (defaults now point at
 `results/release_manifest.json`, which binds the incumbent sources, result,
 package, score, and FloorSet commit).

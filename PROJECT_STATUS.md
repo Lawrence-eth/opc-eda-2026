@@ -1,15 +1,15 @@
 # Project Status
 
-**Updated 2026-07-10. For the full handoff, read [`HANDOFF.md`](HANDOFF.md).**
+**Updated 2026-07-11. For the full handoff, read [`HANDOFF.md`](HANDOFF.md).**
 
 ## Current result (official evaluator, 100 validation cases)
 
-| Metric | Current (`integrated_v31`) | Pre-campaign (v9) |
+| Metric | Current (`integrated_v32`) | Pre-campaign (v9) |
 |---|---|---|
-| Score (RF=1) | **1.6166** | 2.7182 |
+| Score (RF=1) | **1.615379** | 2.7182 |
 | Feasible | 100/100 | 100/100 |
-| Runtime avg / max | 0.179s / 0.567s | 0.18s / 0.9s |
-| Runtime-adjusted @ median 1s / 2s / 3s | **1.175 / 1.132 / 1.132** (paired control) | 2.110 / 1.924 / 1.903 |
+| Runtime avg | 0.196s paired (v31 control: 0.196s) | 0.18s |
+| Runtime-adjusted @ median 1s / 2s / 3s | **1.1951 / 1.1312 / 1.1308** (paired v31: 1.1967 / 1.1341 / 1.1316) | 2.110 / 1.924 / 1.903 |
 | Packaged binary | AMD64 Debian 13 build; exact 100-case wrapper parity | — |
 
 ## What the solver is
@@ -62,6 +62,12 @@ v30 reuses an existing portfolio pass with a relaxed aspect guard for one
 preplaced-heavy feature pocket. v31 makes grouping selection match exact
 Shapely contact and applies a topology-preserving weighted-median HPWL polish
 only for n≤90; 65 public cases improve and none regress.
+v32 retains the first pass already computed inside the unconditional n≥100
+strong-pin candidate, then compares that saved layout against the fully
+repaired incumbent at the final selector. It adds no dissection solve. Across
+five source-disjoint folds it improves clean **1.778134 → 1.767565** and raw
+**1.848364 → 1.834588**, with all 1,050 evaluations feasible; the sealed clean
+and raw fold-4 deltas are −0.010418 and −0.012594.
 The dissection family wins most cases; the shelf covers the rest. Deterministic,
 CPU-only, stdlib-only in the packaged binary.
 
@@ -73,11 +79,11 @@ Key structural properties (why it beats everything previous):
 - boundary demands satisfied by frame structure (bands / row-end slots /
   edge stacks), preplaced blocks carved around and never moved.
 
-## Verification state (2026-07-10)
+## Verification state (2026-07-11)
 
-- 160/160 tests pass; result audit PASS; release gate PASS
-  (`results/release_manifest.json` binds the incumbent sources, result,
-  package, score, and FloorSet commit).
+- The v32 source tests and official evaluation gates pass. The release
+  manifest/package are being refreshed to bind the promoted sources, result,
+  score, and pinned FloorSet commit.
 - Submission package rebuilt for AMD64 and parity-verified: 100/100 feasible,
   all 28,200 position scalars and every quality metric exact through the
   organizers' `op_wrapper.py` path. The v31 target binary also passed 100/100

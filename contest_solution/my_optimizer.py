@@ -245,6 +245,7 @@ class MyOptimizer(FloorplanOptimizer):
         # self-normalized contest cost (works without golden baselines), so
         # the committed shelf result can only be replaced by something
         # strictly better on this case.
+        reused_final_candidate = None
         try:
             candidates = [best_positions] if best_positions else []
             from dissect import (
@@ -383,8 +384,14 @@ class MyOptimizer(FloorplanOptimizer):
                         edge_order_mode="bary", band_order_mode="pinx",
                         clamped_backfill=clamped_backfill,
                         active_slab_max_aspect=active_slab_max_aspect)
+                    if hybrid_wf == 1.0:
+                        kwargs["return_first_pass"] = True
                     try:
-                        cand = dissect_solve(*dis_args, **kwargs)
+                        result = dissect_solve(*dis_args, **kwargs)
+                        if hybrid_wf == 1.0:
+                            cand, reused_final_candidate = result
+                        else:
+                            cand = result
                     except Exception:
                         cand = None
                     if cand and len(cand) == block_count:
@@ -572,6 +579,24 @@ class MyOptimizer(FloorplanOptimizer):
                     p2b_edges, pins_pos, target_positions)
                 if slid is not None:
                     best_positions = slid
+            except Exception:
+                pass
+
+        # Zero-solve-cost final gate: reuse the first pass already computed by
+        # the incumbent wf=1.0 strong-pin candidate.  Delaying only the
+        # comparison keeps the deployable final layout as the normalization
+        # reference without adding another dissection pass.
+        if best_positions is not None and reused_final_candidate is not None:
+            try:
+                best_positions = self._select_candidate(
+                    [best_positions, reused_final_candidate],
+                    constraints,
+                    area_targets,
+                    b2b_edges,
+                    p2b_edges,
+                    pins_l,
+                    target_positions,
+                ) or best_positions
             except Exception:
                 pass
 

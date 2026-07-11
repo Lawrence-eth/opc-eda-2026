@@ -1,0 +1,209 @@
+{
+  "schema_version": 2,
+  "evaluation_contract": {
+    "manifest_sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+    "manifest_schema_version": 3,
+    "manifest_generation": {
+      "min_blocks": 100,
+      "max_blocks": 120,
+      "num_folds": 5,
+      "per_size": 5,
+      "seed": 20260710,
+      "case_selection": "sequential",
+      "offset_seed": null,
+      "max_files": null,
+      "mib_policy": "input_area_interval_and_hard_target_compatible"
+    },
+    "dataset": {
+      "name": "FloorSet-Lite",
+      "official_floorset_commit": "aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa",
+      "loader": "lite_dataset.FloorplanDatasetLite",
+      "layouts_per_file": 112,
+      "source_file_count": 9000,
+      "source_inventory_sha256": "c1984cc01d159dbd1a88a90f12340c0a3cc26998c2c498e2854092d3ad53d725"
+    },
+    "resolved_inventory_sha256": "c1984cc01d159dbd1a88a90f12340c0a3cc26998c2c498e2854092d3ad53d725",
+    "runtime_factor_mode": "neutral_rf_1",
+    "oracle_baseline_selector": false,
+    "require_golden_mib_clean": null,
+    "evaluator_sha256": "64db37865b42baf11add62bdbf035690dca086cd4be7b5b4e58db756f20d8498",
+    "evaluation_harness_sha256": "0c6b1dffa52bf6e3971f8732b2fda9f43a4872cbebc517714a38061414c30c0a",
+    "official_floorset_commit": "aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa",
+    "official_floorset_tracked_dirty": false
+  },
+  "input_result_artifacts": {
+    "baseline": [
+      {
+        "path": "results/folds/v31_clean_fold0.json",
+        "sha256": "82bc5825b2a96883c8c8f46b20f8d6232f410420168a1b5a9da54ccf69f2f80d",
+        "size_bytes": 112628
+      },
+      {
+        "path": "results/folds/v31_clean_fold1.json",
+        "sha256": "f129fe59527332c07c79def665a7a038b103eb69bf6539ef619130a4f9b6d0f1",
+        "size_bytes": 112622
+      },
+      {
+        "path": "results/folds/v31_clean_fold2.json",
+        "sha256": "9e77403f2d821ec4f1897a0ec3e82f0322d75d30794569fdef313d9065c5b164",
+        "size_bytes": 112652
+      },
+      {
+        "path": "results/folds/v31_clean_fold3.json",
+        "sha256": "f26628ca87e340660bd7983507b30f0d3b9425c321260489c615a14c44b7344d",
+        "size_bytes": 112572
+      },
+      {
+        "path": "results/folds/v31_clean_fold4.json",
+        "sha256": "028e6d6071e0c989702202c90337c60e47d48f33469d38a778212ecbdb70aa6b",
+        "size_bytes": 112640
+      }
+    ],
+    "candidate": [
+      {
+        "path": "results/folds/v32_reuse_p1_clean_fold0.json",
+        "sha256": "e6713a41b59c2f2e3f55632be483e1150dbab92b76a71f0fdf9dfcc0a24641fd",
+        "size_bytes": 112702
+      },
+      {
+        "path": "results/folds/v32_reuse_p1_clean_fold1.json",
+        "sha256": "c74d40a87555ad3091651d57bfa241f678f28ff656c0e666c9dd52d9ab69426e",
+        "size_bytes": 112728
+      },
+      {
+        "path": "results/folds/v32_reuse_p1_clean_fold2.json",
+        "sha256": "097a1a28b68bf7a1f2ddc972927b62c1939ced73009a55cf1e091a2daf34daa4",
+        "size_bytes": 112737
+      },
+      {
+        "path": "results/folds/v32_reuse_p1_clean_fold3.json",
+        "sha256": "2adf41c1214dfebd1af076c3f331ed39b77e663173bafac2c96bd2dd668ba675",
+        "size_bytes": 112716
+      },
+      {
+        "path": "results/folds/v32_reuse_p1_clean_fold4.json",
+        "sha256": "b1cfd196f1077fa3589dee8f18109c2304f168fdd73b474f474d7a54d191fcee",
+        "size_bytes": 112717
+      }
+    ]
+  },
+  "source_manifest_artifact": {
+    "path": "results/folds/heavy_clean_v1.json",
+    "sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+    "size_bytes": 415883
+  },
+  "cases": 525,
+  "source_clusters": 522,
+  "baseline_score": 1.7781344112379076,
+  "candidate_score": 1.7675645694574726,
+  "delta_candidate_minus_baseline": -0.010569841780434963,
+  "wins": 100,
+  "losses": 7,
+  "ties": 418,
+  "baseline_feasible": 525,
+  "candidate_feasible": 525,
+  "bootstrap": {
+    "samples": 20000,
+    "seed": 20260711,
+    "cluster_unit": "source_file",
+    "delta_ci95": [
+      -0.014313533155111286,
+      -0.007325267192865135
+    ],
+    "probability_candidate_improves": 1.0
+  },
+  "pseudo_test_one_per_block_count": {
+    "samples": 20000,
+    "seed": 20260712,
+    "block_counts": [
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120
+    ],
+    "delta_ci95": [
+      -0.033950023517923845,
+      -0.00023748328341554603
+    ],
+    "probability_candidate_improves": 0.98235,
+    "worst_sampled_delta": 0.002211017499925916
+  },
+  "tail_risk": {
+    "worst_case_score_contribution": 7.769254088599322e-05,
+    "regression_cvar_5pct_score_contribution": 3.891617865379844e-06
+  },
+  "folds": [
+    {
+      "fold": 0,
+      "cases": 105,
+      "baseline_score": 1.7975737964975864,
+      "candidate_score": 1.7905805258896408,
+      "delta_candidate_minus_baseline": -0.006993270607945634,
+      "wins": 17,
+      "losses": 1,
+      "baseline_feasible": 105,
+      "candidate_feasible": 105
+    },
+    {
+      "fold": 1,
+      "cases": 105,
+      "baseline_score": 1.7367639089923599,
+      "candidate_score": 1.729635104732113,
+      "delta_candidate_minus_baseline": -0.007128804260246868,
+      "wins": 16,
+      "losses": 1,
+      "baseline_feasible": 105,
+      "candidate_feasible": 105
+    },
+    {
+      "fold": 2,
+      "cases": 105,
+      "baseline_score": 1.7493078569671299,
+      "candidate_score": 1.7278126295069873,
+      "delta_candidate_minus_baseline": -0.02149522746014254,
+      "wins": 23,
+      "losses": 1,
+      "baseline_feasible": 105,
+      "candidate_feasible": 105
+    },
+    {
+      "fold": 3,
+      "cases": 105,
+      "baseline_score": 1.8101484835640371,
+      "candidate_score": 1.8033345152081852,
+      "delta_candidate_minus_baseline": -0.006813968355851907,
+      "wins": 18,
+      "losses": 2,
+      "baseline_feasible": 105,
+      "candidate_feasible": 105
+    },
+    {
+      "fold": 4,
+      "cases": 105,
+      "baseline_score": 1.796878010168424,
+      "candidate_score": 1.7864600719504362,
+      "delta_candidate_minus_baseline": -0.010417938217987865,
+      "wins": 26,
+      "losses": 2,
+      "baseline_feasible": 105,
+      "candidate_feasible": 105
+    }
+  ]
+}

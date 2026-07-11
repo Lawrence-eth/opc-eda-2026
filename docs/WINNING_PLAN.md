@@ -1,7 +1,7 @@
 # FloorSet winning plan
 
-**Status:** active strategic plan, 2026-07-10.  Incumbent solver commit
-`a3db2ac` is the verified safety floor, not the intended final ceiling.  The objective is first
+**Status:** active strategic plan, updated 2026-07-11. v32 has cleared the
+pre-beta promotion tournament; v31 remains the verified rollback floor. The objective is first
 place on the hidden final set.  Every intermediate metric exists only to make
 that outcome more likely.
 
@@ -14,7 +14,14 @@ that outcome more likely.
   advisory, but it does not yet specify per-case fields, ranking detail, or a
   resubmission limit. Plan for aggregate-only feedback; use richer detail only
   if the organizers actually provide it.
-- v31 is reproducible and submittable: RF=1 score **1.616638**, 100/100 public
+- v32 is the promoted pre-beta candidate: public RF=1 score **1.615379**,
+  100/100 feasible, and paired runtime-adjusted improvement over v31 at field
+  medians 0.25/0.5/1/2/3s. It reuses an already-computed strong-pin first pass,
+  so it adds no dissection solve. Across all five clean folds it improves
+  **1.778134 → 1.767565**; across all five raw folds it improves **1.848364 →
+  1.834588**, with 1,050/1,050 feasible and every fold delta negative. Sealed
+  fold-4 deltas are -0.010418 clean and -0.012594 raw.
+- v31 remains reproducible and submittable as the rollback: RF=1 score **1.616638**, 100/100 public
   feasibility, exact AMD64 wrapper parity, and score **1.798552** on the
   tracked 105-case MIB-clean heavy holdout. On the frozen five-fold
   input-compatible heavy stratum it is 525/525 feasible with pooled score

@@ -70,6 +70,7 @@ from my_optimizer import (
     _should_try_anchored_third_pass,
     _should_try_preplaced_aspect_pass,
 )
+from dissect import dissect_solve
 
 
 def test_anchored_third_pass_gate_accepts_case_81_feature_pocket():
@@ -94,6 +95,24 @@ def test_anchored_third_pass_gate_rejects_outside_feature_pocket(features):
 
 def test_preplaced_aspect_pass_gate_accepts_case_61_feature_pocket():
     assert _should_try_preplaced_aspect_pass(82, 22, 7, 336, 1367)
+
+
+def test_dissect_solve_can_return_reusable_first_pass():
+    kwargs = dict(
+        n=1,
+        areas=[4.0],
+        b2b_edges=[],
+        p2b_edges=[],
+        pins=[],
+        constraints=[[0, 0, 0, 0, 0]],
+        target_positions=None,
+    )
+    ordinary = dissect_solve(**kwargs)
+    final, first = dissect_solve(**kwargs, return_first_pass=True)
+
+    assert isinstance(ordinary, list)
+    assert final == ordinary
+    assert len(first) == 1
 
 
 @pytest.mark.parametrize(

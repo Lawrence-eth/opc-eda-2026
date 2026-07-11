@@ -14,36 +14,32 @@ Deterministic heuristic optimizer for data-driven SoC floorplanning (21–120 bl
 
 ## Current Result (submission candidate)
 
-Current best = **v9 + exact-area dissection portfolio + gated obstacle-band cap
-+ gated pin-scale ordering candidates + high-weight boundary reshape + gated
-boundary edge-slide polish + width-adaptive hybrid pin-x/barycentric edge
-ordering candidate + high-weight strong pin-pull hybrid ordering candidate
-+ case-99 edge-bary tail candidate + external-y anchored second-pass ordering
-+ cluster lane edge-ordering + gated strong-width pin-pull pockets
-+ band-cap width replacement + list-based HPWL candidate scoring
-+ gated clamped obstacle-row backfill + gated active-slab aspect relaxation
-+ gated incumbent-anchored convergence ordering**
-(CAMPAIGN_GOLDEN G6 polish) —
+Current best = **v32: v31 plus a zero-solve-cost final gate that reuses the
+already-computed first pass of the heavy strong-pin candidate**. The rest of
+the solver remains the exact-area dissection portfolio, constraint-preserving
+polish, and feasibility-gated selector developed through v31 —
 `contest_solution/my_optimizer.py` + `contest_solution/dissect.py` +
 `contest_solution/topology_polish.py`; result
-snapshot `results/integrated_v31.json`. v30 adds the preplaced-heavy aspect
-pocket; v31 adds an official-fidelity grouping check and a conservative
-fixed-topology HPWL polish for n≤90.
+snapshot `results/integrated_v32.json`. v32 exposes an intermediate layout that
+the incumbent previously discarded and compares it only after all primary
+selection and boundary repairs. It adds no dissection pass.
 Previous locked entry: `sprint5_v9` (2.7182, `results/v9_locked.json`) —
 still the per-case fallback inside solve().
 
 | Metric | Value |
 |--------|-------|
-| Validation score (RF=1.0) | **1.6166** (v9: 2.7182) |
+| Validation score (RF=1.0) | **1.615379** (v31: 1.616638; v9: 2.7182) |
 | Feasible cases | **100 / 100** |
-| Average runtime | **~0.179s/case** (max ~0.57s) |
-| Runtime-adjusted total @ median 1s | **1.175 paired** (v30 control: 1.175; v9: 2.11) |
+| Average runtime | **0.196s/case paired** (v31 control: 0.196s) |
+| Runtime-adjusted total @ median 1s | **1.1951** (paired v31: 1.1967) |
 
 **Note on the score:** the contest cost is *runtime-adjusted* —
 `cost · max(0.7, (rt/median)^0.3)` with a hard 0.7× floor for being ≥~3×
 faster than the field median. The current solver has 40% better raw quality
-than v9. v31 retains v29/v30's tightly gated heavy-case improvements and
-uses a one-sweep topology-preserving HPWL polish only through 90 blocks.
+than v9. v32 improves all five clean and all five raw source-disjoint heavy
+folds: pooled clean **1.778134 → 1.767565** and raw **1.848364 → 1.834588**,
+with 1,050/1,050 feasible. Its paired runtime-adjusted score improves at every
+tested field median from 0.25s through 3s.
 Runtime discipline is a standing rule: changes are judged runtime-adjusted at
 median ∈ {1,2,3}s (`HANDOFF.md` §5.3), never on the raw score alone.
 
@@ -62,8 +58,8 @@ contest_solution/
 └── *dataset*.py             # Dataset loaders + tests
 packaging/                   # Submission executable sources + build script + organizers' op_wrapper
 scripts/                     # evaluation, fold/model training, audit, compare, and release tools
-tests/                       # Regression + unit tests (160)
-results/                     # Curated evidence (integrated_v31.json = current public result)
+tests/                       # Regression + unit tests
+results/                     # Curated evidence (integrated_v32.json = current public result)
 ├── folds/                   # Immutable heavy folds, baselines, selector audits
 └── models/                  # Reproducible learned-model artifacts and provenance
 external/FloorSet/           # Contest framework + datasets (gitignored; see HANDOFF bootstrap)

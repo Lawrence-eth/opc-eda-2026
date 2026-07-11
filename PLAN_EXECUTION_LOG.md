@@ -1,5 +1,31 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+### 2026-07-11 v32 reused-first-pass final gate — ✅ PROMOTED
+- Mechanism: the incumbent n≥100 strong-pin candidate already computes two
+  dissection passes but returned only pass 2. `dissect_solve()` can now return
+  its first pass alongside the normal result. v32 retains that already-paid
+  layout and compares it only after primary selection and boundary repair, so
+  the selector's reference is the true deployable incumbent. No dissection
+  solve is added.
+- Public official RF=1 score improves **1.6166380548 → 1.6153787745**, with
+  100/100 feasible. In a clean A-B-B-A timing block, paired mean runtime is
+  0.19621s versus 0.19644s for v31. Runtime-adjusted v32 beats v31 at every
+  tested field median from 0.25s through 3s.
+- Source-disjoint tournament: all five clean and all five raw folds improve.
+  Clean pooled score is **1.7781344112 → 1.7675645695** (100 wins, 7 losses,
+  clustered-bootstrap CI [-0.01431,-0.00733]); raw is **1.8483636984 →
+  1.8345881389** (144 wins, 4 losses, CI [-0.01739,-0.01055]). All 1,050
+  evaluations are hard-feasible.
+- The sealed fold 4 was opened only after source and runtime freeze. Clean
+  improves **1.7968780102 → 1.7864600720** and raw improves **1.8826113230 →
+  1.8700174712**, both with 100% bootstrap improvement probability and
+  105/105 feasibility.
+- Rejected challengers: broad additive two-pass and one-pass candidates failed
+  the pessimistic 1s runtime gate; unconditional wf replacement and p1 swaps
+  regressed clean folds; a global Shapely-overlap grouping-fidelity adjustment
+  was statistically neutral (improvement probability 55.9%) and was not
+  promoted.
+
 ### 2026-07-10 strategic reset + file-disjoint validation — 🏆 EXECUTING
 - Reset the campaign around the final hidden ranking rather than incremental
   public tuning. Added `docs/WINNING_PLAN.md`: a beta-to-final architecture,
