@@ -47,6 +47,12 @@ artifact whose ELF machine is not AMD x86-64. The current archive passes the
 guard; only a package produced by this build may be uploaded.
 Current hardened archive SHA-256:
 `72d8fc5b6c4831a6af3547bacc16f19c800f1991b413500efbe467db8aec72c3`.
+The exact archive is preserved as the `iccad2026_submission.tar.gz` asset on
+the GitHub pre-release
+[`v32-prebeta-20260711`](https://github.com/Lawrence-eth/opc-eda-2026/releases/tag/v32-prebeta-20260711).
+This matters because `submission/` is generated and intentionally gitignored;
+a fresh clone must download that asset (or rebuild it) before running the
+manifest-bound release gate.
 
 Fixed during packaging: `torch_stub.py` originally aliased `float`, shadowing the
 builtin inside the stub (all cases silently fell back → score 9.98). Caught by the
@@ -156,6 +162,19 @@ leverage table and progress log when the engine lands.
 | Wrapper protocol drift (organizers change op_wrapper) | We ship their exact wrapper + a schema-conform binary | Monitor the FloorSet repo/Q&A until deadline |
 
 ## 7. Rebuild & re-verify (the gate that must pass before ANY resubmission)
+
+To restore and audit the unchanged frozen package in a fresh clone:
+
+```bash
+mkdir -p submission
+gh release download v32-prebeta-20260711 --pattern iccad2026_submission.tar.gz \
+    --dir submission
+echo "72d8fc5b6c4831a6af3547bacc16f19c800f1991b413500efbe467db8aec72c3  submission/iccad2026_submission.tar.gz" \
+    | sha256sum --check -
+python3 scripts/check_public_release.py
+```
+
+After any optimizer change, build and prove the new package instead:
 
 ```bash
 bash packaging/build_submission.sh

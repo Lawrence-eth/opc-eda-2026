@@ -1,7 +1,16 @@
 # FloorSet ICCAD-2026 — MASTER PLAYBOOK (self-navigating, multi-week)
 
+> [!CAUTION]
+> **HISTORICAL / NON-AUTHORITATIVE.** This document is retained as an evidence
+> trail for prior strategies and exact failed implementations. Do not execute
+> any "CURRENT STATE," "next action," "final," or decision-tree instruction
+> below as live guidance. Current state and priorities are maintained in
+> [`HANDOFF.md`](HANDOFF.md) and [`docs/WINNING_PLAN.md`](docs/WINNING_PLAN.md);
+> submission mechanics are maintained in [`SUBMISSION_PLAN.md`](SUBMISSION_PLAN.md).
+
 **Author:** planning agent (Opus 4.8). **Supersedes** the earlier plans/reports now in `docs/archive/` (`NEXT_PLAN.md`, `SPRINT5_PLAN.md`, `SPRINT6_PLAN.md`, `NEXT_STEPS.md`, `REPORT.md`, `SPRINT3_REPORT.md`) — kept for history.
-**Audience:** executing agent. This document grew by accretion; the **CURRENT STATE banner directly below is authoritative and overrides any older "STATE"/"next action" text** in Part 0 and the Part III decision tree (those are HISTORICAL — kept for the reasoning trail, not current instructions).
+**Status:** historical strategy record. This document grew by accretion; no
+"CURRENT STATE" or "next action" section below is operationally authoritative.
 
 ---
 

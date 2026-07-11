@@ -83,7 +83,8 @@ Key structural properties (why it beats everything previous):
 
 - The v32 source tests, official evaluation, and release gates pass. The
   manifest binds solver commit `d8f2c19`, the promoted result, the AMD64
-  archive, and pinned FloorSet commit `aadddcc`.
+  archive, and pinned FloorSet commit `aadddcc`. Tag
+  `v32-prebeta-20260711` preserves the exact archive as a release asset.
 - Submission package rebuilt for AMD64 and parity-verified: 100/100 feasible,
   all 28,200 position scalars and every quality metric exact through the
   organizers' `op_wrapper.py` path. The v31 target binary also passed 100/100

@@ -1,5 +1,13 @@
 # FloorSet ICCAD-2026 — Comprehensive Plan Execution Log
 
+> [!IMPORTANT]
+> **EVIDENCE LOG, NOT CURRENT OPERATING INSTRUCTIONS.** Entries are timestamped
+> snapshots, newest first. Words such as "current," "final," and "next" record
+> the state when an entry was written and may be superseded. Use
+> [`HANDOFF.md`](HANDOFF.md) and [`docs/WINNING_PLAN.md`](docs/WINNING_PLAN.md)
+> for current state and priorities, and [`SUBMISSION_PLAN.md`](SUBMISSION_PLAN.md)
+> for the live release gate.
+
 ### 2026-07-11 v32 reused-first-pass final gate — ✅ PROMOTED
 - Mechanism: the incumbent n≥100 strong-pin candidate already computes two
   dissection passes but returned only pass 2. `dissect_solve()` can now return

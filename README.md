@@ -41,9 +41,12 @@ folds: pooled clean **1.778134 → 1.767565** and raw **1.848364 → 1.834588**,
 with 1,050/1,050 feasible. Its paired runtime-adjusted score improves at every
 tested field median from 0.25s through 3s.
 Runtime discipline is a standing rule: changes are judged runtime-adjusted at
-median ∈ {1,2,3}s (`HANDOFF.md` §5.3), never on the raw score alone.
+median ∈ {0.25,0.5,1,2,3}s (`HANDOFF.md` §5.3), never on the raw score alone.
 
 *Validation-set results only. Final ranking uses hidden test data.*
+
+Frozen pre-beta release: **[v32-prebeta-20260711](https://github.com/Lawrence-eth/opc-eda-2026/releases/tag/v32-prebeta-20260711)**
+(tagged source plus the verified AMD64 submission archive).
 
 ## Repository Structure
 
@@ -54,12 +57,12 @@ contest_solution/
 ├── topology_polish.py       # Fixed-topology weighted-median HPWL polish (n≤90)
 ├── learned_order.py         # Input-only, permutation-equivariant order features
 ├── sequence_pair_sa.py      # Dormant SP-SA floorplanner (historical)
-├── iccad2026_evaluate.py    # Official evaluator (working copy)
+├── iccad2026_evaluate.py    # Adapted local convenience copy (not the official source of truth)
 └── *dataset*.py             # Dataset loaders + tests
 packaging/                   # Submission executable sources + build script + organizers' op_wrapper
-scripts/                     # evaluation, fold/model training, audit, compare, and release tools
+scripts/                     # Maintained and legacy tools; see scripts/README.md
 tests/                       # Regression + unit tests
-results/                     # Curated evidence (integrated_v32.json = current public result)
+results/                     # Curated evidence and retention policy; see results/README.md
 ├── folds/                   # Immutable heavy folds, baselines, selector audits
 └── models/                  # Reproducible learned-model artifacts and provenance
 external/FloorSet/           # Contest framework + datasets (gitignored; see HANDOFF bootstrap)
@@ -77,6 +80,10 @@ MASTER_PLAYBOOK.md           # History (exact failed variants remain dead ends)
 PLAN_EXECUTION_LOG.md        # Chronological experiment log (newest at top)
 PROJECT_STATUS.md            # One-page status summary
 ```
+
+The tracked `contest_solution/iccad2026_evaluate.py` is an adapted convenience
+copy. Official verification uses the evaluator in the pinned organizer checkout
+at `external/FloorSet/iccad2026contest/iccad2026_evaluate.py`.
 
 ## Quick Start
 
@@ -113,12 +120,13 @@ all workflows: `HANDOFF.md` §5.)
 | [`docs/README.md`](docs/README.md) | Documentation index — active sources of truth vs snapshots/history |
 | [`docs/CAMPAIGN_GOLDEN.md`](docs/CAMPAIGN_GOLDEN.md) | Prior dissection campaign — evidence, measured milestones |
 | [`docs/SUMMARY.md`](docs/SUMMARY.md) | Presentation overview — problem, solution, results, insights |
+| [`results/README.md`](results/README.md) | Evidence catalog — release, rollback, folds, timing, model provenance, retention |
+| [`scripts/README.md`](scripts/README.md) | Tool catalog — supported workflows and deprecated legacy utilities |
 | [`MASTER_PLAYBOOK.md`](MASTER_PLAYBOOK.md) | Historical strategy and decision trail |
 | [`PLAN_EXECUTION_LOG.md`](PLAN_EXECUTION_LOG.md) | Chronological experiment log |
 | [`PROJECT_STATUS.md`](PROJECT_STATUS.md) | Status summary |
 | `docs/extracted/` | Contest problem statement + official Q&A |
 | `docs/archive/` | Superseded plans/reports (history) |
-| `logs/` | Per-session execution logs |
 
 ## Contest
 

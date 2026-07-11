@@ -201,7 +201,8 @@ Total = Σ cost_i · exp(n_i/12) / Σ exp(n_j/12)      (n≥100 ≈ 79% of weigh
 - **Runtime discipline (verified twice this session):** near the floor, a
   +0.25s budget needs ≥10% quality gain on the affected cases to break even.
   Two experiments (15-candidate grid; 0.25s refinement) improved RF=1 and
-  LOST runtime-adjusted. Judge every change at median ∈ {1,2,3}s (§5.3).
+  LOST runtime-adjusted. Judge every change at median
+  ∈ {0.25,0.5,1,2,3}s (§5.3).
 - Grouping abutment check has **no float tolerance** (shapely union) — shared
   edges must be exact coordinates. The exact-fill construction guarantees
   this; keep it that way.
@@ -353,6 +354,9 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
   (rebuilt + parity-verified for the current engine). Contents: PyInstaller
   `--onedir` executable (53MB; 23MB archive, no real torch, crash-proof fallback), organizers'
   `op_wrapper.py` verbatim, README, stdlib-only source fallback.
+- The frozen archive is also the checksum-bound asset on GitHub pre-release
+  `v32-prebeta-20260711`; this makes the gitignored build output recoverable
+  from a fresh clone. Its SHA-256 is recorded in `results/release_manifest.json`.
 - Eval host: Debian 13, Python 3.13.14, torch 2.12.0+cu130, 48-core Icelake,
   A100 80GB, 128GB RAM, no internet, cases sequential
   (`docs/extracted/C_Submission_Guidelines_20260616.txt`, `C_QA_20260618.txt`).

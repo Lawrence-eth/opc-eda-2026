@@ -1,0 +1,55 @@
+name: repository-gates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests-and-release-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install unit-test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy pytest
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run unit tests
+        run: python -m pytest -q
+
+      - name: Restore the manifest-bound release package
+        run: |
+          mkdir -p submission
+          curl --fail --location --retry 3 \
+            https://github.com/Lawrence-eth/opc-eda-2026/releases/download/v32-prebeta-20260711/iccad2026_submission.tar.gz \
+            --output submission/iccad2026_submission.tar.gz
+          echo "72d8fc5b6c4831a6af3547bacc16f19c800f1991b413500efbe467db8aec72c3  submission/iccad2026_submission.tar.gz" \
+            | sha256sum --check -
+
+      - name: Run manifest-bound public release gate
+        run: python scripts/check_public_release.py
+
+      - name: Verify organizer-wrapper provenance
+        run: |
+          echo "1c5c41e881d4966797cfbbc58c2ef113fdcb92e66686fa89dcdb6253989999bc  packaging/op_wrapper.py" \
+            | sha256sum --check -
+
+      - name: Reject whitespace errors
+        run: git diff --check HEAD^ HEAD

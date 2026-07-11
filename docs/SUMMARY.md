@@ -2,8 +2,8 @@
 
 > Single-source overview: problem, solution, results, methodology, honest
 > assessment. Each section ≈ one slide. Numbers verified against
-> `results/integrated_v31.json` (current) and `results/v9_locked.json`
-> (pre-campaign baseline). Updated 2026-07-10.
+> `results/integrated_v32.json` (current) and `results/v9_locked.json`
+> (pre-campaign baseline). Updated 2026-07-11.
 
 ---
 
@@ -59,13 +59,13 @@ from the structure (w = area/height). Then:
 
 ## 4. Results (1 slide)
 
-| Metric | Pre-campaign (v9) | **Current** |
+| Metric | Pre-campaign (v9) | **Current (v32)** |
 |---|---|---|
-| Official score (RF=1) | 2.7182 | **1.6166** (-41%) |
+| Validation score (RF=1) | 2.7182 | **1.615379** (-41%) |
 | Feasible | 100/100 | **100/100** |
-| Runtime | 0.18s avg | **0.179s avg** |
-| Runtime-adjusted @ median 1s | 2.110 | **1.175** (-44%; paired v30 control) |
-| Packaged binary | — | AMD64 Debian 13, exact 100-case wrapper parity |
+| Runtime | 0.18s avg | **0.196s/case paired** (v31 control: 0.196s) |
+| Runtime-adjusted @ median 1s | 2.110 | **1.1951** (-43%; paired v31: 1.1967) |
+| Packaged binary | — | v32 AMD64 Debian 13, exact 100-case wrapper parity |
 
 Calibration: golden-equivalent play = 1.108 (RF=1) / 0.776 (at the runtime
 floor); theoretical bound 0.70. Golden itself violates soft constraints on
@@ -73,15 +73,17 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 
 ## 5. Verification story (1 slide — trust the numbers)
 
-- Official evaluator, all 100 validation cases, reproduced bit-identically
-  across machines (2-core VM vs 48-core dev box).
-- The v31 PyInstaller binary re-verified through the organizers' exact command:
-  all 100 placements and quality metrics match the in-process result exactly.
-  The v31 target binary also passes a 100-case random training fuzz under QEMU
-  (timings ignored); the latest 400-case native binary fuzz was v29. v31 passes
-  a 140/140 MIB-clean low-size source holdout, with 121 quality wins and no
-  regression vs v30.
-- 78 regression tests + result audit + release gate; every
+- The v32 source result is 100/100 feasible under the pinned organizer
+  evaluator. Through the organizers' exact `op_wrapper.py` path, the v32
+  package reproduces all 28,200 position scalars and every quality metric
+  exactly (ARM-host AMD64-emulation timings are excluded).
+- Across five source-disjoint folds, v32 improves clean **1.778134 →
+  1.767565** and raw **1.848364 → 1.834588** versus v31; all ten fold deltas
+  improve and all 1,050 evaluations are feasible.
+- Historical binary robustness remains explicit: v31 passed a 100-case random
+  training fuzz under QEMU (timings ignored) and a 140/140 MIB-clean low-size
+  source holdout; the latest 400-case native binary fuzz was v29.
+- 161 tests + result audit + release gate; every
   experiment, including reverted probes, logged with verdicts.
 
 ## 6. Methodology / rigor (1 slide)
@@ -89,8 +91,9 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 - Evidence before code: golden structure mined from the dataset (tessellation
   property, B*-tree label semantics), retrieval hypothesis **disproven** by
   scanning all 1,008,000 training instances (0 validation matches).
-- Every change judged runtime-adjusted at median ∈ {1,2,3}s — two experiments
-  that improved raw quality were **reverted** for losing runtime-adjusted.
+- Every change judged runtime-adjusted at median
+  ∈ {0.25,0.5,1,2,3}s — two experiments that improved raw quality were
+  **reverted** for losing runtime-adjusted.
 - Feasibility protected by a per-case, feasibility-gated best-of selector;
   two real bugs (selector gap-clamping, preplaced-moving retouch) were caught
   by the full-100 gates before they could ship.
@@ -115,8 +118,8 @@ cp contest_solution/my_optimizer.py contest_solution/dissect.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
-# -> Total Score: 1.6166, Feasible: 100
+# -> Total Score: 1.615379, Feasible: 100
 cd ../../..
-.venv/bin/python -m pytest                          # 160/160
+.venv/bin/python -m pytest                          # 161/161
 .venv/bin/python scripts/check_public_release.py    # PASS
 ```
