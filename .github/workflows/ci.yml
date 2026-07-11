@@ -31,6 +31,12 @@ jobs:
           python -m pip install numpy pytest requests shapely tqdm
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
+      - name: Restore the pinned official evaluator
+        run: |
+          mkdir -p external
+          git clone --filter=blob:none https://github.com/IntelLabs/FloorSet.git external/FloorSet
+          git -C external/FloorSet checkout --detach aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa
+
       - name: Run unit tests
         run: python -m pytest -q
 
