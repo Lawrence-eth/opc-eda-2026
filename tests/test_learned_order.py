@@ -289,6 +289,34 @@ def test_artifact_predictions_bind_message_steps_and_schema():
         MODULE.artifact_predictions(features, model, message_steps=3)
 
 
+def test_compiled_artifact_predictions_exactly_match_validated_path():
+    feature_count = len(MODULE.FEATURE_NAMES)
+    features = [
+        [1.0] + [0.0] * (feature_count - 1),
+        [3.5] + [0.25] * (feature_count - 1),
+    ]
+    model = _artifact()
+    compiled = MODULE.compile_artifact(model)
+    assert MODULE.compiled_artifact_predictions(
+        features, compiled, message_steps=4
+    ) == MODULE.artifact_predictions(features, model, message_steps=4)
+    assert isinstance(compiled["center"], tuple)
+    assert isinstance(compiled["coefficients"], tuple)
+
+
+def test_compile_artifact_rejects_tampering_and_invalid_policy():
+    model = _artifact()
+    model["coefficients"][0][0] = 3.0
+    with pytest.raises(ValueError, match="integrity"):
+        MODULE.compile_artifact(model)
+
+    model = _artifact()
+    model["feature_schema"]["mib_policy"] = "unknown"
+    _seal_artifact(model)
+    with pytest.raises(ValueError, match="MIB feature policy"):
+        MODULE.compile_artifact(model)
+
+
 def test_extract_artifact_predictions_applies_declared_mib_policy():
     case = _case()
     case["constraints"][1][0] = 0

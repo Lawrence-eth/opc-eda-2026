@@ -1,3 +1,4 @@
+import json
 import math
 import sys
 import types
@@ -67,10 +68,31 @@ except (ModuleNotFoundError, ImportError):
 
 from my_optimizer import (
     MyOptimizer,
+    _LEARNED_REPLACEMENT_WF,
     _should_try_anchored_third_pass,
     _should_try_preplaced_aspect_pass,
 )
 from dissect import dissect_solve
+import dissect as dissect_module
+import my_optimizer as optimizer_module
+
+
+def test_learned_replacement_slots_match_frozen_audit_artifact():
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "results"
+        / "models"
+        / "order_v5b_redundant_slots_v1.json"
+    )
+    artifact = json.loads(path.read_bytes())
+    expected = {
+        int(block_count): float(width_factor)
+        for block_count, width_factor in artifact[
+            "replacement_wf_by_size"
+        ].items()
+    }
+    assert _LEARNED_REPLACEMENT_WF == expected
+    assert artifact["abstain_sizes"] == [101, 109, 112]
 
 
 def test_anchored_third_pass_gate_accepts_case_81_feature_pocket():
@@ -190,3 +212,53 @@ def test_optimizer_uses_exact_fixed_dimensions():
     assert math.isclose(pos[1][3], 16.0)
     assert check_overlap(pos) == 0
     assert check_dimension_hard_constraints(pos, target_positions, constraints, block_count) == 0
+
+
+@pytest.mark.parametrize("invalid_kind", ["none", "empty", "wrong_length"])
+def test_invalid_learned_slot_falls_back_to_displaced_standard_pass(
+    monkeypatch, invalid_kind
+):
+    block_count = 100
+    standard = [(1.1 * index, 0.0, 1.0, 1.0) for index in range(block_count)]
+    invalid = {
+        "none": None,
+        "empty": [],
+        "wrong_length": standard[:1],
+    }[invalid_kind]
+    calls = []
+
+    def fake_dissect(*args, **kwargs):
+        calls.append(dict(kwargs))
+        if "learned_order" in kwargs:
+            return invalid
+        return list(standard)
+
+    monkeypatch.setattr(dissect_module, "dissect_solve", fake_dissect)
+    monkeypatch.setattr(
+        optimizer_module,
+        "_learned_order_prior",
+        lambda *args, **kwargs: {
+            index: (0.5, 0.5) for index in range(block_count)
+        },
+    )
+    optimizer = MyOptimizer()
+    monkeypatch.setattr(optimizer, "_solve_one", lambda *args, **kwargs: standard)
+    area_targets = torch.ones(block_count)
+    b2b = torch.empty((0, 3))
+    p2b = torch.empty((0, 3))
+    pins = torch.empty((0, 2))
+    constraints = torch.zeros((block_count, 5))
+    targets = torch.full((block_count, 4), -1.0)
+
+    assert optimizer.solve(
+        block_count, area_targets, b2b, p2b, pins, constraints, targets
+    ) == standard
+    learned_call = next(
+        index for index, kwargs in enumerate(calls) if "learned_order" in kwargs
+    )
+    fallback = calls[learned_call + 1]
+    assert fallback["width_factor"] == optimizer_module._LEARNED_REPLACEMENT_WF[
+        block_count
+    ]
+    assert "learned_order" not in fallback
+    assert not optimizer._learned_candidate_attempted

@@ -861,8 +861,14 @@ def standardized_linear_predictions(features, center, scale, weights):
     return linear_predictions(normalized, weights)
 
 
-def artifact_predictions(features, model, *, message_steps):
-    """Validate and apply a ``train_order_model.py`` artifact."""
+def compile_artifact(model):
+    """Validate and freeze the input-independent parts of a model artifact.
+
+    The payload digest and every schema/parameter invariant are checked here.
+    Callers that own a sealed, embedded artifact may retain the returned
+    immutable numeric payload and avoid repeating JSON serialization and
+    parameter conversion for every floorplan.
+    """
     if not isinstance(model, dict):
         raise ValueError("model artifact must be a JSON object")
     if model.get("schema_version") != MODEL_SCHEMA_VERSION:
@@ -879,11 +885,11 @@ def artifact_predictions(features, model, *, message_steps):
         raise ValueError("model feature names do not match inference schema")
     try:
         artifact_steps = _integer(schema.get("message_steps"), "model message_steps")
-        inference_steps = _integer(message_steps, "message_steps")
     except (TypeError, ValueError, OverflowError) as exc:
         raise ValueError("model message_steps must be an integer") from exc
-    if artifact_steps != inference_steps:
-        raise ValueError("model message_steps does not match feature extraction")
+    mib_policy = schema.get("mib_policy", "unmasked")
+    if mib_policy not in MIB_POLICIES:
+        raise ValueError(f"unsupported MIB feature policy: {mib_policy!r}")
 
     target_schema = model.get("target_schema")
     if not isinstance(target_schema, dict):
@@ -941,17 +947,71 @@ def artifact_predictions(features, model, *, message_steps):
     if not hmac.compare_digest(expected_payload, actual_payload):
         raise ValueError("model payload_sha256 integrity check failed")
 
-    predictions = standardized_linear_predictions(
-        features,
-        numeric_center,
-        numeric_scale,
-        numeric_coefficients,
-    )
+    return {
+        "message_steps": artifact_steps,
+        "mib_policy": mib_policy,
+        "center": tuple(numeric_center),
+        "inverse_scale": tuple(1.0 / value for value in numeric_scale),
+        "coefficients": tuple(tuple(row) for row in numeric_coefficients),
+    }
+
+
+def compiled_artifact_predictions(features, compiled_model, *, message_steps):
+    """Apply a previously validated model without reparsing its artifact."""
+    if not isinstance(compiled_model, dict):
+        raise ValueError("compiled model must be an object")
+    try:
+        artifact_steps = compiled_model["message_steps"]
+        center = compiled_model["center"]
+        inverse_scale = compiled_model["inverse_scale"]
+        coefficients = compiled_model["coefficients"]
+        inference_steps = _integer(message_steps, "message_steps")
+    except (KeyError, TypeError, ValueError, OverflowError) as exc:
+        raise ValueError("compiled model is malformed") from exc
+    if artifact_steps != inference_steps:
+        raise ValueError("model message_steps does not match feature extraction")
+
+    feature_count = len(FEATURE_NAMES)
+    output_count = len(TARGET_NAMES)
+    if (
+        len(center) != feature_count
+        or len(inverse_scale) != feature_count
+        or len(coefficients) != feature_count
+        or any(len(row) != output_count for row in coefficients)
+    ):
+        raise ValueError("compiled model dimensions do not match inference schema")
+    predictions = []
+    for row in features:
+        if len(row) != feature_count:
+            raise ValueError("feature row count does not match FEATURE_NAMES")
+        normalized = [
+            (_finite_number(value, "features") - center[column])
+            * inverse_scale[column]
+            for column, value in enumerate(row)
+        ]
+        predictions.append(
+            [
+                sum(
+                    normalized[column] * coefficients[column][output]
+                    for column in range(feature_count)
+                )
+                for output in range(output_count)
+            ]
+        )
     if any(len(row) != output_count for row in predictions):
         raise ValueError("model prediction output width does not match target_schema")
     if any(not math.isfinite(value) for row in predictions for value in row):
         raise ValueError("model predictions must be finite")
     return predictions
+
+
+def artifact_predictions(features, model, *, message_steps):
+    """Validate and apply a ``train_order_model.py`` artifact."""
+    return compiled_artifact_predictions(
+        features,
+        compile_artifact(model),
+        message_steps=message_steps,
+    )
 
 
 def extract_artifact_predictions(
@@ -992,4 +1052,47 @@ def extract_artifact_predictions(
     )
     return artifact_predictions(
         features, model, message_steps=message_steps
+    ), mask_metadata
+
+
+def extract_compiled_artifact_predictions(
+    block_count,
+    area_targets,
+    b2b_connectivity,
+    p2b_connectivity,
+    pins_pos,
+    constraints,
+    target_positions,
+    compiled_model,
+):
+    """Extract and score features using a once-validated model payload."""
+    if not isinstance(compiled_model, dict):
+        raise ValueError("compiled model must be an object")
+    try:
+        message_steps = compiled_model["message_steps"]
+        mib_policy = compiled_model["mib_policy"]
+    except KeyError as exc:
+        raise ValueError("compiled model is malformed") from exc
+    features = extract_order_features(
+        block_count,
+        area_targets,
+        b2b_connectivity,
+        p2b_connectivity,
+        pins_pos,
+        constraints,
+        target_positions,
+        message_steps=message_steps,
+    )
+    features, mask_metadata = apply_mib_feature_policy(
+        features,
+        policy=mib_policy,
+        block_count=block_count,
+        area_targets=area_targets,
+        constraints=constraints,
+        target_positions=target_positions,
+    )
+    return compiled_artifact_predictions(
+        features,
+        compiled_model,
+        message_steps=message_steps,
     ), mask_metadata

@@ -23,6 +23,51 @@ from iccad2026_evaluate import FloorplanOptimizer, calculate_bbox_area, calculat
 Rect = Tuple[float, float, float, float]
 
 
+# Standard dissection slot displaced by the learned heavy candidate. Each
+# listed slot had zero deployed-selector wins across legacy-v32 clean+raw
+# development folds 0-2. Ties use the globally least-selected width first
+# (1.0, 0.9, 1.1, 1.2, 0.8). Sizes 101/109/112 have no redundant standard
+# slot and intentionally abstain. The learned candidate itself runs at wf=1.1.
+_LEARNED_REPLACEMENT_WF = {
+    100: 1.0,
+    102: 1.0,
+    103: 1.2,
+    104: 1.0,
+    105: 1.0,
+    106: 0.9,
+    107: 0.8,
+    108: 1.0,
+    110: 0.9,
+    111: 1.0,
+    113: 0.9,
+    114: 1.0,
+    115: 1.0,
+    116: 1.0,
+    117: 1.0,
+    118: 1.0,
+    119: 1.0,
+    120: 1.0,
+}
+
+
+_LEARNED_MODEL_UNSET = object()
+_LEARNED_MODEL_CACHE = _LEARNED_MODEL_UNSET
+
+
+def _compiled_learned_model():
+    """Validate/compile the sealed artifact once, failing closed forever."""
+    global _LEARNED_MODEL_CACHE
+    if _LEARNED_MODEL_CACHE is _LEARNED_MODEL_UNSET:
+        try:
+            from learned_order import compile_artifact
+            from order_model_v5b import MODEL
+
+            _LEARNED_MODEL_CACHE = compile_artifact(MODEL)
+        except Exception:
+            _LEARNED_MODEL_CACHE = None
+    return _LEARNED_MODEL_CACHE
+
+
 def _learned_order_prior(
     block_count,
     area_targets,
@@ -34,10 +79,12 @@ def _learned_order_prior(
 ):
     """Return validated v5b center priors, or ``None`` for an exact fallback."""
     try:
-        from learned_order import extract_artifact_predictions
-        from order_model_v5b import MODEL
+        from learned_order import extract_compiled_artifact_predictions
 
-        predictions, _mask_metadata = extract_artifact_predictions(
+        compiled_model = _compiled_learned_model()
+        if compiled_model is None:
+            return None
+        predictions, _mask_metadata = extract_compiled_artifact_predictions(
             block_count,
             area_targets,
             b2b_connectivity,
@@ -45,8 +92,10 @@ def _learned_order_prior(
             pins_pos,
             constraints,
             target_positions,
-            MODEL,
+            compiled_model,
         )
+        if predictions is None:
+            return None
         if len(predictions) != block_count:
             return None
         return {
@@ -183,10 +232,17 @@ class MyOptimizer(FloorplanOptimizer):
         self._area_baseline = None
         self._baselines_by_n = None
         self._no_sa = False
+        self._learned_order_enabled = True
+        self._learned_candidate_attempted = False
+        self._learned_candidate_selected = False
+        self._debug_selected_base_wf = None
 
     def solve(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
               p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
               target_positions: torch.Tensor = None) -> List[Rect]:
+        self._learned_candidate_attempted = False
+        self._learned_candidate_selected = False
+        self._debug_selected_base_wf = None
         # Load baselines (golden hpwl/area) for the real-cost selector, if present.
         # Portable lookup only — no machine-specific absolute paths. The optimizer
         # is fully functional without them: _true_contest_cost falls back to the
@@ -295,6 +351,7 @@ class MyOptimizer(FloorplanOptimizer):
             dis_args = (block_count, areas_l, b2b_edges, p2b_edges, pins_l,
                         con_l, tp_l)
             dis_cands = {}
+            learned_candidate = None
             boundary_count = 0
             preplaced_count = 0
             if con_l is not None:
@@ -343,24 +400,9 @@ class MyOptimizer(FloorplanOptimizer):
                 active_slab_max_aspect = 18.0
             else:
                 active_slab_max_aspect = 12.0
-            for wf in (0.8, 0.9, 1.0, 1.1, 1.2):
-                kwargs = {
-                    "width_factor": wf,
-                    "clamped_backfill": clamped_backfill,
-                    "active_slab_max_aspect": active_slab_max_aspect,
-                }
-                try:
-                    cand = dissect_solve(*dis_args, **kwargs)
-                except Exception:
-                    continue
-                if cand and len(cand) == block_count:
-                    candidates.append(cand)
-                    dis_cands[wf] = cand
-            # Research-only v5b challenger.  The complete v32 portfolio above
-            # remains byte-for-byte intact; this one additional heavy pass is
-            # appended behind the same exact feasibility/cost selector, so a
-            # malformed or inferior learned candidate cannot replace v32.
-            if block_count >= 100:
+            learned_order = None
+            replacement_wf = _LEARNED_REPLACEMENT_WF.get(block_count)
+            if replacement_wf is not None and self._learned_order_enabled:
                 learned_order = _learned_order_prior(
                     block_count,
                     areas_l,
@@ -370,22 +412,60 @@ class MyOptimizer(FloorplanOptimizer):
                     con_l,
                     tp_l,
                 )
-                if learned_order is not None:
+            for wf in (0.8, 0.9, 1.0, 1.1, 1.2):
+                kwargs = {
+                    "width_factor": wf,
+                    "clamped_backfill": clamped_backfill,
+                    "active_slab_max_aspect": active_slab_max_aspect,
+                }
+                learned_slot = wf == replacement_wf and learned_order is not None
+                if learned_slot:
+                    # Candidate-count-neutral replacement for the least-used
+                    # paid heavy slot. Disabling learning restores the original
+                    # v32 standard pass at that size's displaced width.
+                    kwargs.update(
+                        width_factor=1.1,
+                        edge_order_mode="bary",
+                        band_order_mode="pinx",
+                        learned_order=learned_order,
+                        learned_prior_weight=0.65,
+                    )
+                learned_output = False
+                try:
+                    cand = dissect_solve(*dis_args, **kwargs)
+                except Exception:
+                    cand = None
+                try:
+                    learned_output = (
+                        learned_slot and bool(cand) and len(cand) == block_count
+                    )
+                    valid_output = bool(cand) and len(cand) == block_count
+                except Exception:
+                    learned_output = False
+                    valid_output = False
+                if learned_slot and not valid_output:
+                    # Fail closed to the displaced paid pass for exceptions,
+                    # None/empty results, and malformed output lengths.
+                    fallback_kwargs = {
+                        "width_factor": wf,
+                        "clamped_backfill": clamped_backfill,
+                        "active_slab_max_aspect": active_slab_max_aspect,
+                    }
                     try:
-                        cand = dissect_solve(
-                            *dis_args,
-                            width_factor=1.1,
-                            edge_order_mode="bary",
-                            band_order_mode="pinx",
-                            clamped_backfill=clamped_backfill,
-                            active_slab_max_aspect=active_slab_max_aspect,
-                            learned_order=learned_order,
-                            learned_prior_weight=0.65,
-                        )
+                        cand = dissect_solve(*dis_args, **fallback_kwargs)
+                        valid_output = bool(cand) and len(cand) == block_count
                     except Exception:
                         cand = None
-                    if cand and len(cand) == block_count:
-                        candidates.append(cand)
+                        valid_output = False
+                if valid_output:
+                    candidates.append(cand)
+                    if learned_output:
+                        learned_candidate = cand
+                        self._learned_candidate_attempted = True
+                    else:
+                        # Only legacy standard candidates belong in this map;
+                        # its keys drive attribution/refinement diagnostics.
+                        dis_cands[wf] = cand
             # Edge boundary queues used to be largest-first. One extra
             # barycentric variant lets L/R-required units land near their
             # connectivity/pin y without post-placement search. Below 118
@@ -542,6 +622,9 @@ class MyOptimizer(FloorplanOptimizer):
                     candidates, constraints, area_targets, b2b_edges,
                     p2b_edges, pins_l, target_positions)
                 if picked is not None:
+                    self._learned_candidate_selected = (
+                        learned_candidate is not None and picked is learned_candidate
+                    )
                     if (fast_first and picked is candidates[0]):
                         # the fast (no-SA) shelf beat every dissection —
                         # rare; now invest in the full-SA shelf and re-pick
@@ -594,6 +677,10 @@ class MyOptimizer(FloorplanOptimizer):
                             if next_picked is picked:
                                 break
                             picked = next_picked
+                    for base_wf, base_candidate in dis_cands.items():
+                        if picked is base_candidate:
+                            self._debug_selected_base_wf = base_wf
+                            break
                     best_positions = picked
                 # order-refinement local search on the best dissection:
                 # rebuild-based transpositions of the interior order under a
