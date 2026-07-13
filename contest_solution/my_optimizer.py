@@ -23,6 +23,43 @@ from iccad2026_evaluate import FloorplanOptimizer, calculate_bbox_area, calculat
 Rect = Tuple[float, float, float, float]
 
 
+def _learned_order_prior(
+    block_count,
+    area_targets,
+    b2b_connectivity,
+    p2b_connectivity,
+    pins_pos,
+    constraints,
+    target_positions,
+):
+    """Return validated v5b center priors, or ``None`` for an exact fallback."""
+    try:
+        from learned_order import extract_artifact_predictions
+        from order_model_v5b import MODEL
+
+        predictions, _mask_metadata = extract_artifact_predictions(
+            block_count,
+            area_targets,
+            b2b_connectivity,
+            p2b_connectivity,
+            pins_pos,
+            constraints,
+            target_positions,
+            MODEL,
+        )
+        if len(predictions) != block_count:
+            return None
+        return {
+            block: (
+                min(1.0, max(0.0, float(predictions[block][0]))),
+                min(1.0, max(0.0, float(predictions[block][1]))),
+            )
+            for block in range(block_count)
+        }
+    except Exception:
+        return None
+
+
 def _tensor_to_list(value):
     if hasattr(value, "detach"):
         value = value.detach()
@@ -319,6 +356,36 @@ class MyOptimizer(FloorplanOptimizer):
                 if cand and len(cand) == block_count:
                     candidates.append(cand)
                     dis_cands[wf] = cand
+            # Research-only v5b challenger.  The complete v32 portfolio above
+            # remains byte-for-byte intact; this one additional heavy pass is
+            # appended behind the same exact feasibility/cost selector, so a
+            # malformed or inferior learned candidate cannot replace v32.
+            if block_count >= 100:
+                learned_order = _learned_order_prior(
+                    block_count,
+                    areas_l,
+                    b2b_edges,
+                    p2b_edges,
+                    pins_l,
+                    con_l,
+                    tp_l,
+                )
+                if learned_order is not None:
+                    try:
+                        cand = dissect_solve(
+                            *dis_args,
+                            width_factor=1.1,
+                            edge_order_mode="bary",
+                            band_order_mode="pinx",
+                            clamped_backfill=clamped_backfill,
+                            active_slab_max_aspect=active_slab_max_aspect,
+                            learned_order=learned_order,
+                            learned_prior_weight=0.65,
+                        )
+                    except Exception:
+                        cand = None
+                    if cand and len(cand) == block_count:
+                        candidates.append(cand)
             # Edge boundary queues used to be largest-first. One extra
             # barycentric variant lets L/R-required units land near their
             # connectivity/pin y without post-placement search. Below 118

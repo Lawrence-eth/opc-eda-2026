@@ -115,6 +115,25 @@ def test_dissect_solve_can_return_reusable_first_pass():
     assert len(first) == 1
 
 
+def test_dissect_without_learned_prior_is_scalar_identical_to_v32_fixture():
+    kwargs = dict(
+        n=2,
+        areas=[4.0, 9.0],
+        b2b_edges=[(0, 1, 1.0)],
+        p2b_edges=[],
+        pins=[],
+        constraints=[[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+        target_positions=None,
+        width_factor=1.0,
+    )
+    expected = [
+        (2.496150883013531, 0.0, 1.109400392450458, 3.6055512754639896),
+        (0.0, 0.0, 2.496150883013531, 3.6055512754639896),
+    ]
+    assert dissect_solve(**kwargs) == expected
+    assert dissect_solve(**kwargs, learned_order=None) == expected
+
+
 @pytest.mark.parametrize(
     "features",
     [

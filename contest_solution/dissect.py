@@ -739,7 +739,7 @@ def should_try_band_edge_cap(n, areas, constraints, target_positions,
 # ---------------------------------------------------------------------------
 
 def order_units(units, b2b, p2b=None, pins=None, H_est=1.0, pin_scale=1.0,
-                y_init=None):
+                y_init=None, coordinate_prior=None, prior_weight=0.65):
     """Vertical ordering by barycenter iteration: each unit is pulled toward
     its connectivity neighbors and (via p2b) toward its pins' absolute y.
     On the second pass, b2b edges to blocks outside this queue also pull
@@ -747,7 +747,9 @@ def order_units(units, b2b, p2b=None, pins=None, H_est=1.0, pin_scale=1.0,
     bottom-up, so strongly-connected units and pin-tied units land at the
     right height. Deterministic."""
     m = len(units)
-    if m <= 2:
+    if m <= 2 and not coordinate_prior:
+        return list(units)
+    if m <= 1:
         return list(units)
     idx_of = {}
     for ui, u in enumerate(units):
@@ -799,6 +801,34 @@ def order_units(units, b2b, p2b=None, pins=None, H_est=1.0, pin_scale=1.0,
                 ny[ui] = 0.5 * y[ui] + 0.5 * (acc / wsum)
         y = ny
     order = sorted(range(m), key=lambda ui: (y[ui], -units[ui].area))
+    if coordinate_prior:
+        # Blend ranks rather than raw coordinates so the learned normalized
+        # center and the case-scaled barycenter remain commensurate.  A unit
+        # prior is the mean of its MIB/cluster member predictions.
+        bary_rank = {ui: rank for rank, ui in enumerate(order)}
+
+        def unit_prior(ui):
+            values = [
+                coordinate_prior[block][1]
+                for block in units[ui].blocks
+                if block in coordinate_prior
+            ]
+            if not values:
+                return 0.5
+            return sum(values) / len(values)
+
+        learned = sorted(
+            range(m), key=lambda ui: (unit_prior(ui), -units[ui].area)
+        )
+        learned_rank = {ui: rank for rank, ui in enumerate(learned)}
+        weight = min(1.0, max(0.0, float(prior_weight)))
+        order = sorted(
+            range(m),
+            key=lambda ui: (
+                (1.0 - weight) * bary_rank[ui] + weight * learned_rank[ui],
+                -units[ui].area,
+            ),
+        )
     return [units[ui] for ui in order]
 
 
@@ -818,7 +848,8 @@ def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
                   order_ops=None, trace=None, band_edge_cap=False,
                   edge_order_mode="area", band_order_mode="width",
                   clamped_backfill=False, active_slab_max_aspect=12.0,
-                  return_first_pass=False):
+                  return_first_pass=False, learned_order=None,
+                  learned_prior_weight=0.65):
     """Two-pass frame-of-rows dissection (pass 2 re-orders with pass 1's
     actual positions — one Gauss-Seidel sweep). Returns positions or None."""
     p1 = _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
@@ -828,7 +859,9 @@ def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
                        edge_order_mode=edge_order_mode,
                        band_order_mode=band_order_mode,
                        clamped_backfill=clamped_backfill,
-                       active_slab_max_aspect=active_slab_max_aspect)
+                       active_slab_max_aspect=active_slab_max_aspect,
+                       learned_order=learned_order,
+                       learned_prior_weight=learned_prior_weight)
     if p1 is None:
         return None
     prev = {i: p1[i] for i in range(n)}
@@ -839,7 +872,9 @@ def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
                        edge_order_mode=edge_order_mode,
                        band_order_mode=band_order_mode,
                        clamped_backfill=clamped_backfill,
-                       active_slab_max_aspect=active_slab_max_aspect)
+                       active_slab_max_aspect=active_slab_max_aspect,
+                       learned_order=learned_order,
+                       learned_prior_weight=learned_prior_weight)
     result = p2 if p2 is not None else p1
     if return_first_pass:
         return result, p1
@@ -851,7 +886,8 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
                   order_ops=None, prev=None, trace=None, pass_name="p",
                   band_edge_cap=False, edge_order_mode="area",
                   band_order_mode="width", clamped_backfill=False,
-                  active_slab_max_aspect=12.0):
+                  active_slab_max_aspect=12.0, learned_order=None,
+                  learned_prior_weight=0.65):
     case = Case(n, areas, constraints, target_positions)
     out: Dict[int, Rect] = {}
 
@@ -913,7 +949,9 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
               if prev else None)
     groups['mid'] = order_units(groups['mid'], b2b_edges, p2b_edges, pins,
                                 H_est=H_est, pin_scale=pin_scale,
-                                y_init=y_init)
+                                y_init=y_init,
+                                coordinate_prior=learned_order,
+                                prior_weight=learned_prior_weight)
     if order_ops:
         mid = groups['mid']
         K = len(mid)
@@ -924,10 +962,14 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
     if edge_order_mode == "bary":
         groups['left'] = order_units(groups['left'], b2b_edges, p2b_edges,
                                      pins, H_est=H_est,
-                                     pin_scale=pin_scale, y_init=y_init)
+                                     pin_scale=pin_scale, y_init=y_init,
+                                     coordinate_prior=learned_order,
+                                     prior_weight=learned_prior_weight)
         groups['right'] = order_units(groups['right'], b2b_edges, p2b_edges,
                                       pins, H_est=H_est,
-                                      pin_scale=pin_scale, y_init=y_init)
+                                      pin_scale=pin_scale, y_init=y_init,
+                                      coordinate_prior=learned_order,
+                                      prior_weight=learned_prior_weight)
     else:
         groups['left'].sort(key=lambda u: -u.area)
         groups['right'].sort(key=lambda u: -u.area)
@@ -959,7 +1001,15 @@ def _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
             if s:
                 wsum += s[0]
                 acc += s[1]
-        return acc / wsum if wsum > 0 else (xa + xb) / 2
+        barycenter = acc / wsum if wsum > 0 else (xa + xb) / 2
+        if not learned_order:
+            return barycenter
+        priors = [learned_order[b][0] for b in u.blocks if b in learned_order]
+        if not priors:
+            return barycenter
+        learned_x = W * sum(priors) / len(priors)
+        weight = min(1.0, max(0.0, float(learned_prior_weight)))
+        return (1.0 - weight) * barycenter + weight * learned_x
 
     # --- bottom band: ONE exact row so every member touches y=0 ------------
     y = 0.0

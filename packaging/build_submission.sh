@@ -75,6 +75,8 @@ mkdir -p "$SRC"
 cp "$ROOT/contest_solution/my_optimizer.py" "$SRC/my_optimizer.py"
 cp "$ROOT/contest_solution/dissect.py"      "$SRC/dissect.py"
 cp "$ROOT/contest_solution/topology_polish.py" "$SRC/topology_polish.py"
+cp "$ROOT/contest_solution/learned_order.py" "$SRC/learned_order.py"
+cp "$ROOT/contest_solution/order_model_v5b.py" "$SRC/order_model_v5b.py"
 cp "$PKG/torch_stub.py"                     "$SRC/torch.py"
 cp "$PKG/eval_stub.py"                      "$SRC/iccad2026_evaluate.py"
 cp "$PKG/solver_main.py"                    "$SRC/solver_main.py"
@@ -100,6 +102,8 @@ cd "$SUB"
   --hidden-import my_optimizer \
   --hidden-import dissect \
   --hidden-import topology_polish \
+  --hidden-import learned_order \
+  --hidden-import order_model_v5b \
   --hidden-import iccad2026_evaluate \
   --hidden-import torch \
   "$SRC/solver_main.py" >/dev/null
