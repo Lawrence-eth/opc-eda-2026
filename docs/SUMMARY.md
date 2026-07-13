@@ -83,7 +83,7 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 - Historical binary robustness remains explicit: v31 passed a 100-case random
   training fuzz under QEMU (timings ignored) and a 140/140 MIB-clean low-size
   source holdout; the latest 400-case native binary fuzz was v29.
-- 161 tests + result audit + release gate; every
+- 167 tests + result audit + release gate; every
   experiment, including reverted probes, logged with verdicts.
 
 ## 6. Methodology / rigor (1 slide)
@@ -120,6 +120,6 @@ cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
 # -> Total Score: 1.615379, Feasible: 100
 cd ../../..
-.venv/bin/python -m pytest                          # 161/161
+.venv/bin/python -m pytest                          # 167/167
 .venv/bin/python scripts/check_public_release.py    # PASS
 ```

@@ -1,6 +1,8 @@
-# Project Status
+# Historical project status snapshot
 
-**Updated 2026-07-11. For the full handoff, read [`HANDOFF.md`](HANDOFF.md).**
+> Frozen on 2026-07-11 at v32 and retained for historical links. It is not an
+> active dashboard. [`HANDOFF.md`](HANDOFF.md) is the sole current human status;
+> `results/release_manifest.json` is the machine-readable release authority.
 
 ## Current result (official evaluator, 100 validation cases)
 

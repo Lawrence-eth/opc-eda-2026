@@ -28,7 +28,7 @@ floor that v9's whole strategy banks on. The package therefore had to be torch-f
 | Check | Result |
 |---|---|
 | Official evaluation of `my_optimizer.py` (100 validation cases) | **2.718225, 100/100 feasible** — every per-case cost **bit-identical** to `results/v9_locked.json`, despite different hardware → determinism confirmed |
-| Test suite / result audit / release gate | 51/51 pass / PASS / PASS |
+| Test suite / result audit / release gate | 167/167 pass / PASS / PASS |
 | Golden layouts scored by the official evaluator | feasible 100/100, but **90/100 have soft violations** (mean V_rel 0.051, max 0.148) → golden itself scores **1.1079** @RF=1 |
 | Retrieval hypothesis (are validation instances in the 1M training set?) | **All 1,008,000 training samples scanned: 0 hits** (area-multiset signature). Train/val disjoint ⇒ hidden test almost certainly disjoint ⇒ golden **cannot be retrieved**, only computed |
 | Torch-free port equivalence (python shim via op_wrapper) | 2.718225, 100/100, **0/100 position differences** vs in-process run |
@@ -41,8 +41,9 @@ floor that v9's whole strategy banks on. The package therefore had to be torch-f
 **2026-07-10 release blocker fixed:** the earlier archive was built
 on an ARM64 host even though the evaluation machine is an Intel Xeon.
 `op_wrapper.py` does not fall back after an executable-format error, so that
-archive was not submittable. `build_submission.sh` now builds through an amd64
-Debian 13/Python 3.13 container when the host is not x86-64 and rejects any
+archive was not submittable. `build_submission.sh` now builds through a
+digest-pinned AMD64 Debian 13/Python 3.13 container on every host by default
+and rejects any
 artifact whose ELF machine is not AMD x86-64. The current archive passes the
 guard; only a package produced by this build may be uploaded.
 Current hardened archive SHA-256:
@@ -172,6 +173,8 @@ gh release download v32-prebeta-20260711 --pattern iccad2026_submission.tar.gz \
 echo "72d8fc5b6c4831a6af3547bacc16f19c800f1991b413500efbe467db8aec72c3  submission/iccad2026_submission.tar.gz" \
     | sha256sum --check -
 python3 scripts/check_public_release.py
+python3 scripts/audit_submission_package.py \
+  --release-manifest results/release_manifest.json
 ```
 
 After any optimizer change, build and prove the new package instead:

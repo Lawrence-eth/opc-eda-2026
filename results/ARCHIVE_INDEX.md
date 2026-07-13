@@ -15,9 +15,9 @@ Private release asset name: `opc-eda-2026-repo-reset-20260713.tar.gz`
   patches, full per-file checksums, and a verified thin remote-history bundle.
 
 The local path is informational and is not assumed to exist in a fresh clone.
-Upload the archive as a private release asset before removing any source
-worktree, scratch output, or obsolete remote ref. After upload, download it
-again and verify the digest above.
+On 2026-07-13 the archive was uploaded as a private release asset, downloaded
+again, and verified against the digest above. Preserve that private asset
+before removing any source worktree, scratch output, or obsolete remote ref.
 
 Critical evidence preserved in the archive:
 
@@ -54,3 +54,16 @@ status metadata but intentionally excluded.
 `git bundle verify` passed. It contains the four commits through
 `d03f5c5ca6b538edcfcf259d7c24d327118f08ca` and requires prerequisite
 `fc28d6d4a7e173c572329e1c9326160ad0ce90ac` from IntelLabs/FloorSet.
+
+## Complete experimental branch bundle
+
+The separate private asset `local-experiment-heads-20260713.bundle` records a
+complete, prerequisite-free history for all four experimental branch tips. It
+was verified with `git bundle verify` before upload.
+
+- SHA-256: `d85e3b9dab5799b21a7acf715ab7dadcaf516d6c4c37beeafbfbc652f18ebc69`
+- Local copy: `/home/ubuntu/artifacts/local-experiment-heads-20260713.bundle`
+- `exp/v32-fast-topology` → `e96d9045d5c30ac15046d65cab41e2d6c5c6c5a0`
+- `exp/v32-fast-topology-clean` → `a3db2ac674a8efa7e6172d14974ad1179a0b06a7`
+- `exp/v32-topology-clean2` → `58894c47d6ed1017107977ce1c53c99999e5f83d`
+- `research/v33-zero-cost-p1` → `ae483a2cddc8dcb9ef6f7da7945d39ca714ec4ab`

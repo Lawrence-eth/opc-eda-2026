@@ -1,7 +1,7 @@
 # Learned model artifacts
 
 `order_ridge_v4.json` is the reproducible compact topology-guidance baseline.
-It is a research artifact, not part of the submitted v31 solver.
+It is a research artifact, not part of the submitted v32 solver.
 
 ## v4 contract
 

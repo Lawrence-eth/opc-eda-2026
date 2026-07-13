@@ -277,7 +277,7 @@ PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
 `.venv/bin/python scripts/fuzz_binary.py --num 400` → must be 0 failures. On
 this ARM host, pass `--binary` pointing at a configured x86/QEMU launcher.
 
-5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (161 tests) and
+5.6 **Repo gates**: `.venv/bin/python -m pytest -q` (167 tests) and
 `.venv/bin/python scripts/check_public_release.py` (defaults now point at
 `results/release_manifest.json`, which binds the incumbent sources, result,
 package, score, and FloorSet commit).
@@ -368,8 +368,8 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 - Eval host: Debian 13, Python 3.13.14, torch 2.12.0+cu130, 48-core Icelake,
   A100 80GB, 128GB RAM, no internet, cases sequential
   (`docs/extracted/C_Submission_Guidelines_20260616.txt`, `C_QA_20260618.txt`).
-- The guarded build already runs in an AMD64 Debian 13/Python 3.13 container
-  on this ARM host and rejects any non-x86-64 artifact.
+- The guarded build runs in a digest-pinned AMD64 Debian 13/Python 3.13
+  container on every host by default and rejects any non-x86-64 artifact.
 - Upload channel + credentials: only the operator has these
   (iccad-contest.org). Monitor the FloorSet GitHub issues for rule updates.
 
