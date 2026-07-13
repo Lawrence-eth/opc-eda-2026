@@ -2,6 +2,9 @@
 """
 ICCAD 2026 FloorSet Challenge - Contest Framework
 
+Modified from IntelLabs/FloorSet (Apache-2.0): loader imports were corrected
+and constraint diagnostics were expanded. See THIRD_PARTY_NOTICES.md.
+
 Unified contest framework with all functionality accessible via switches.
 
 Dataset Terminology:

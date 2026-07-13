@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "verified_at_utc": "2026-07-13T07:30:00Z",
+  "floorset": {
+    "repository": "https://github.com/IntelLabs/FloorSet.git",
+    "branch": "main",
+    "commit": "aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa",
+    "tree": "37e9b61f11e056b5a6ee92dcf38d12a1ad3f493c",
+    "contest_path": "iccad2026contest",
+    "files": {
+      "iccad2026contest/FloorplanningContest_ICCAD_2026_v10.pdf": "a00336fd8d16f65b1223a9f027e9e0e6f4e5ab29baaff90e0faf1abc3700b9b7",
+      "iccad2026contest/README.md": "66e56129a6a0311c05286abebe32c60dfc9406ac9cded3bca3e452a6175b57dc",
+      "iccad2026contest/iccad2026_evaluate.py": "64db37865b42baf11add62bdbf035690dca086cd4be7b5b4e58db756f20d8498",
+      "iccad2026contest/optimizer_template.py": "34f42cf5e38d459d44ae42cdab42efa4cd285f5aa1a81d6b1811a26db6e9131c",
+      "iccad2026contest/requirements.txt": "44242604eae8d52f689e3d245a24a060cd748225906bdc4683113ad5f6cc974f",
+      "iccad2026contest/training_example.py": "f79a325de9454026c26b9c0278c4610fd79df99e56f8ef3f3a330080fdd34266"
+    }
+  },
+  "documents": [
+    {
+      "id": "problem_statement_v10",
+      "url": "https://drive.google.com/file/d/1gwb6eQo50tS9jITlo5b6Edg1oWYiHV5C/view",
+      "download_name": "C_20260522.pdf",
+      "size_bytes": 472082,
+      "sha256": "a00336fd8d16f65b1223a9f027e9e0e6f4e5ab29baaff90e0faf1abc3700b9b7",
+      "tracked_extract": "docs/extracted/C_20260522_problem_v10.txt",
+      "tracked_extract_sha256": "50d52e10680b67c53c5b14bd1c7340120e28354535a14165152f0eed58a883c6"
+    },
+    {
+      "id": "qa_20260618",
+      "url": "https://drive.google.com/file/d/1ItNwIY8O8lUVokAeMDGsXq_s35JoRIGC/view",
+      "download_name": "C_QA_20260618.pdf",
+      "size_bytes": 163428,
+      "sha256": "93e4b58c71a3466aea23db40bf7747056e07cf849b9909e5cbac4ff6c0f6dfc9",
+      "tracked_extract": "docs/extracted/C_QA_20260618.txt",
+      "tracked_extract_sha256": "8ccb71b4ff5000de0ea70a0e7a2610f72b997c77ec17e3cd092691705f4c6680"
+    },
+    {
+      "id": "submission_guidelines_20260616",
+      "url": "https://drive.google.com/file/d/1OiKhswOKrlLNStzUHt1IDN6Ej2kXXJNW/view",
+      "download_name": "C_Submission_Guidelines_20260616.pdf",
+      "size_bytes": 55308,
+      "sha256": "c3660f8d0003a3d36cb7d19df685b6e1136fb91ff15dadc7cc0ddc9d75efee61",
+      "tracked_extract": "docs/extracted/C_Submission_Guidelines_20260616.txt",
+      "tracked_extract_sha256": "a2e52a4ceac2929babf80714c4af8bc51c2b8123663216bb4563776167757faf"
+    }
+  ],
+  "submission_wrapper": {
+    "url": "https://drive.google.com/file/d/1m9_ZDtZISr78d5phee5QzsCDd_VkQHaH/view",
+    "download_name": "op_wrapper.py",
+    "size_bytes": 2567,
+    "sha256": "1c5c41e881d4966797cfbbc58c2ef113fdcb92e66686fa89dcdb6253989999bc",
+    "tracked_path": "packaging/op_wrapper.py"
+  },
+  "schedule": {
+    "source": "https://www.iccad-contest.org/tw/",
+    "beta_deadline_utc": "2026-07-24T09:00:00Z",
+    "final_deadline_utc": "2026-08-21T09:00:00Z"
+  }
+}

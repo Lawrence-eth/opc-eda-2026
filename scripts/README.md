@@ -38,6 +38,9 @@ artifacts:
 
 ```bash
 .venv/bin/python -m pytest -q
+.venv/bin/python scripts/check_official_sources.py
+.venv/bin/python scripts/audit_submission_package.py \
+  --release-manifest results/release_manifest.json
 .venv/bin/python scripts/check_public_release.py
 .venv/bin/python scripts/audit_results.py \
   results/integrated_v32.json --expected-cases 100 --require-positions
@@ -50,6 +53,8 @@ artifacts:
 
 | Tool | Role | Important notes |
 |---|---|---|
+| [`check_official_sources.py`](check_official_sources.py) | Verify the pinned FloorSet commit/tree/files, tracked wrapper and document extracts, and optional original Drive downloads without network access. | CI requires the pinned checkout; pass `--materials-dir` to recheck locally retained PDFs. |
+| [`audit_submission_package.py`](audit_submission_package.py) | Reject unsafe archives, wrong-architecture or too-new ELF payloads, wrapper/source drift, real-torch leakage, and optionally smoke-run the binary. | Pass `--release-manifest` for a frozen asset and `--smoke` on AMD64. New builds require notices. |
 | [`setup_and_evaluate.sh`](setup_and_evaluate.sh) | Bootstrap the pinned official checkout, run tests, run the official 100-case evaluator, save positions, and audit the result. | Mutates `.venv` and the optimizer copy under `external/FloorSet`; set `OUTPUT=/tmp/opc-eda-evaluation.json` to avoid replacing a repository artifact. |
 | [`check_public_release.py`](check_public_release.py) | Fail-closed release gate for manifest hashes, source and package provenance, result integrity, score limits, public-safe text, and optional optimizer-copy parity. | The no-argument command consumes [`results/release_manifest.json`](../results/release_manifest.json). Run it after building the exact archive intended for release. |
 | [`audit_results.py`](audit_results.py) | Validate evaluator JSON structure, summaries, finite metrics, case IDs, feasibility, and optionally every saved rectangle. | Run before comparing or publishing any full result. `--require-positions` is expected for a release artifact. |

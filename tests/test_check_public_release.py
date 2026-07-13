@@ -234,3 +234,15 @@ def test_run_checks_audits_candidate_before_compare(tmp_path, monkeypatch):
     assert "candidate_result_audit=FAIL" in messages
     assert "candidate_compare=FAIL" in messages
     assert "reconstructed score" in joined
+
+
+def test_tracked_official_source_manifest_passes_offline():
+    ok, errors, notes = check_public_release.check_official_sources.verify_official_sources(
+        check_public_release.check_official_sources.DEFAULT_MANIFEST,
+        floorset_path=None,
+        materials_dir=None,
+        release_manifest_path=check_public_release.DEFAULT_MANIFEST,
+    )
+
+    assert ok, errors
+    assert any("Drive downloads not supplied" in note for note in notes)
