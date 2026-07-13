@@ -711,6 +711,36 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 pass
 
+        # Last-mile, topology-preserving MIB repair.  This must remain after
+        # every selector and polisher: an accepted move has already proved
+        # hard feasibility, non-increasing HPWL/bbox/soft categories, and a
+        # strict MIB-violation reduction.  The narrow input/output-visible
+        # pattern gate returns the incumbent almost immediately otherwise.
+        if best_positions is not None:
+            try:
+                from golden_plus_repair import RepairConfig, repair_fixed_topology
+
+                repaired = repair_fixed_topology(
+                    best_positions,
+                    area_targets,
+                    b2b_edges,
+                    p2b_edges,
+                    pins_l,
+                    constraints,
+                    target_positions,
+                    config=RepairConfig(
+                        enable_boundary=False,
+                        enable_mib=True,
+                        enable_grouping=False,
+                        require_safe_mib_pattern=True,
+                    ),
+                )
+                if repaired is not None and len(repaired) == block_count:
+                    best_positions = repaired
+            except Exception as exc:
+                if getattr(self, "verbose", False):
+                    print(f"[WARN] safe MIB repair failed: {exc}", file=sys.stderr)
+
         return best_positions if best_positions is not None else []
 
     def _select_candidate(self, candidates, constraints, area_targets, b2b,
