@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "experiment": "golden_plus_fixed_topology_repair_v1",
+  "decision": {
+    "promote": true,
+    "production_mechanisms": {
+      "boundary": false,
+      "mib": true,
+      "grouping": false
+    },
+    "reason": "MIB-only safe gate improves v32 on both panels with zero official rejection, metric mismatch, HPWL regression, bbox regression, or feasibility loss."
+  },
+  "scope": {
+    "public": true,
+    "heavy_clean_v1_fold": 0,
+    "sealed_v2_accessed": false
+  },
+  "provenance": {
+    "repair_source_sha256": "26fdb4ee95561023f32f5ed07c374b2aea5262317cf8d339039ea009d8c6eb30",
+    "evaluator_script_sha256": "861c1b8a079917f1654e8f43f69dcf3833c75685062790642f22dffd28928c56",
+    "benchmark_script_sha256": "1cf90c220d730d85635df0fd5722d017189b222604078eae0dd8b964f25b65ef",
+    "official_evaluator_sha256": "64db37865b42baf11add62bdbf035690dca086cd4be7b5b4e58db756f20d8498",
+    "floorset_commit": "aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa",
+    "heavy_clean_manifest_sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+    "public_v32_result_sha256": "b72dac822d9cb384aa2851ba57459288b5a4b6d178216a2496a5cc58d712e81a",
+    "raw_artifacts": {
+      "v32_official_score_sha256": "294e8dc3e67a327eda747b627d91391654b3287c64637faac480b3a940db596c",
+      "golden_ablation_sha256": "f0ded644818d078c7a4963b9e6e3dfd6dd772960abe237c092e6b5a4a93d16ca",
+      "no_report_benchmark_sha256": "831203440b7d55e2b794c88dc948ba7fad6d39b0ba6eb4a48c071e828978db50",
+      "runtime_adjusted_score_sha256": "fe820d273803a900742c13dee1ba01c5d7029e68462699f2e638229f20276702"
+    }
+  },
+  "config": {
+    "enable_boundary": false,
+    "enable_mib": true,
+    "enable_grouping": false,
+    "require_safe_mib_pattern": true,
+    "hpwl_abs_tolerance": 1e-7,
+    "hpwl_rel_tolerance": 1e-12,
+    "bbox_abs_tolerance": 1e-7,
+    "soft_contact_tolerance": 0.0,
+    "overlap_tolerance": 1e-6,
+    "area_tolerance": 0.01
+  },
+  "v32_official": {
+    "public": {
+      "cases": 100,
+      "accepted_cases": 1,
+      "feasible_before": 100,
+      "feasible_after": 100,
+      "official_rejected_cases": 0,
+      "metric_mismatch_cases": 0,
+      "rf1_before": 1.6153787745353914,
+      "rf1_after": 1.6151814668330213,
+      "rf1_delta": -0.00019730770237003092,
+      "mib_violations_removed": 1,
+      "hpwl_delta_sum": -0.0580480997431323,
+      "hpwl_delta_max": 0.0,
+      "bbox_area_delta_sum": 0.0,
+      "bbox_area_delta_max": 0.0
+    },
+    "heavy_clean_v1_fold0": {
+      "cases": 105,
+      "accepted_cases": 1,
+      "feasible_before": 105,
+      "feasible_after": 105,
+      "official_rejected_cases": 0,
+      "metric_mismatch_cases": 0,
+      "rf1_before": 1.7905805258896408,
+      "rf1_after": 1.790097469056356,
+      "rf1_delta": -0.00048305683328475624,
+      "mib_violations_removed": 1,
+      "hpwl_delta_sum": -0.09748886572916149,
+      "hpwl_delta_max": 0.0,
+      "bbox_area_delta_sum": 0.0,
+      "bbox_area_delta_max": 0.0
+    }
+  },
+  "golden_ceiling": {
+    "public": {
+      "rf1_before": 1.1079401988107094,
+      "rf1_after": 1.106350376896479,
+      "rf1_delta": -0.0015898219142302938,
+      "accepted_cases": 11,
+      "boundary_violations_removed": 14,
+      "feasible_after": 100,
+      "official_rejected_cases": 0,
+      "metric_mismatch_cases": 0,
+      "aggregate_beats_supplied_golden": true
+    },
+    "heavy_clean_v1_fold0": {
+      "rf1_before": 1.1077270456502948,
+      "rf1_after": 1.103831341922902,
+      "rf1_delta": -0.0038957037273927853,
+      "accepted_cases": 11,
+      "boundary_violations_removed": 11,
+      "feasible_after": 105,
+      "official_rejected_cases": 0,
+      "metric_mismatch_cases": 0,
+      "aggregate_beats_supplied_golden": true
+    },
+    "ablation_result": "combined equals boundary-only; MIB-only and grouping-only have zero wins on supplied golden"
+  },
+  "runtime_no_report_20_repeats": {
+    "public": {
+      "mean_seconds_per_case": 0.00008980695705395192,
+      "p95_seconds_per_case": 0.00010304001625627279,
+      "mean_sweep_seconds": 0.009046061901608482,
+      "changed_cases": ["public/60"]
+    },
+    "heavy_clean_v1_fold0": {
+      "mean_seconds_per_case": 0.00012916871036092441,
+      "p95_seconds_per_case": 0.00011676002759486437,
+      "mean_sweep_seconds": 0.013674207514850423,
+      "changed_cases": ["floorset_lite/worker_51/layouts_6048.th#0"]
+    }
+  },
+  "runtime_adjusted": {
+    "field_median_seconds_evaluated": [0.1, 0.2, 0.3, 0.5, 0.7, 1.0, 1.2, 1.5, 2.0, 3.0],
+    "candidate_beats_v32_at_every_point": {
+      "public": true,
+      "heavy_clean_v1_fold0": true
+    }
+  }
+}
