@@ -169,9 +169,12 @@ def _smoke(extracted_root: Path) -> None:
             f"binary smoke run exited {completed.returncode}: {completed.stderr[-500:]}"
         )
     try:
-        positions = json.loads(completed.stdout)
+        response = json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
         raise PackageAuditError(f"binary smoke stdout is not one JSON value: {exc}") from exc
+    if not isinstance(response, dict) or set(response) != {"positions"}:
+        raise PackageAuditError("binary smoke output must be exactly an object containing positions")
+    positions = response["positions"]
     if not isinstance(positions, list) or len(positions) != request["block_count"]:
         raise PackageAuditError("binary smoke output has the wrong block count")
     for index, row in enumerate(positions):
@@ -314,7 +317,9 @@ def audit_archive(
 
         if smoke:
             with tempfile.TemporaryDirectory(prefix="opc-package-audit-") as temporary:
-                archive.extractall(temporary)
+                # Every member was already proven relative, unique, regular or
+                # a directory, and within the size/count limits above.
+                archive.extractall(temporary, filter="fully_trusted")
                 _smoke(Path(temporary))
 
     glibc_text = f"{highest_glibc[0]}.{highest_glibc[1]}" if observed_glibc else "none"
