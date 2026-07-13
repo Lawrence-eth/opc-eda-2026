@@ -1,6 +1,7 @@
 import hashlib
 import io
 import struct
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -87,3 +88,27 @@ def test_required_notices_are_fail_closed(tmp_path):
 
     with pytest.raises(package_audit.PackageAuditError, match="lacks required notice"):
         _audit(path, require_notices=True)
+
+
+def test_binary_smoke_requires_positions_object(tmp_path, monkeypatch):
+    monkeypatch.setattr(package_audit.platform, "machine", lambda: "x86_64")
+
+    def completed(stdout):
+        return subprocess.CompletedProcess([], 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(
+        package_audit.subprocess,
+        "run",
+        lambda *args, **kwargs: completed(
+            '{"positions": [[0, 0, 10, 10], [10, 0, 5, 5], [15, 0, 2, 2]]}'
+        ),
+    )
+    package_audit._smoke(tmp_path)
+
+    monkeypatch.setattr(
+        package_audit.subprocess,
+        "run",
+        lambda *args, **kwargs: completed("[[0, 0, 10, 10], [10, 0, 5, 5], [15, 0, 2, 2]]"),
+    )
+    with pytest.raises(package_audit.PackageAuditError, match="object containing positions"):
+        package_audit._smoke(tmp_path)
