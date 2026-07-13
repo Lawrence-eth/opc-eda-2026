@@ -97,6 +97,14 @@ FEATURE_NAMES = (
     "has_other_preplaced_obstacle",
 )
 
+MIB_FEATURE_NAMES = frozenset(
+    name for name in FEATURE_NAMES if name == "mib_member" or name.startswith("mib_")
+)
+MIB_FEATURE_INDICES = tuple(
+    index for index, name in enumerate(FEATURE_NAMES) if name in MIB_FEATURE_NAMES
+)
+MIB_POLICIES = frozenset(("unmasked", "mask_incompatible", "mask_all"))
+
 
 def _number(value):
     return float(value.item()) if hasattr(value, "item") else float(value)
@@ -127,6 +135,112 @@ def _integer(value, name):
     if number != integer:
         raise ValueError(f"{name} must contain integer values")
     return integer
+
+
+def mib_is_input_compatible(
+    block_count, area_targets, constraints, target_positions
+):
+    """Return whether every MIB group can share one legal input-visible shape.
+
+    FloorSet's later training configurations contain MIB groups whose soft
+    area intervals do not intersect.  Fixed/preplaced dimensions are part of
+    the optimizer input and therefore may also constrain the common shape;
+    free-block golden dimensions are deliberately never consulted.
+    """
+    n = _integer(block_count, "block_count")
+    if n < 1:
+        raise ValueError("block_count must be positive")
+    raw_areas = _rows(area_targets)
+    raw_constraints = _rows(constraints)
+    raw_targets = _rows(target_positions)
+    if len(raw_areas) < n:
+        raise ValueError("area_targets is shorter than block_count")
+    if not raw_constraints:
+        return True
+    if len(raw_constraints) < n:
+        raise ValueError("constraints is shorter than block_count")
+    if not raw_targets:
+        raw_targets = [[-1.0] * 4 for _ in range(n)]
+    if len(raw_targets) < n:
+        raise ValueError("target_positions is shorter than block_count")
+
+    groups = {}
+    for block, row in enumerate(raw_constraints[:n]):
+        if not isinstance(row, (list, tuple)) or len(row) < 3:
+            raise ValueError("constraints rows must have at least three values")
+        identifier = _integer(row[2], "constraints")
+        if identifier < 0:
+            raise ValueError("constraint group identifiers must be non-negative")
+        if identifier:
+            groups.setdefault(identifier, []).append(block)
+
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        soft_areas = []
+        hard_shapes = []
+        for block in members:
+            row = raw_constraints[block]
+            fixed = len(row) > 0 and _finite_number(row[0], "constraints") != 0.0
+            preplaced = len(row) > 1 and _finite_number(row[1], "constraints") != 0.0
+            if fixed or preplaced:
+                target = raw_targets[block]
+                if not isinstance(target, (list, tuple)) or len(target) < 4:
+                    raise ValueError("target_positions rows must have four values")
+                width = _finite_number(target[2], "target_positions")
+                height = _finite_number(target[3], "target_positions")
+                if width <= 0.0 or height <= 0.0:
+                    return False
+                hard_shapes.append((width, height))
+            else:
+                area = _finite_number(raw_areas[block], "area_targets")
+                if area <= 0.0:
+                    return False
+                soft_areas.append(area)
+
+        lower = max((0.99 * area for area in soft_areas), default=None)
+        upper = min((1.01 * area for area in soft_areas), default=None)
+        if lower is not None and lower > upper + 1e-9:
+            return False
+        if hard_shapes:
+            width, height = hard_shapes[0]
+            if any(
+                round(other_width, 4) != round(width, 4)
+                or round(other_height, 4) != round(height, 4)
+                for other_width, other_height in hard_shapes[1:]
+            ):
+                return False
+            if lower is not None:
+                area = width * height
+                if area < lower - 1e-7 or area > upper + 1e-7:
+                    return False
+    return True
+
+
+def apply_mib_feature_policy(
+    features,
+    *,
+    policy,
+    block_count,
+    area_targets,
+    constraints,
+    target_positions,
+):
+    """Apply a declared MIB corruption policy and return rows plus metadata."""
+    if policy not in MIB_POLICIES:
+        raise ValueError(f"unsupported MIB feature policy: {policy!r}")
+    compatible = mib_is_input_compatible(
+        block_count, area_targets, constraints, target_positions
+    )
+    masked = policy == "mask_all" or (
+        policy == "mask_incompatible" and not compatible
+    )
+    rows = [list(row) for row in features]
+    if masked:
+        for row in rows:
+            for index in MIB_FEATURE_INDICES:
+                row[index] = 0.0
+    return rows, {"input_compatible": compatible, "masked": masked}
 
 
 def _valid_edges(value, *, first_limit: int, second_limit: int, name: str):
@@ -838,3 +952,44 @@ def artifact_predictions(features, model, *, message_steps):
     if any(not math.isfinite(value) for row in predictions for value in row):
         raise ValueError("model predictions must be finite")
     return predictions
+
+
+def extract_artifact_predictions(
+    block_count,
+    area_targets,
+    b2b_connectivity,
+    p2b_connectivity,
+    pins_pos,
+    constraints,
+    target_positions,
+    model,
+):
+    """Extract, corruption-mask, and score features under one artifact contract."""
+    if not isinstance(model, dict):
+        raise ValueError("model artifact must be a JSON object")
+    schema = model.get("feature_schema")
+    if not isinstance(schema, dict):
+        raise ValueError("model feature_schema must be an object")
+    message_steps = _integer(schema.get("message_steps"), "model message_steps")
+    mib_policy = schema.get("mib_policy", "unmasked")
+    features = extract_order_features(
+        block_count,
+        area_targets,
+        b2b_connectivity,
+        p2b_connectivity,
+        pins_pos,
+        constraints,
+        target_positions,
+        message_steps=message_steps,
+    )
+    features, mask_metadata = apply_mib_feature_policy(
+        features,
+        policy=mib_policy,
+        block_count=block_count,
+        area_targets=area_targets,
+        constraints=constraints,
+        target_positions=target_positions,
+    )
+    return artifact_predictions(
+        features, model, message_steps=message_steps
+    ), mask_metadata

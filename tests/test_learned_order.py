@@ -168,6 +168,43 @@ def test_group_identifier_renaming_is_invariant():
         assert renamed_row == pytest.approx(original_row, abs=1e-12)
 
 
+def test_mib_compatibility_and_mask_policy_use_only_input_visible_targets():
+    case = _case()
+    case["constraints"][1][0] = 0
+    case["constraints"][4][2] = 0
+    case["area_targets"][0] = 4.0
+    case["area_targets"][1] = 4.02
+    assert MODULE.mib_is_input_compatible(
+        case["block_count"],
+        case["area_targets"],
+        case["constraints"],
+        case["target_positions"],
+    )
+    case["area_targets"][1] = 9.0
+    assert not MODULE.mib_is_input_compatible(
+        case["block_count"],
+        case["area_targets"],
+        case["constraints"],
+        case["target_positions"],
+    )
+    features = [[1.0] * len(MODULE.FEATURE_NAMES) for _ in range(case["block_count"])]
+    masked, metadata = MODULE.apply_mib_feature_policy(
+        features,
+        policy="mask_incompatible",
+        block_count=case["block_count"],
+        area_targets=case["area_targets"],
+        constraints=case["constraints"],
+        target_positions=case["target_positions"],
+    )
+    assert metadata == {"input_compatible": False, "masked": True}
+    assert all(
+        row[index] == 0.0
+        for row in masked
+        for index in MODULE.MIB_FEATURE_INDICES
+    )
+    assert features[0][MODULE.MIB_FEATURE_INDICES[0]] == 1.0
+
+
 def test_uniform_geometric_scale_is_invariant():
     case = _case()
     scale = 7.25
@@ -250,6 +287,28 @@ def test_artifact_predictions_bind_message_steps_and_schema():
     ]
     with pytest.raises(ValueError, match="message_steps"):
         MODULE.artifact_predictions(features, model, message_steps=3)
+
+
+def test_extract_artifact_predictions_applies_declared_mib_policy():
+    case = _case()
+    case["constraints"][1][0] = 0
+    case["area_targets"][0] = 4.0
+    case["area_targets"][1] = 9.0
+    model = _artifact()
+    model["feature_schema"]["mib_policy"] = "mask_incompatible"
+    _seal_artifact(model)
+    predictions, metadata = MODULE.extract_artifact_predictions(
+        case["block_count"],
+        case["area_targets"],
+        case["b2b_connectivity"],
+        case["p2b_connectivity"],
+        case["pins_pos"],
+        case["constraints"],
+        case["target_positions"],
+        model,
+    )
+    assert len(predictions) == case["block_count"]
+    assert metadata == {"input_compatible": False, "masked": True}
 
 
 @pytest.mark.parametrize(
