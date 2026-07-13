@@ -1,0 +1,59 @@
+{
+  "audit": "dual_parent_oracle_reconstruction",
+  "contract": {
+    "decoder_inputs": [
+      "exact oriented factor-pair shape category",
+      "horizontal B*-tree parent and side",
+      "vertical support parent or floor",
+      "fixed/preplaced targets and MIB groups"
+    ],
+    "metric_runtime_seconds": 1.0,
+    "prohibited_inputs": [
+      "generator implementation or parameters",
+      "PRNG state",
+      "source/file/worker identity as a model feature",
+      "instance lookup or retrieval"
+    ]
+  },
+  "failure_examples": [],
+  "provenance": {
+    "audit_script_sha256": "25586f5b780a8cb084316d7377c0ca694522c625566995933f7ae45da104268d",
+    "decoder_sha256": "3cd63d66601f033a0ba093defa7d8e2e2299e611d24728e55989c087d96eab33",
+    "folds": [
+      0
+    ],
+    "manifest": "results/folds/heavy_clean_v1.json",
+    "manifest_sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+    "official_evaluator": "iccad2026contest/iccad2026_evaluate.py",
+    "official_evaluator_sha256": "64db37865b42baf11add62bdbf035690dca086cd4be7b5b4e58db756f20d8498",
+    "source_selection": "pre-existing manifest; source-disjoint"
+  },
+  "schema_version": 1,
+  "summary": {
+    "block_support_labels": 10794,
+    "blocks": 11550,
+    "cases": 105,
+    "decoded_score_rf1": 1.1077270456502948,
+    "failure_taxonomy": {},
+    "floor_support_labels": 756,
+    "geometry_exact": 105,
+    "golden_feasible": 105,
+    "golden_score_rf1": 1.1077270456502948,
+    "horizontal_edges_verified": 11445,
+    "max_coordinate_delta": 0.0,
+    "max_dimension_delta": 0.0,
+    "max_metric_delta": 0.0,
+    "metrics_exact": 105,
+    "mib_inconsistent_layouts": 0,
+    "oracle_gate_passed": true,
+    "soft_shape_option_count": {
+      "count": 9924,
+      "max": 8.0,
+      "mean": 3.059048770656993,
+      "median": 2.0,
+      "min": 1.0
+    },
+    "strict_mib_decodable": 105,
+    "unique_sources": 105
+  }
+}
