@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "rank_gate_passed_additive_decoded_probe_passed_count_neutral_gate_pending",
+  "status": "rank_gate_passed_count_neutral_blend_dev_gate_passed_holdout_pending",
   "artifact": {
     "path": "results/models/rank_mlp_v6_validation.json",
     "file_sha256": "b615f84e74c2dbe145f1181c2296b4dfdc3ad41909ed9b6948737158576deaf2",
@@ -80,12 +80,95 @@
       "unoptimized_runtime_mean_additive_seconds": 0.6489934137079953
     }
   },
+  "count_neutral_fractional_rank_blend": {
+    "contract": {
+      "candidate_schedule": "replace exactly one frozen zero-selected legacy width slot with one learned dissection; abstain at sizes 101, 109, and 112",
+      "replacement_map_artifact": "results/models/order_v5b_redundant_slots_v1.json",
+      "replacement_map_artifact_sha256": "6e4dd7946c16e4f5ae897a3a0de4186d9a46fe92efb32cdf3bb2a08cf425b80c",
+      "prediction_transform": "stable average fractional ranks independently per model and axis, then (1-lambda)*v5b_rank + lambda*v6_rank",
+      "v6_lambda_grid": [0.25, 0.5, 0.75],
+      "selection_rule": "minimum unweighted mean RF=1 score across clean+raw folds 0-2; exact tie favors smaller v6 lambda",
+      "promotion_gates": {
+        "strict_mean_improvement_vs_v5b": true,
+        "maximum_individual_fold_regret": 0.001,
+        "pooled_wins_at_least_losses": true,
+        "all_cases_feasible": true
+      },
+      "fold3_used_for_lambda_selection": false,
+      "public_used_for_lambda_selection": false,
+      "fold4_access": "none",
+      "sealed_label_or_score_access": "none"
+    },
+    "runtime_guard_scope": {
+      "kind": "available_generated_nonlearned_reference_pareto_guard",
+      "extra_solve_count": 0,
+      "exact_displaced_slot_rollback": false,
+      "statement": "the count-neutral replacement removes the displaced v32 candidate, so this runtime guard must not be represented as an exact per-case v32 rollback; actual v32 is a separate paired offline promotion baseline"
+    },
+    "baseline_v5b": {
+      "unweighted_mean_score": 1.767430201112531,
+      "folds": [
+        {"domain": "clean", "fold": 0, "score": 1.7783479432864902, "sha256": "7021d2676aabb163bebf2fb0002715f42e59124bb75068fd463014eebcfdad37"},
+        {"domain": "clean", "fold": 1, "score": 1.724864886854556, "sha256": "5954b7234bb8e869da5434444649292a76e5048c9877f220259801e9c0c7f34d"},
+        {"domain": "clean", "fold": 2, "score": 1.718331330816427, "sha256": "cbc69f0c2ef5ddd7913d2898053d74fbe1233231f97ad163d581956900d180d4"},
+        {"domain": "raw", "fold": 0, "score": 1.8061804503364278, "sha256": "778da72e25836be4b1da0c5425d11ae8a33f3b6e1f94c49d4a89cb97b380a048"},
+        {"domain": "raw", "fold": 1, "score": 1.7900902055589394, "sha256": "8a8273c92de3dfa9b5c78977fb13b1471c6492b4149530bd5a3492a24dcbf68c"},
+        {"domain": "raw", "fold": 2, "score": 1.7867663898223451, "sha256": "ec6cb65c286ccef1ea737271174827436b18e45761956b8e53bc200f16d81b38"}
+      ]
+    },
+    "grid": [
+      {
+        "v6_lambda": 0.25,
+        "optimizer_sha256": "18f44599bd37e9104e3c69e8f5a694e0f5a9050794842cd18d5581dbd368768f",
+        "unweighted_mean_score": 1.7674804697963524,
+        "mean_delta_vs_v5b": 0.00005026868382151939,
+        "maximum_fold_regret": 0.008796572946174752,
+        "pooled_wins": 66,
+        "pooled_losses": 57,
+        "pooled_ties": 507,
+        "feasible": 630,
+        "passed": false,
+        "failure": "mean regression and raw fold1 regret above 0.001",
+        "result_sha256": ["e1ccc502a7194c262cba999035a8f0392334a5306610d2ac58cfca857c57d2a2", "ea023ea81e3730e7f08d94efbc010c252fcd0c2cde5302ec5e15499c823d2ec4", "456a8c14c793aa1fe6558aad42a869be31a4aab7186fc9021d9c0866ea9619c1", "e57e2b44c1c95c7c5c3e1a1d69ac1a6d4de56057d7369d47d58b627223e5eedf", "f8c5685c75c67614627c41401f35383e963b14f5d4b68662571b700c129a40e0", "791f5b39623e9206255cdac46a51e9acd4522b1c6b9a6338520557ddb21c1e26"]
+      },
+      {
+        "v6_lambda": 0.5,
+        "optimizer_sha256": "884dc00337787486959914d548200a957f3ce1ec11945eaf3f1e997109f288cc",
+        "unweighted_mean_score": 1.7624232080921916,
+        "mean_delta_vs_v5b": -0.00500699302033943,
+        "maximum_fold_regret": -0.001631529823087785,
+        "pooled_wins": 92,
+        "pooled_losses": 43,
+        "pooled_ties": 495,
+        "feasible": 630,
+        "passed": true,
+        "selected": true,
+        "result_sha256": ["92916cc2f6a4563f3182215482848e3fdf8dc6e2e1b60d3f9c19ea4bfcc8ddea", "9ee94f28bd21a90134c2407c6536c551ec768fa878b13ae663e2a12b824b71d9", "a39256b6d15c6c6ff6f10ea2804b1241cffead3cfb417947f22d1176f59b5768", "ea7ad7c91ead67b56a3e12cea768eb69fc2d57f5d2ac9a72978ba66db4b6a4de", "d162205e6d79ca59f0aa459002fe4218849c006f2d6f25193335ec819a2f853a", "c76b2d7cac6344f44017d8bebca9b62befaddefbaaf970e028f6bf4c7ba2b4eb"]
+      },
+      {
+        "v6_lambda": 0.75,
+        "optimizer_sha256": "06ce184dd5cdf7ac92590bd70b457560f98d06bf917c032cbdc635fddc376726",
+        "unweighted_mean_score": 1.7626943748153368,
+        "mean_delta_vs_v5b": -0.004735826297194083,
+        "maximum_fold_regret": -0.0017151408351741004,
+        "pooled_wins": 92,
+        "pooled_losses": 49,
+        "pooled_ties": 489,
+        "feasible": 630,
+        "passed": true,
+        "selected": false,
+        "result_sha256": ["fa227b15a912aa4d69983bfb9c5a32d72a3e78c6eba0c7e46c905cd93d654056", "4935f0921d1b7150149f77938f30f82af8f3b00be2410feddcf361897bb8a729", "c6662415c9a984ce62bba8062ffa0eb036f5f2ec00d062eace4d5119d2a2de54", "e12cc0c59e0743efa4ceddb68872ffb0c6ac8c8c684601f392bfb100a03e0b0e", "7ad5edfae3fa3ed4cc301b12f67196aed540fe034ce94af154766cea5fe24f94", "7a5fe3f917d651ba06f6db1a851b5e63e0b291572892d45e4cc91f560515e056"]
+      }
+    ],
+    "selected_v6_lambda": 0.5,
+    "selection_passed": true
+  },
   "coverage_vs_v5b_training": {
     "v5b_train": {"sources": 985, "layouts": 7880},
     "v6_validation_fit": {"sources": 1043, "layouts": 4172},
     "observation": "v6 fits 58 more source files but 3708 fewer layouts because the structured cache retained four layouts per source rather than eight",
     "permitted_cached_full_fit": {"sources": 1159, "layouts": 4636},
     "deterministic_eight_layout_expansion": {"sources": 1159, "expected_layouts": 9272},
-    "expansion_decision": "defer until the immutable count-neutral decoded gate passes"
+    "expansion_decision": "defer until the locked fold3/public promotion panel passes"
   }
 }

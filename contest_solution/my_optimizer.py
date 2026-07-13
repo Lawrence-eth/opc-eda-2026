@@ -53,7 +53,12 @@ _LEARNED_REPLACEMENT_WF = {
 # Preregistered v6 share for the deterministic fractional-rank blend. Research
 # variants may change this single global constant; production never dispatches
 # on block count, case identity, evaluator output, or public-set behavior.
-_RANK_BLEND_V6_WEIGHT = 0.25
+_RANK_BLEND_V6_WEIGHT = 0.50
+
+# Production uses the audited one-for-one slot replacement. The additive mode
+# is retained solely to measure the all-standard-slots research frontier with
+# one extra learned solve; packaged variants must bind this constant.
+_LEARNED_CANDIDATE_MODE = "replace"
 
 
 _LEARNED_MODEL_UNSET = object()
@@ -598,7 +603,13 @@ class MyOptimizer(FloorplanOptimizer):
                 active_slab_max_aspect = 12.0
             learned_order = None
             replacement_wf = _LEARNED_REPLACEMENT_WF.get(block_count)
-            if replacement_wf is not None and self._learned_order_enabled:
+            if _LEARNED_CANDIDATE_MODE == "replace":
+                learned_eligible = replacement_wf is not None
+            elif _LEARNED_CANDIDATE_MODE == "additive":
+                learned_eligible = block_count >= 100
+            else:
+                learned_eligible = False
+            if learned_eligible and self._learned_order_enabled:
                 learned_order = _blended_rank_prior(
                     block_count,
                     areas_l,
@@ -614,7 +625,11 @@ class MyOptimizer(FloorplanOptimizer):
                     "clamped_backfill": clamped_backfill,
                     "active_slab_max_aspect": active_slab_max_aspect,
                 }
-                learned_slot = wf == replacement_wf and learned_order is not None
+                learned_slot = (
+                    _LEARNED_CANDIDATE_MODE == "replace"
+                    and wf == replacement_wf
+                    and learned_order is not None
+                )
                 if learned_slot:
                     # Candidate-count-neutral replacement for the least-used
                     # paid heavy slot. Disabling learning restores the original
@@ -662,6 +677,31 @@ class MyOptimizer(FloorplanOptimizer):
                         # Only legacy standard candidates belong in this map;
                         # its keys drive attribution/refinement diagnostics.
                         dis_cands[wf] = cand
+            if (
+                _LEARNED_CANDIDATE_MODE == "additive"
+                and learned_order is not None
+            ):
+                try:
+                    cand = dissect_solve(
+                        *dis_args,
+                        width_factor=1.1,
+                        edge_order_mode="bary",
+                        band_order_mode="pinx",
+                        clamped_backfill=clamped_backfill,
+                        active_slab_max_aspect=active_slab_max_aspect,
+                        learned_order=learned_order,
+                        learned_prior_weight=0.65,
+                    )
+                except Exception:
+                    cand = None
+                try:
+                    valid_output = bool(cand) and len(cand) == block_count
+                except Exception:
+                    valid_output = False
+                if valid_output:
+                    candidates.append(cand)
+                    learned_candidate = cand
+                    self._learned_candidate_attempted = True
             # Edge boundary queues used to be largest-first. One extra
             # barycentric variant lets L/R-required units land near their
             # connectivity/pin y without post-placement search. Below 118

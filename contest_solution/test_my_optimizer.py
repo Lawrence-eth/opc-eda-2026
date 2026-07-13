@@ -413,3 +413,53 @@ def test_invalid_learned_slot_falls_back_to_displaced_standard_pass(
     ]
     assert "learned_order" not in fallback
     assert not optimizer._learned_candidate_attempted
+
+
+@pytest.mark.parametrize("block_count", [100, 101])
+def test_additive_mode_keeps_all_standard_slots_then_adds_one_learned_pass(
+    monkeypatch, block_count
+):
+    calls = []
+    standard = [(1.1 * index, 0.0, 1.0, 1.0) for index in range(block_count)]
+
+    def fake_dissect(*args, **kwargs):
+        calls.append(dict(kwargs))
+        if kwargs.get("return_first_pass"):
+            return list(standard), list(standard)
+        return list(standard)
+
+    monkeypatch.setattr(dissect_module, "dissect_solve", fake_dissect)
+    monkeypatch.setattr(optimizer_module, "_LEARNED_CANDIDATE_MODE", "additive")
+    monkeypatch.setattr(
+        optimizer_module,
+        "_blended_rank_prior",
+        lambda *args, **kwargs: {
+            index: (0.5, 0.5) for index in range(block_count)
+        },
+    )
+    optimizer = MyOptimizer()
+    monkeypatch.setattr(optimizer, "_solve_one", lambda *args, **kwargs: standard)
+    optimizer.solve(
+        block_count,
+        torch.ones(block_count),
+        torch.empty((0, 3)),
+        torch.empty((0, 3)),
+        torch.empty((0, 2)),
+        torch.zeros((block_count, 5)),
+        torch.full((block_count, 4), -1.0),
+    )
+    assert [kwargs["width_factor"] for kwargs in calls[:5]] == [
+        0.8,
+        0.9,
+        1.0,
+        1.1,
+        1.2,
+    ]
+    assert "learned_order" not in calls[0]
+    assert "learned_order" not in calls[1]
+    assert "learned_order" not in calls[2]
+    assert "learned_order" not in calls[3]
+    assert "learned_order" not in calls[4]
+    assert calls[5]["width_factor"] == 1.1
+    assert "learned_order" in calls[5]
+    assert optimizer._learned_candidate_attempted
