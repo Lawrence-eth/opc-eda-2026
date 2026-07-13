@@ -40,11 +40,12 @@ from learned_order import (  # noqa: E402
     MIB_POLICIES,
     apply_mib_feature_policy,
     extract_order_features,
+    mib_is_input_compatible,
 )
 from lite_dataset import FloorplanDatasetLite  # noqa: E402
 
 
-TRAINER_VERSION = 4
+TRAINER_VERSION = 5
 MODEL_SCHEMA_VERSION = 1
 SOURCE_INDEX_SCHEMA_VERSION = 1
 TARGET_NAMES = ("golden_center_x_bbox_norm", "golden_center_y_bbox_norm")
@@ -385,6 +386,26 @@ def _block_count(area_targets) -> int:
     return sum(_scalar(value) != -1.0 for value in _rows(area_targets))
 
 
+def _input_visible_target_positions(sample, n: int):
+    """Recover only fixed/preplaced optimizer inputs from the stored label."""
+    constraints = sample["input"][4]
+    _tree, fp_sol, _metrics = sample["label"]
+    constraint_rows = _rows(constraints)
+    golden_rows = _rows(fp_sol)
+    rows = [[-1.0, -1.0, -1.0, -1.0] for _ in range(n)]
+    columns = len(constraint_rows[0]) if constraint_rows else 0
+    for i in range(n):
+        fixed = columns > 0 and _scalar(constraint_rows[i][0]) != 0.0
+        preplaced = columns > 1 and _scalar(constraint_rows[i][1]) != 0.0
+        if preplaced:
+            width, height, x, y = map(_scalar, golden_rows[i][:4])
+            rows[i] = [x, y, width, height]
+        elif fixed:
+            width, height = map(_scalar, golden_rows[i][:2])
+            rows[i][2:] = [width, height]
+    return rows
+
+
 def layout_examples(sample, *, message_steps: int, mib_feature_policy: str):
     """Build one layout's shared features and normalized center targets."""
     try:
@@ -424,15 +445,7 @@ def layout_examples(sample, *, message_steps: int, mib_feature_policy: str):
     if not math.isfinite(span_x) or not math.isfinite(span_y) or span_x <= 0 or span_y <= 0:
         raise LayoutRejected("degenerate_golden_bbox")
 
-    target_positions = [[-1.0, -1.0, -1.0, -1.0] for _ in range(n)]
-    constraint_columns = len(constraint_rows[0]) if constraint_rows else 0
-    for i, (width, height, x, y) in enumerate(golden):
-        fixed = constraint_columns > 0 and _scalar(constraint_rows[i][0]) != 0.0
-        preplaced = constraint_columns > 1 and _scalar(constraint_rows[i][1]) != 0.0
-        if preplaced:
-            target_positions[i] = [x, y, width, height]
-        elif fixed:
-            target_positions[i][2:] = [width, height]
+    target_positions = _input_visible_target_positions(sample, n)
 
     try:
         features = extract_order_features(
@@ -481,6 +494,8 @@ class ScanStats:
     mib_input_compatible_layouts: int = 0
     mib_input_incompatible_layouts: int = 0
     mib_feature_masked_layouts: int = 0
+    sources_with_clean_offset: int = 0
+    sources_without_clean_offset: int = 0
 
     def as_json(self):
         return {
@@ -497,7 +512,61 @@ class ScanStats:
             "mib_input_compatible_layouts": self.mib_input_compatible_layouts,
             "mib_input_incompatible_layouts": self.mib_input_incompatible_layouts,
             "mib_feature_masked_layouts": self.mib_feature_masked_layouts,
+            "sources_with_clean_offset": self.sources_with_clean_offset,
+            "sources_without_clean_offset": self.sources_without_clean_offset,
         }
+
+
+def select_layout_offsets(
+    dataset,
+    source,
+    *,
+    max_layouts_per_file: int | None,
+    layout_seed: int,
+    layout_selection: str,
+):
+    """Select deterministic raw offsets, optionally reserving one clean offset."""
+    if layout_selection not in {"hash_raw", "clean_plus_hash_raw"}:
+        raise ValueError(f"unsupported layout selection: {layout_selection!r}")
+    layouts_per_file = int(dataset.layouts_per_file)
+    offsets = list(range(layouts_per_file))
+    if max_layouts_per_file is None:
+        return offsets, None
+    raw_order = sorted(
+        offsets,
+        key=lambda offset: _hash_order(
+            "layout-raw", layout_seed, f"{source.relative_path}#{offset}"
+        ),
+    )
+    if layout_selection == "hash_raw":
+        return sorted(raw_order[:max_layouts_per_file]), None
+
+    base = source.file_index * layouts_per_file
+    clean_order = sorted(
+        offsets,
+        key=lambda offset: _hash_order(
+            "layout-clean", layout_seed, f"{source.relative_path}#{offset}"
+        ),
+    )
+    clean_offset = None
+    for offset in clean_order:
+        sample = dataset[base + offset]
+        n = _block_count(sample["input"][0])
+        if mib_is_input_compatible(
+            n,
+            sample["input"][0],
+            sample["input"][4],
+            _input_visible_target_positions(sample, n),
+        ):
+            clean_offset = offset
+            break
+    selected = [] if clean_offset is None else [clean_offset]
+    selected.extend(
+        offset
+        for offset in raw_order
+        if offset != clean_offset
+    )
+    return sorted(selected[:max_layouts_per_file]), clean_offset
 
 
 def stream_layouts(
@@ -509,6 +578,7 @@ def stream_layouts(
     max_layouts_per_file: int | None,
     message_steps: int,
     mib_feature_policy: str,
+    layout_selection: str,
     layout_seed: int,
     stats: ScanStats,
     progress_every_files: int = 0,
@@ -519,15 +589,18 @@ def stream_layouts(
     for ordinal, source in enumerate(sources, 1):
         base = source.file_index * layouts_per_file
         accepted_in_source = False
-        offsets = list(range(layouts_per_file))
-        if max_layouts_per_file is not None:
-            offsets.sort(
-                key=lambda offset: _hash_order(
-                    "layout", layout_seed, f"{source.relative_path}#{offset}"
-                )
-            )
-            offsets = offsets[:max_layouts_per_file]
-            offsets.sort()
+        offsets, clean_offset = select_layout_offsets(
+            dataset,
+            source,
+            max_layouts_per_file=max_layouts_per_file,
+            layout_seed=layout_seed,
+            layout_selection=layout_selection,
+        )
+        if layout_selection == "clean_plus_hash_raw":
+            if clean_offset is None:
+                stats.sources_without_clean_offset += 1
+            else:
+                stats.sources_with_clean_offset += 1
         for offset in offsets:
             stats.layouts_seen += 1
             sample = dataset[base + offset]
@@ -759,6 +832,7 @@ def train_order_model(
     max_layouts_per_file: int | None,
     message_steps: int,
     mib_feature_policy: str = "mask_incompatible",
+    layout_selection: str = "clean_plus_hash_raw",
     source_index_cache: Path | None = None,
     progress_every_files: int = 0,
 ):
@@ -770,6 +844,8 @@ def train_order_model(
         raise ValueError("message_steps must be nonnegative")
     if mib_feature_policy not in MIB_POLICIES:
         raise ValueError(f"unsupported MIB feature policy: {mib_feature_policy!r}")
+    if layout_selection not in {"hash_raw", "clean_plus_hash_raw"}:
+        raise ValueError(f"unsupported layout selection: {layout_selection!r}")
 
     holdout_paths = (
         [holdout_manifest]
@@ -800,6 +876,7 @@ def train_order_model(
         max_layouts_per_file=max_layouts_per_file,
         message_steps=message_steps,
         mib_feature_policy=mib_feature_policy,
+        layout_selection=layout_selection,
         layout_seed=seed,
         stats=train_stats,
         progress_every_files=progress_every_files,
@@ -820,6 +897,7 @@ def train_order_model(
         max_layouts_per_file=max_layouts_per_file,
         message_steps=message_steps,
         mib_feature_policy=mib_feature_policy,
+        layout_selection=layout_selection,
         layout_seed=seed,
         stats=validation_stats,
         progress_every_files=progress_every_files,
@@ -856,6 +934,7 @@ def train_order_model(
             "block_count_range": [min_blocks, max_blocks],
             "max_files": max_files,
             "max_layouts_per_file": max_layouts_per_file,
+            "layout_selection": layout_selection,
             "example_weighting": "one_per_block",
             "source_split": "file_disjoint_stratified_by_block_count",
             "eligibility_order": "block_count_filter_before_hash_limit",
@@ -952,6 +1031,12 @@ def main():
     )
     parser.add_argument("--message-steps", type=int, default=4)
     parser.add_argument(
+        "--layout-selection",
+        choices=("clean_plus_hash_raw", "hash_raw"),
+        default="clean_plus_hash_raw",
+        help="reserve one input-compatible offset per source before raw hash offsets",
+    )
+    parser.add_argument(
         "--mib-feature-policy",
         choices=sorted(MIB_POLICIES),
         default="mask_incompatible",
@@ -987,6 +1072,7 @@ def main():
         max_layouts_per_file=max_layouts,
         message_steps=args.message_steps,
         mib_feature_policy=args.mib_feature_policy,
+        layout_selection=args.layout_selection,
         source_index_cache=args.source_index_cache,
         progress_every_files=args.progress_every_files,
     )

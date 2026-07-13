@@ -186,6 +186,7 @@ def test_layout_stream_is_lazy_and_keeps_only_one_layout_batch(tmp_path):
         max_layouts_per_file=None,
         message_steps=1,
         mib_feature_policy="mask_incompatible",
+        layout_selection="hash_raw",
         layout_seed=9,
         stats=stats,
     )
@@ -385,3 +386,32 @@ def test_input_incompatible_mib_channels_are_masked(monkeypatch):
     for row in features:
         assert all(row[index] == 0.0 for index in MODULE.MIB_FEATURE_INDICES)
         assert row[MODULE.FEATURE_NAMES.index("cluster_member")] == 1.0
+
+
+def test_clean_plus_raw_layout_selection_reserves_compatible_offset(tmp_path):
+    data_root = tmp_path / "data"
+    source_path = data_root / "floorset_lite" / "worker_0" / "layouts_0.th"
+
+    def sample_factory(index):
+        sample = _sample(index)
+        sample["input"] = (
+            [4.0, 4.0 if index == 0 else 9.0],
+            sample["input"][1],
+            sample["input"][2],
+            sample["input"][3],
+            [[0, 0, 1, 0, 0], [0, 0, 1, 0, 0]],
+        )
+        return sample
+
+    dataset = FakeDataset([source_path], sample_factory, layouts_per_file=6)
+    source = MODULE.SourceFile(0, "floorset_lite/worker_0/layouts_0.th", 2)
+    offsets, clean_offset = MODULE.select_layout_offsets(
+        dataset,
+        source,
+        max_layouts_per_file=3,
+        layout_seed=17,
+        layout_selection="clean_plus_hash_raw",
+    )
+    assert clean_offset == 0
+    assert 0 in offsets
+    assert len(offsets) == 3
