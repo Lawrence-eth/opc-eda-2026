@@ -113,12 +113,14 @@ paired deltas, and runtime-adjusted gates documented elsewhere in the repo.
 
 ## Learned-model provenance
 
-`models/order_ridge_v4.json` is a compact, reproducible topology-guidance
-research model. `models/README.md` records its feature contract, whole-source
-split, panel exclusions, training statistics, reproduction command, and
-artifact SHA-256. The artifact additionally binds its own training inputs and
-code provenance. It is not deployed by the v32 submission, so it is evidence
-for future ablations rather than part of the current release package.
+`models/README.md` is the learned-model index. It records the feature contract,
+whole-source split, panel exclusions, training statistics, reproduction
+commands, hashes, and decoded promotion status for v4, v5/v5b, and nonlinear
+rank v6. The locked v6 blend is explicitly rejected in
+`models/rank_mlp_v6_frontier_evidence.json`: it improves all clean/raw folds
+but regresses against v5b on the public panel and after paired runtime
+adjustment. Learned-model research artifacts are not part of the current v32
+release package unless a release manifest explicitly binds them.
 
 ## Historical result families
 

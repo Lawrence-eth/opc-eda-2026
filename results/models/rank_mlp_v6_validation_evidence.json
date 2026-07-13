@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "rank_gate_passed_count_neutral_blend_dev_gate_passed_holdout_pending",
+  "status": "rank_gate_passed_blend_dev_gate_passed_public_promotion_rejected_v5b_retained",
   "artifact": {
     "path": "results/models/rank_mlp_v6_validation.json",
     "file_sha256": "b615f84e74c2dbe145f1181c2296b4dfdc3ad41909ed9b6948737158576deaf2",
@@ -48,6 +48,8 @@
   },
   "additive_decoded_probe": {
     "purpose": "quality probe only; not the count-neutral promotion configuration",
+    "status": "superseded_by_the_locked_lambda_half_frontier",
+    "promotion_use": false,
     "public": {
       "official_evaluator_sha256": "64db37865b42baf11add62bdbf035690dca086cd4be7b5b4e58db756f20d8498",
       "v5b_result_sha256": "6865291ccf14dca2a60c3b3d61953b83762cc90883f977c9c81fa56920878f92",
@@ -163,12 +165,35 @@
     "selected_v6_lambda": 0.5,
     "selection_passed": true
   },
+  "decoded_frontier_evidence": {
+    "path": "results/models/rank_mlp_v6_frontier_evidence.json",
+    "sha256": "41aab7705421c4358185b4608108191fb97a01f4af63696d51577c3c4074b276",
+    "folds_0_3": {
+      "count_neutral_mean_delta_vs_v5b": -0.004015684022960542,
+      "additive_mean_delta_vs_v5b": -0.007797608445621718,
+      "count_neutral_feasible": 840,
+      "additive_feasible": 840
+    },
+    "public": {
+      "v5b_score": 1.610849549873686,
+      "count_neutral_score": 1.6127692385269523,
+      "additive_score": 1.6127692385269523,
+      "candidate_delta_vs_v5b": 0.0019196886532661932,
+      "candidate_wins": 1,
+      "candidate_losses": 3,
+      "candidate_ties": 96,
+      "candidate_feasible": 100
+    },
+    "paired_runtime_artifact_sha256": "ee37206909ae21ec370a361127a5a87916835e35b48d8bd98557500d2910ecd8",
+    "promotion_passed": false,
+    "decision": "retain v5b; preserve v6 as a rejected research artifact and make no v6 package or release change"
+  },
   "coverage_vs_v5b_training": {
     "v5b_train": {"sources": 985, "layouts": 7880},
     "v6_validation_fit": {"sources": 1043, "layouts": 4172},
     "observation": "v6 fits 58 more source files but 3708 fewer layouts because the structured cache retained four layouts per source rather than eight",
     "permitted_cached_full_fit": {"sources": 1159, "layouts": 4636},
     "deterministic_eight_layout_expansion": {"sources": 1159, "expected_layouts": 9272},
-    "expansion_decision": "defer until the locked fold3/public promotion panel passes"
+    "expansion_decision": "not authorized; the locked public promotion panel rejected both count-neutral and additive frontiers"
   }
 }

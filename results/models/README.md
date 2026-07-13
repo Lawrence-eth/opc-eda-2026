@@ -44,6 +44,31 @@ The deployed research module is generated deterministically from v5b:
 .venv/bin/python scripts/export_order_model_module.py
 ```
 
+## Nonlinear rank v6 — rejected promotion
+
+`rank_mlp_v6_validation.json` is a compact 60→24→12→2 residual MLP trained
+on the same input-only feature contract. It clears its preregistered same-cache
+rank gate against v5b: mean rank MAE improves by 35.75% and mean pairwise
+inversion by 37.47%. Stdlib inference agrees with the training implementation
+to a maximum absolute error of 5.59e-7.
+
+Decoded promotion evidence does not support deployment. The locked 50/50
+fractional-rank blend improves v5b on every clean/raw fold 0–3. Across all 840
+fold cases, the count-neutral frontier improves mean RF=1 score by 0.004016;
+the exact additive frontier improves it by 0.007798. Both nevertheless produce
+the same public geometry and regress from v5b's 1.610849550 to 1.612769239
+(1 win / 3 losses / 96 ties). Paired timing also leaves both learned frontiers
+worse than v5b at assumed per-case medians of 0.5, 1, 2, and 3 seconds.
+
+The promotion is therefore rejected, v5b remains the learned-order incumbent,
+and no v6 full-fit expansion or package/release change is authorized. The
+complete fold, public, exact-v32-counterfactual, and paired-runtime decision is
+bound in `rank_mlp_v6_frontier_evidence.json` (SHA-256
+`41aab7705421c4358185b4608108191fb97a01f4af63696d51577c3c4074b276`).
+`rank_mlp_v6_validation_evidence.json` preserves the preregistered selection
+contract and links the final decision. These files are research evidence, not
+submission artifacts.
+
 `order_ridge_v4.json` is the reproducible compact topology-guidance baseline.
 It is a research artifact, not part of the submitted v32 solver.
 

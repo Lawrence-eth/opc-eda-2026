@@ -55,10 +55,11 @@ _LEARNED_REPLACEMENT_WF = {
 # on block count, case identity, evaluator output, or public-set behavior.
 _RANK_BLEND_V6_WEIGHT = 0.50
 
-# Production uses the audited one-for-one slot replacement. The additive mode
-# is retained solely to measure the all-standard-slots research frontier with
-# one extra learned solve; packaged variants must bind this constant.
-_LEARNED_CANDIDATE_MODE = "replace"
+# v5b remains the incumbent after the locked v6 blend failed the public and
+# paired-runtime promotion gates. ``replace`` and ``additive`` preserve the
+# exact rejected v6 frontiers for reproducible research; packaged variants
+# must bind this constant and must not infer a mode from evaluator behavior.
+_LEARNED_CANDIDATE_MODE = "v5b"
 
 
 _LEARNED_MODEL_UNSET = object()
@@ -603,14 +604,19 @@ class MyOptimizer(FloorplanOptimizer):
                 active_slab_max_aspect = 12.0
             learned_order = None
             replacement_wf = _LEARNED_REPLACEMENT_WF.get(block_count)
-            if _LEARNED_CANDIDATE_MODE == "replace":
+            if _LEARNED_CANDIDATE_MODE in ("v5b", "replace"):
                 learned_eligible = replacement_wf is not None
             elif _LEARNED_CANDIDATE_MODE == "additive":
                 learned_eligible = block_count >= 100
             else:
                 learned_eligible = False
             if learned_eligible and self._learned_order_enabled:
-                learned_order = _blended_rank_prior(
+                prior = (
+                    _learned_order_prior
+                    if _LEARNED_CANDIDATE_MODE == "v5b"
+                    else _blended_rank_prior
+                )
+                learned_order = prior(
                     block_count,
                     areas_l,
                     b2b_edges,
@@ -626,7 +632,7 @@ class MyOptimizer(FloorplanOptimizer):
                     "active_slab_max_aspect": active_slab_max_aspect,
                 }
                 learned_slot = (
-                    _LEARNED_CANDIDATE_MODE == "replace"
+                    _LEARNED_CANDIDATE_MODE in ("v5b", "replace")
                     and wf == replacement_wf
                     and learned_order is not None
                 )

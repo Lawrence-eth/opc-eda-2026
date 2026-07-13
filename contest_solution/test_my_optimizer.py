@@ -385,6 +385,7 @@ def test_invalid_learned_slot_falls_back_to_displaced_standard_pass(
         return list(standard)
 
     monkeypatch.setattr(dissect_module, "dissect_solve", fake_dissect)
+    monkeypatch.setattr(optimizer_module, "_LEARNED_CANDIDATE_MODE", "replace")
     monkeypatch.setattr(
         optimizer_module,
         "_blended_rank_prior",
@@ -413,6 +414,41 @@ def test_invalid_learned_slot_falls_back_to_displaced_standard_pass(
     ]
     assert "learned_order" not in fallback
     assert not optimizer._learned_candidate_attempted
+
+
+def test_default_v5b_mode_does_not_compile_or_run_rejected_v6_blend(monkeypatch):
+    block_count = 100
+    standard = [(1.1 * index, 0.0, 1.0, 1.0) for index in range(block_count)]
+    v5b_calls = []
+
+    def fake_dissect(*args, **kwargs):
+        return list(standard)
+
+    def fake_v5b(*args, **kwargs):
+        v5b_calls.append(True)
+        return {index: (0.5, 0.5) for index in range(block_count)}
+
+    monkeypatch.setattr(dissect_module, "dissect_solve", fake_dissect)
+    monkeypatch.setattr(optimizer_module, "_LEARNED_CANDIDATE_MODE", "v5b")
+    monkeypatch.setattr(optimizer_module, "_learned_order_prior", fake_v5b)
+    monkeypatch.setattr(
+        optimizer_module,
+        "_blended_rank_prior",
+        lambda *args, **kwargs: pytest.fail("rejected v6 blend must stay dormant"),
+    )
+    optimizer = MyOptimizer()
+    monkeypatch.setattr(optimizer, "_solve_one", lambda *args, **kwargs: standard)
+    optimizer.solve(
+        block_count,
+        torch.ones(block_count),
+        torch.empty((0, 3)),
+        torch.empty((0, 3)),
+        torch.empty((0, 2)),
+        torch.zeros((block_count, 5)),
+        torch.full((block_count, 4), -1.0),
+    )
+    assert v5b_calls == [True]
+    assert optimizer._learned_candidate_attempted
 
 
 @pytest.mark.parametrize("block_count", [100, 101])
