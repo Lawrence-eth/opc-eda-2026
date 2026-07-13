@@ -8,6 +8,30 @@
 > for current state and priorities, and [`SUBMISSION_PLAN.md`](SUBMISSION_PLAN.md)
 > for the live release gate.
 
+### 2026-07-13 low-size primary first-pass reuse — ❌ REJECTED
+- Hypothesis: retain the already-computed first pass paired with the winning
+  base-width or hybrid primary candidate, then admit it only when it is
+  hard-feasible and Pareto-dominant in HPWL, bbox area, and exact soft count.
+  This added no dissection solve and could not accept a hidden-baseline
+  regression.
+- Quality improved on the public set **1.6153787745 → 1.6137844661** (16 wins,
+  zero losses, 100/100 feasible). Clean folds 0–2 improved **1.7493427534 →
+  1.7476399311**; raw folds 0–2 improved **1.8192046552 → 1.8175542305**. A
+  separate 140-case low-size holdout improved **1.8317459857 → 1.8231405748**,
+  with every case feasible.
+- The decisive in-process A-B-B-A/B-A-A-B timing panel covered all 79 public
+  cases with n<100 and collected four observations per solver per case. The
+  candidate added a mean **4.481 ms / 3.03%** (median 3.138 ms; slower on
+  68/79 cases); a case bootstrap put the mean overhead at **[2.659, 6.524] ms**.
+- Combining those paired low-case timings with the code-identical v32 heavy
+  path gives candidate-minus-v32 runtime-adjusted score deltas of **+0.000913,
+  +0.000636, -0.000186, -0.001116, -0.001116** at assumed field medians
+  **0.25, 0.5, 1, 2, 3 seconds**, respectively. Lower is better, so the
+  candidate fails the predeclared low-median stress gate and is not merged.
+  v32 remains the incumbent; stop spending the campaign on low-weight
+  first-pass micro-variants and return effort to heavy golden-structure
+  prediction and decoding.
+
 ### 2026-07-11 v32 reused-first-pass final gate — ✅ PROMOTED
 - Mechanism: the incumbent n≥100 strong-pin candidate already computes two
   dissection passes but returned only pass 2. `dissect_solve()` can now return

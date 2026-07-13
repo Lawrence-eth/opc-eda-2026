@@ -1,7 +1,8 @@
 # HANDOFF — ICCAD 2026 Problem C (FloorSet Challenge)
 
 > For the next agent taking over this project. Current head was measured on
-> 2026-07-11 after the v32 promotion tournament. Nothing is aspirational.
+> 2026-07-13 after the v32 promotion tournament and v33 low-size challenge.
+> Nothing is aspirational.
 > Operator's standing orders: **the only goal is to WIN. No time limit. Never
 > regress the verified state.**
 
@@ -16,7 +17,7 @@
 | Runtime | paired avg **0.196s/case** (v31 control: 0.196s) | `results/v32_runtime_summary.json` |
 | Runtime-adjusted @ median {1, 2, 3}s | **1.1951 / 1.1312 / 1.1308**, all better than paired v31 | same |
 | Packaged binary | v32 AMD64 build; exact 100-case official-wrapper parity | `submission/iccad2026_submission.tar.gz` |
-| Binary fuzz | v31 target binary: 100/100 hard-feasible under QEMU; historical v29: 400/400 native | QEMU timings are nonrepresentative; rerun per §5.5 |
+| Binary fuzz | v32 AMD64 package: **400/400 hard-feasible** through the persistent wrapper protocol | QEMU timings are nonrepresentative; feasibility only |
 | Tests / audit / release gate | source, tournament, package parity, and manifest PASS | `pytest`, §5.6 |
 
 Reference points: the pre-campaign optimizer (v9) scored 2.7182 (radj@1s 2.110).
@@ -33,6 +34,12 @@ deltas improves, including the sealed fold 4. The raw supplied golden layouts
 violate MIB in 519/525 cases, so raw
 results are paired robustness evidence only. `order_ridge_v4.json` excludes
 the union of all 531 held-out sources and reproduces byte-for-byte.
+
+The latest low-size first-pass challenger was rejected on 2026-07-13. It
+improved public RF=1 by 0.001594 but added 4.481 ms mean low-case runtime and
+lost at the predeclared 0.25s and 0.5s field-median stress points. No v33 code
+was merged. The next campaign step is a representation-level heavy topology
+and shape decoder, not another low-weight first-pass micro-variant.
 
 ## 2. Read these, in order
 
@@ -277,9 +284,9 @@ package, score, and FloorSet commit).
 
 ## 6. Open leads, ranked (with the evidence)
 
-Current integrated v31 decomposition (n≥100): **hg 0.560, ag 0.154,
-vr 0.085**. Score-weighted averages: **hg 0.560, ag 0.145,
-vr 0.085**. Exact v31 soft ledger (`results/enriched_diagnostics.json`):
+Current integrated v32 score-weighted decomposition: **hg 0.559, ag 0.144,
+vr 0.085**. Heavy cases n≥100 carry **82.64%** of score weight and n=116–120
+alone carry 34.08%. Exact v31 soft ledger (`results/enriched_diagnostics.json`):
 boundary 323, grouping 55, MIB 126, total 504/4478. Score-weighted soft
 counts in the top-20 focus band: boundary 3.117, MIB 1.127, grouping 0.773.
 A chunk of boundary violations are preplaced-with-boundary-codes,
@@ -337,7 +344,8 @@ of area/HPWL, and don't chase generic "floater" insertion as a primary lead.
    or value model with Pareto-dominance and uncertainty abstention. Do not call
    an oracle-only candidate win deployable evidence.
 
-**Do NOT retry** (measured dead ends this session): candidate-grid blowups
+**Do NOT retry** (measured dead ends this session): the low-size primary-p1
+reuse gate, candidate-grid blowups
 (pin_scale × wf), flat +0.25s refinement budgets at median≤3s, clamped gaps in
 the selector, any retouch/move pass that can touch preplaced blocks, and
 the blunt relaxed top/right boundary-routing candidate, naive fixed-height
