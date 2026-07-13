@@ -23,6 +23,51 @@ from iccad2026_evaluate import FloorplanOptimizer, calculate_bbox_area, calculat
 Rect = Tuple[float, float, float, float]
 
 
+# Standard dissection slot displaced by the learned heavy candidate. Each
+# listed slot had zero deployed-selector wins across legacy-v32 clean+raw
+# development folds 0-2. Ties use the globally least-selected width first
+# (1.0, 0.9, 1.1, 1.2, 0.8). Sizes 101/109/112 have no redundant standard
+# slot and intentionally abstain. The learned candidate itself runs at wf=1.1.
+_LEARNED_REPLACEMENT_WF = {
+    100: 1.0,
+    102: 1.0,
+    103: 1.2,
+    104: 1.0,
+    105: 1.0,
+    106: 0.9,
+    107: 0.8,
+    108: 1.0,
+    110: 0.9,
+    111: 1.0,
+    113: 0.9,
+    114: 1.0,
+    115: 1.0,
+    116: 1.0,
+    117: 1.0,
+    118: 1.0,
+    119: 1.0,
+    120: 1.0,
+}
+
+
+_LEARNED_MODEL_UNSET = object()
+_LEARNED_MODEL_CACHE = _LEARNED_MODEL_UNSET
+
+
+def _compiled_learned_model():
+    """Validate/compile the sealed artifact once, failing closed forever."""
+    global _LEARNED_MODEL_CACHE
+    if _LEARNED_MODEL_CACHE is _LEARNED_MODEL_UNSET:
+        try:
+            from learned_order import compile_artifact
+            from order_model_v5b import MODEL
+
+            _LEARNED_MODEL_CACHE = compile_artifact(MODEL)
+        except Exception:
+            _LEARNED_MODEL_CACHE = None
+    return _LEARNED_MODEL_CACHE
+
+
 _RANK_MLP_MODEL_UNSET = object()
 _RANK_MLP_MODEL_CACHE = _RANK_MLP_MODEL_UNSET
 
@@ -52,10 +97,12 @@ def _learned_order_prior(
 ):
     """Return validated v5b center priors, or ``None`` for an exact fallback."""
     try:
-        from learned_order import extract_artifact_predictions
-        from order_model_v5b import MODEL
+        from learned_order import extract_compiled_artifact_predictions
 
-        predictions, _mask_metadata = extract_artifact_predictions(
+        compiled_model = _compiled_learned_model()
+        if compiled_model is None:
+            return None
+        predictions, _mask_metadata = extract_compiled_artifact_predictions(
             block_count,
             area_targets,
             b2b_connectivity,
@@ -63,8 +110,10 @@ def _learned_order_prior(
             pins_pos,
             constraints,
             target_positions,
-            MODEL,
+            compiled_model,
         )
+        if predictions is None:
+            return None
         if len(predictions) != block_count:
             return None
         return {
@@ -244,10 +293,17 @@ class MyOptimizer(FloorplanOptimizer):
         self._area_baseline = None
         self._baselines_by_n = None
         self._no_sa = False
+        self._learned_order_enabled = True
+        self._learned_candidate_attempted = False
+        self._learned_candidate_selected = False
+        self._debug_selected_base_wf = None
 
     def solve(self, block_count: int, area_targets: torch.Tensor, b2b_connectivity: torch.Tensor,
               p2b_connectivity: torch.Tensor, pins_pos: torch.Tensor, constraints: torch.Tensor,
               target_positions: torch.Tensor = None) -> List[Rect]:
+        self._learned_candidate_attempted = False
+        self._learned_candidate_selected = False
+        self._debug_selected_base_wf = None
         # Load baselines (golden hpwl/area) for the real-cost selector, if present.
         # Portable lookup only — no machine-specific absolute paths. The optimizer
         # is fully functional without them: _true_contest_cost falls back to the
@@ -344,6 +400,7 @@ class MyOptimizer(FloorplanOptimizer):
         # the committed shelf result can only be replaced by something
         # strictly better on this case.
         reused_final_candidate = None
+        nonlearned_reference = None
         try:
             candidates = [best_positions] if best_positions else []
             from dissect import (
@@ -356,6 +413,7 @@ class MyOptimizer(FloorplanOptimizer):
             dis_args = (block_count, areas_l, b2b_edges, p2b_edges, pins_l,
                         con_l, tp_l)
             dis_cands = {}
+            learned_candidate = None
             boundary_count = 0
             preplaced_count = 0
             if con_l is not None:
@@ -404,62 +462,72 @@ class MyOptimizer(FloorplanOptimizer):
                 active_slab_max_aspect = 18.0
             else:
                 active_slab_max_aspect = 12.0
+            learned_order = None
+            replacement_wf = _LEARNED_REPLACEMENT_WF.get(block_count)
+            if replacement_wf is not None and self._learned_order_enabled:
+                learned_order = _rank_mlp_prior(
+                    block_count,
+                    areas_l,
+                    b2b_edges,
+                    p2b_edges,
+                    pins_l,
+                    con_l,
+                    tp_l,
+                )
             for wf in (0.8, 0.9, 1.0, 1.1, 1.2):
                 kwargs = {
                     "width_factor": wf,
                     "clamped_backfill": clamped_backfill,
                     "active_slab_max_aspect": active_slab_max_aspect,
                 }
+                learned_slot = wf == replacement_wf and learned_order is not None
+                if learned_slot:
+                    # Candidate-count-neutral replacement for the least-used
+                    # paid heavy slot. Disabling learning restores the original
+                    # v32 standard pass at that size's displaced width.
+                    kwargs.update(
+                        width_factor=1.1,
+                        edge_order_mode="bary",
+                        band_order_mode="pinx",
+                        learned_order=learned_order,
+                        learned_prior_weight=0.65,
+                    )
+                learned_output = False
                 try:
                     cand = dissect_solve(*dis_args, **kwargs)
                 except Exception:
-                    continue
-                if cand and len(cand) == block_count:
-                    candidates.append(cand)
-                    dis_cands[wf] = cand
-            # Research-only learned challengers.  The complete v32 portfolio
-            # above remains intact; v6 is appended after v5b with identical
-            # dissection settings so the paired experiment isolates the prior.
-            # Both remain behind the exact feasibility/cost selector.
-            if block_count >= 100:
-                learned_orders = [
-                    _learned_order_prior(
-                        block_count,
-                        areas_l,
-                        b2b_edges,
-                        p2b_edges,
-                        pins_l,
-                        con_l,
-                        tp_l,
-                    ),
-                    _rank_mlp_prior(
-                        block_count,
-                        areas_l,
-                        b2b_edges,
-                        p2b_edges,
-                        pins_l,
-                        con_l,
-                        tp_l,
-                    ),
-                ]
-                for learned_order in learned_orders:
-                    if learned_order is None:
-                        continue
+                    cand = None
+                try:
+                    learned_output = (
+                        learned_slot and bool(cand) and len(cand) == block_count
+                    )
+                    valid_output = bool(cand) and len(cand) == block_count
+                except Exception:
+                    learned_output = False
+                    valid_output = False
+                if learned_slot and not valid_output:
+                    # Fail closed to the displaced paid pass for exceptions,
+                    # None/empty results, and malformed output lengths.
+                    fallback_kwargs = {
+                        "width_factor": wf,
+                        "clamped_backfill": clamped_backfill,
+                        "active_slab_max_aspect": active_slab_max_aspect,
+                    }
                     try:
-                        cand = dissect_solve(
-                            *dis_args,
-                            width_factor=1.1,
-                            edge_order_mode="bary",
-                            band_order_mode="pinx",
-                            clamped_backfill=clamped_backfill,
-                            active_slab_max_aspect=active_slab_max_aspect,
-                            learned_order=learned_order,
-                            learned_prior_weight=0.65,
-                        )
+                        cand = dissect_solve(*dis_args, **fallback_kwargs)
+                        valid_output = bool(cand) and len(cand) == block_count
                     except Exception:
                         cand = None
-                    if cand and len(cand) == block_count:
-                        candidates.append(cand)
+                        valid_output = False
+                if valid_output:
+                    candidates.append(cand)
+                    if learned_output:
+                        learned_candidate = cand
+                        self._learned_candidate_attempted = True
+                    else:
+                        # Only legacy standard candidates belong in this map;
+                        # its keys drive attribution/refinement diagnostics.
+                        dis_cands[wf] = cand
             # Edge boundary queues used to be largest-first. One extra
             # barycentric variant lets L/R-required units land near their
             # connectivity/pin y without post-placement search. Below 118
@@ -612,10 +680,47 @@ class MyOptimizer(FloorplanOptimizer):
                     if cand and len(cand) == block_count:
                         candidates.append(cand)
             if len(candidates) > 1:
+                nonlearned_candidates = (
+                    [
+                        candidate
+                        for candidate in candidates
+                        if candidate is not learned_candidate
+                    ]
+                    if learned_candidate is not None
+                    else []
+                )
+                if learned_candidate is not None and nonlearned_candidates:
+                    nonlearned_reference = self._select_candidate(
+                        nonlearned_candidates,
+                        constraints,
+                        area_targets,
+                        b2b_edges,
+                        p2b_edges,
+                        pins_l,
+                        target_positions,
+                    )
                 picked = self._select_candidate(
                     candidates, constraints, area_targets, b2b_edges,
                     p2b_edges, pins_l, target_positions)
                 if picked is not None:
+                    if (
+                        picked is learned_candidate
+                        and nonlearned_reference is not None
+                        and self._visibly_dominated_by_reference(
+                            picked,
+                            nonlearned_reference,
+                            constraints,
+                            area_targets,
+                            b2b_edges,
+                            p2b_edges,
+                            pins_l,
+                            target_positions,
+                        )
+                    ):
+                        picked = nonlearned_reference
+                    self._learned_candidate_selected = (
+                        learned_candidate is not None and picked is learned_candidate
+                    )
                     if (fast_first and picked is candidates[0]):
                         # the fast (no-SA) shelf beat every dissection —
                         # rare; now invest in the full-SA shelf and re-pick
@@ -668,6 +773,10 @@ class MyOptimizer(FloorplanOptimizer):
                             if next_picked is picked:
                                 break
                             picked = next_picked
+                    for base_wf, base_candidate in dis_cands.items():
+                        if picked is base_candidate:
+                            self._debug_selected_base_wf = base_wf
+                            break
                     best_positions = picked
                 # order-refinement local search on the best dissection:
                 # rebuild-based transpositions of the interior order under a
@@ -740,6 +849,27 @@ class MyOptimizer(FloorplanOptimizer):
                 ) or best_positions
             except Exception:
                 pass
+
+        # A learned/derived path may trade one visible component for another,
+        # but it may never survive when the best actually generated nonlearned
+        # candidate is no worse in HPWL, bbox area, and soft violations. This
+        # reference costs no extra solve and uses input-visible metrics only.
+        if (
+            best_positions is not None
+            and nonlearned_reference is not None
+            and self._visibly_dominated_by_reference(
+                best_positions,
+                nonlearned_reference,
+                constraints,
+                area_targets,
+                b2b_edges,
+                p2b_edges,
+                pins_l,
+                target_positions,
+            )
+        ):
+            best_positions = nonlearned_reference
+            self._learned_candidate_selected = False
 
         # Fixed-topology HPWL polish.  One weighted-median sweep preserves
         # dimensions, bbox, preplaced locations, satisfied boundaries,
@@ -826,6 +956,59 @@ class MyOptimizer(FloorplanOptimizer):
                 best_key = key
                 best = pos
         return best
+
+    def _visibly_dominated_by_reference(
+        self,
+        candidate,
+        reference,
+        constraints,
+        area_targets,
+        b2b,
+        p2b,
+        pins_pos,
+        target_positions,
+    ):
+        """Whether a generated nonlearned reference strictly Pareto-dominates.
+
+        All components are available from the optimizer input and output; no
+        golden baseline or held-out label participates in this safety gate.
+        """
+        try:
+            candidate_feasible = self._is_feasible(
+                candidate, constraints, area_targets, target_positions
+            )
+            reference_feasible = self._is_feasible(
+                reference, constraints, area_targets, target_positions
+            )
+            if reference_feasible and not candidate_feasible:
+                return True
+            if not reference_feasible:
+                return False
+            candidate_values = (
+                _calculate_hpwl_edges(candidate, b2b, p2b, pins_pos),
+                calculate_bbox_area(candidate),
+                self._soft_violation_count(candidate, constraints),
+            )
+            reference_values = (
+                _calculate_hpwl_edges(reference, b2b, p2b, pins_pos),
+                calculate_bbox_area(reference),
+                self._soft_violation_count(reference, constraints),
+            )
+            hpwl_tolerance = 1e-9 * max(1.0, abs(candidate_values[0]))
+            area_tolerance = 1e-9 * max(1.0, abs(candidate_values[1]))
+            not_worse = (
+                reference_values[0] <= candidate_values[0] + hpwl_tolerance
+                and reference_values[1] <= candidate_values[1] + area_tolerance
+                and reference_values[2] <= candidate_values[2]
+            )
+            strictly_better = (
+                reference_values[0] < candidate_values[0] - hpwl_tolerance
+                or reference_values[1] < candidate_values[1] - area_tolerance
+                or reference_values[2] < candidate_values[2]
+            )
+            return not_worse and strictly_better
+        except Exception:
+            return True
 
     def _boundary_reshape_candidate(self, positions, constraints, area_targets,
                                     b2b, p2b, pins_pos, target_positions):
