@@ -49,6 +49,7 @@ from build_holdout_folds import (  # noqa: E402
     _input_sha256,
     _inventory_sha256,
 )
+from solver_components import LIVE_SOLVER_COMPONENTS  # noqa: E402
 
 
 def _load_official_evaluator():
@@ -374,11 +375,17 @@ def _source_tree_sha256(path: Path):
 
 
 def _solver_component_hashes(path: Path):
-    names = ("my_optimizer.py", "dissect.py", "topology_polish.py")
+    missing = [
+        name for name in LIVE_SOLVER_COMPONENTS if not (path / name).is_file()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            "live solver component(s) missing from "
+            f"{path}: {', '.join(missing)}"
+        )
     return {
         name: _file_sha256(path / name)
-        for name in names
-        if (path / name).is_file()
+        for name in LIVE_SOLVER_COMPONENTS
     }
 
 

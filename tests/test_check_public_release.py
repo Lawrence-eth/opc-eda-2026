@@ -3,10 +3,18 @@ import hashlib
 from pathlib import Path
 
 from scripts import check_public_release
+from scripts.solver_components import LIVE_SOLVER_COMPONENTS, SOLVER_ENTRYPOINT
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _live_solver_tree(root: Path, text: str = "x = 1\n") -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    for component in LIVE_SOLVER_COMPONENTS:
+        (root / component).write_text(text, encoding="utf-8")
+    return root / SOLVER_ENTRYPOINT
 
 
 def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
@@ -81,15 +89,45 @@ def test_public_safe_scan_rejects_blocked_phrase_and_sensitive_word(tmp_path):
 
 
 def test_optimizer_sync_detects_mismatch(tmp_path):
-    public = tmp_path / "public.py"
-    contest = tmp_path / "contest.py"
-    public.write_text("x = 1\n", encoding="utf-8")
+    public = _live_solver_tree(tmp_path / "public")
+    contest = _live_solver_tree(tmp_path / "contest")
     contest.write_text("x = 2\n", encoding="utf-8")
 
     ok, messages = check_public_release.check_optimizer_sync(public, contest)
 
     assert not ok
     assert any("optimizer copies differ" in message for message in messages)
+
+
+def test_optimizer_sync_detects_missing_live_dependency(tmp_path):
+    public = _live_solver_tree(tmp_path / "public")
+    contest = _live_solver_tree(tmp_path / "contest")
+    (contest.parent / "golden_plus_repair.py").unlink()
+
+    ok, messages = check_public_release.check_optimizer_sync(public, contest)
+
+    assert not ok
+    assert any(
+        "contest optimizer dependency is missing" in message
+        and "golden_plus_repair.py" in message
+        for message in messages
+    )
+
+
+def test_optimizer_sync_detects_live_artifact_drift(tmp_path):
+    public = _live_solver_tree(tmp_path / "public")
+    contest = _live_solver_tree(tmp_path / "contest")
+    (contest.parent / "order_model_v5b.py").write_text(
+        "MODEL = {'drifted': True}\n", encoding="utf-8"
+    )
+
+    ok, messages = check_public_release.check_optimizer_sync(public, contest)
+
+    assert not ok
+    assert any(
+        "optimizer copies differ" in message and "order_model_v5b.py" in message
+        for message in messages
+    )
 
 
 def test_release_manifest_validates_artifact_bindings_and_supplies_defaults(tmp_path):
@@ -165,8 +203,7 @@ def test_run_checks_combines_audit_scan_and_sync(tmp_path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    optimizer = tmp_path / "my_optimizer.py"
-    optimizer.write_text("x = 1\n", encoding="utf-8")
+    optimizer = _live_solver_tree(tmp_path)
     monkeypatch.setattr(check_public_release, "DEFAULT_SCAN_PATHS", (tmp_path,))
 
     ok, messages = check_public_release.run_checks(
@@ -215,8 +252,7 @@ def test_run_checks_audits_candidate_before_compare(tmp_path, monkeypatch):
     stale_candidate = json.loads(baseline.read_text(encoding="utf-8"))
     stale_candidate["total_score"] = 1.5
     candidate.write_text(json.dumps(stale_candidate), encoding="utf-8")
-    optimizer = tmp_path / "my_optimizer.py"
-    optimizer.write_text("x = 1\n", encoding="utf-8")
+    optimizer = _live_solver_tree(tmp_path)
     monkeypatch.setattr(check_public_release, "DEFAULT_SCAN_PATHS", (tmp_path,))
 
     ok, messages = check_public_release.run_checks(

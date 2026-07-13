@@ -231,3 +231,23 @@ def test_solver_output_validation_requires_exact_finite_positive_rectangles():
     for positions, block_count in invalid:
         with pytest.raises(ValueError):
             EVAL_MODULE._validate_solver_positions(positions, block_count)
+
+
+def test_solver_component_hashes_bind_every_live_module_and_fail_closed(tmp_path):
+    solver_dir = tmp_path / "solver"
+    solver_dir.mkdir()
+    for index, component in enumerate(EVAL_MODULE.LIVE_SOLVER_COMPONENTS):
+        (solver_dir / component).write_text(
+            f"COMPONENT = {index}\n", encoding="utf-8"
+        )
+
+    hashes = EVAL_MODULE._solver_component_hashes(solver_dir)
+
+    assert tuple(hashes) == EVAL_MODULE.LIVE_SOLVER_COMPONENTS
+    assert hashes["golden_plus_repair.py"] == EVAL_MODULE._file_sha256(
+        solver_dir / "golden_plus_repair.py"
+    )
+
+    (solver_dir / "learned_order.py").unlink()
+    with pytest.raises(FileNotFoundError, match="learned_order.py"):
+        EVAL_MODULE._solver_component_hashes(solver_dir)

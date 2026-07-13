@@ -56,6 +56,8 @@ contest_solution/
 ├── dissect.py               # Exact-area dissection engine (CAMPAIGN_GOLDEN)
 ├── topology_polish.py       # Fixed-topology weighted-median HPWL polish (n≤90)
 ├── learned_order.py         # Input-only, permutation-equivariant order features
+├── order_model_v5b.py       # Generated deployment artifact for learned ordering
+├── golden_plus_repair.py    # Fail-closed fixed-topology MIB repair
 ├── sequence_pair_sa.py      # Dormant SP-SA floorplanner (historical)
 ├── iccad2026_evaluate.py    # Adapted local convenience copy (not the official source of truth)
 └── *dataset*.py             # Dataset loaders + tests
@@ -92,14 +94,19 @@ at `external/FloorSet/iccad2026contest/iccad2026_evaluate.py`.
 ```bash
 # Validate
 cp contest_solution/my_optimizer.py contest_solution/dissect.py \
-   contest_solution/topology_polish.py /path/to/FloorSet/iccad2026contest/
+   contest_solution/topology_polish.py contest_solution/learned_order.py \
+   contest_solution/order_model_v5b.py \
+   contest_solution/golden_plus_repair.py \
+   /path/to/FloorSet/iccad2026contest/
 cd /path/to/FloorSet/iccad2026contest
 PYTHONPATH=.. python iccad2026_evaluate.py --validate my_optimizer.py --quick
 
 # Evaluate
 PYTHONPATH=.. python iccad2026_evaluate.py --evaluate my_optimizer.py
 ```
-(The solver is `my_optimizer.py` + `dissect.py` + `topology_polish.py`;
+(The live source set is registered in `scripts/solver_components.py` and
+includes `my_optimizer.py`, `dissect.py`, `topology_polish.py`,
+`learned_order.py`, `order_model_v5b.py`, and `golden_plus_repair.py`;
 `sequence_pair_sa.py` is only
 needed if the dormant SP-SA path is re-enabled. Full environment bootstrap and
 all workflows: `HANDOFF.md` §5.)

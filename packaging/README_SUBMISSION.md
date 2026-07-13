@@ -56,7 +56,8 @@ Exactly the `solve()` schema of `optimizer_template.py`, transported as JSON
 
 If the executable cannot be used, `source_fallback/solver_main.py` is the
 same solver as plain Python (reads the same JSON on stdin; `my_optimizer.py`
-+ `dissect.py` + `topology_polish.py` are the algorithm;
++ `dissect.py` + `topology_polish.py` + `learned_order.py` +
+`order_model_v5b.py` + `golden_plus_repair.py` are the live solver;
 `torch.py`/`iccad2026_evaluate.py` are
 self-contained stand-ins for the imports). It can also be
 adapted to the import-based interface: `source_fallback/my_optimizer.py`
