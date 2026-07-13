@@ -8,8 +8,6 @@
   and current research handoff.
 - [`../SUBMISSION_PLAN.md`](../SUBMISSION_PLAN.md) — organizer format, package
   construction, and target-host release gates.
-- [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md) — concise current-state
-  dashboard.
 - [`../PLAN_EXECUTION_LOG.md`](../PLAN_EXECUTION_LOG.md) — chronological
   experiment evidence and verdicts.
 - [`../results/README.md`](../results/README.md) — release artifacts, evidence
@@ -29,6 +27,8 @@
   measured milestones; superseded strategically by `WINNING_PLAN.md`.
 - [`../MASTER_PLAYBOOK.md`](../MASTER_PLAYBOOK.md) — historical strategy and
   exact failed-implementation ledger.
+- [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md) — frozen v32 status snapshot
+  retained for old links; `HANDOFF.md` is the current status.
 - [`archive/`](archive/) — superseded plans and reports retained for provenance.
 
 ## Organizer material
@@ -36,3 +36,5 @@
 [`extracted/`](extracted/) contains the locally extracted problem statement,
 Q&A, and submission guidelines. When dates or rules matter, verify against the
 official contest pages and the pinned FloorSet checkout.
+[`official_sources.json`](official_sources.json) binds their URLs, hashes, the
+official wrapper, and the exact FloorSet commit/tree for offline verification.

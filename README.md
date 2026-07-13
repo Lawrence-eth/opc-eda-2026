@@ -78,7 +78,7 @@ CLAUDE.md                    # Agent onboarding + hard rules
 SUBMISSION_PLAN.md           # Submission mechanics + package verification + rebuild gate
 MASTER_PLAYBOOK.md           # History (exact failed variants remain dead ends)
 PLAN_EXECUTION_LOG.md        # Chronological experiment log (newest at top)
-PROJECT_STATUS.md            # One-page status summary
+PROJECT_STATUS.md            # Frozen v32 status snapshot (historical link target)
 ```
 
 The tracked `contest_solution/iccad2026_evaluate.py` is an adapted convenience
@@ -124,7 +124,7 @@ all workflows: `HANDOFF.md` §5.)
 | [`scripts/README.md`](scripts/README.md) | Tool catalog — supported workflows and deprecated legacy utilities |
 | [`MASTER_PLAYBOOK.md`](MASTER_PLAYBOOK.md) | Historical strategy and decision trail |
 | [`PLAN_EXECUTION_LOG.md`](PLAN_EXECUTION_LOG.md) | Chronological experiment log |
-| [`PROJECT_STATUS.md`](PROJECT_STATUS.md) | Status summary |
+| [`PROJECT_STATUS.md`](PROJECT_STATUS.md) | Frozen v32 status snapshot; current status is `HANDOFF.md` |
 | `docs/extracted/` | Contest problem statement + official Q&A |
 | `docs/archive/` | Superseded plans/reports (history) |
 
