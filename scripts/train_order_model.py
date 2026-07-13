@@ -36,13 +36,17 @@ sys.path.insert(0, str(FLOORSET))
 from learned_order import (  # noqa: E402
     FEATURE_NAMES,
     FEATURE_VERSION,
+    MIB_FEATURE_INDICES,
+    MIB_POLICIES,
+    apply_mib_feature_policy,
     extract_order_features,
 )
 from lite_dataset import FloorplanDatasetLite  # noqa: E402
 
 
-TRAINER_VERSION = 3
+TRAINER_VERSION = 4
 MODEL_SCHEMA_VERSION = 1
+SOURCE_INDEX_SCHEMA_VERSION = 1
 TARGET_NAMES = ("golden_center_x_bbox_norm", "golden_center_y_bbox_norm")
 
 
@@ -153,6 +157,116 @@ def load_holdout_sources(paths: Path | list[Path] | tuple[Path, ...]) -> Holdout
 class SourceFile:
     file_index: int
     relative_path: str
+    block_count: int
+
+
+def _canonical_payload_sha256(data) -> str:
+    payload = json.dumps(
+        data, sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _source_inventory(dataset, data_root: Path):
+    data_root = data_root.resolve()
+    dataset.all_files = sorted(str(Path(path).resolve()) for path in dataset.all_files)
+    if hasattr(dataset, "cached_file_idx"):
+        dataset.cached_file_idx = -1
+    rows = []
+    digest = hashlib.sha256()
+    for file_index, path_string in enumerate(dataset.all_files):
+        path = Path(path_string)
+        try:
+            relative = _canonical_source_path(str(path.relative_to(data_root)))
+        except ValueError as exc:
+            raise ValueError(f"dataset source lies outside data root: {path}") from exc
+        size = path.stat().st_size if path.exists() else None
+        digest.update(f"{relative}\0{size}\n".encode("utf-8"))
+        rows.append((file_index, relative, size))
+    return rows, digest.hexdigest()
+
+
+def load_or_build_source_index(
+    dataset,
+    *,
+    data_root: Path,
+    cache_path: Path | None,
+    progress_every_files: int = 0,
+):
+    """Return source block counts, using a deterministic validated JSON cache."""
+    inventory, inventory_sha256 = _source_inventory(dataset, data_root)
+    cached = None
+    if cache_path is not None and cache_path.exists():
+        try:
+            candidate = json.loads(cache_path.read_bytes())
+            if (
+                candidate.get("schema_version") == SOURCE_INDEX_SCHEMA_VERSION
+                and candidate.get("source_inventory_sha256") == inventory_sha256
+                and candidate.get("layouts_per_file")
+                == int(dataset.layouts_per_file)
+            ):
+                cached = candidate
+        except (OSError, TypeError, ValueError, json.JSONDecodeError):
+            cached = None
+
+    expected = [(relative, size) for _index, relative, size in inventory]
+    if cached is not None:
+        rows = cached.get("sources")
+        if not isinstance(rows, list) or len(rows) != len(expected):
+            cached = None
+        elif [
+            (row.get("relative_path"), row.get("size_bytes"))
+            for row in rows
+            if isinstance(row, dict)
+        ] != expected:
+            cached = None
+
+    if cached is None:
+        source_rows = []
+        layouts_per_file = int(dataset.layouts_per_file)
+        for ordinal, (file_index, relative, size) in enumerate(inventory, 1):
+            sample = dataset[file_index * layouts_per_file]
+            source_rows.append(
+                {
+                    "relative_path": relative,
+                    "size_bytes": size,
+                    "block_count": _block_count(sample["input"][0]),
+                }
+            )
+            if progress_every_files and ordinal % progress_every_files == 0:
+                print(
+                    f"source-index: {ordinal}/{len(inventory)} files", flush=True
+                )
+        cached = {
+            "schema_version": SOURCE_INDEX_SCHEMA_VERSION,
+            "layouts_per_file": int(dataset.layouts_per_file),
+            "source_inventory_sha256": inventory_sha256,
+            "sources": source_rows,
+        }
+        cached["payload_sha256"] = _canonical_payload_sha256(cached)
+        if cache_path is not None:
+            _atomic_write_json(cache_path, cached)
+    else:
+        expected_payload = cached.get("payload_sha256")
+        payload = dict(cached)
+        payload.pop("payload_sha256", None)
+        if expected_payload != _canonical_payload_sha256(payload):
+            raise ValueError(f"source-index cache integrity check failed: {cache_path}")
+
+    source_files = []
+    for (file_index, relative, _size), row in zip(inventory, cached["sources"]):
+        block_count = row.get("block_count")
+        if isinstance(block_count, bool) or not isinstance(block_count, int):
+            raise ValueError("source-index block_count must be an integer")
+        if block_count < 1:
+            raise ValueError("source-index block_count must be positive")
+        source_files.append(SourceFile(file_index, relative, block_count))
+    return source_files, {
+        "schema_version": SOURCE_INDEX_SCHEMA_VERSION,
+        "cache_path": _portable_path(cache_path) if cache_path is not None else None,
+        "source_inventory_sha256": inventory_sha256,
+        "payload_sha256": cached["payload_sha256"],
+    }
 
 
 def _hash_order(namespace: str, seed: int, relative_path: str) -> bytes:
@@ -169,30 +283,40 @@ def partition_source_files(
     seed: int,
     validation_fraction: float,
     max_files: int | None,
+    min_blocks: int,
+    max_blocks: int,
+    source_index_cache: Path | None = None,
+    progress_every_files: int = 0,
 ):
-    """Return deterministic, exactly file-disjoint train and validation lists."""
+    """Filter eligible sizes, then deterministically limit and split sources."""
     if not 0.0 < validation_fraction < 1.0:
         raise ValueError("validation_fraction must be strictly between 0 and 1")
     if max_files is not None and max_files < 2:
         raise ValueError("max_files must be at least 2 when specified")
 
-    data_root = data_root.resolve()
-    dataset.all_files = sorted(str(Path(path).resolve()) for path in dataset.all_files)
-    if hasattr(dataset, "cached_file_idx"):
-        dataset.cached_file_idx = -1
+    if min_blocks < 1 or max_blocks < min_blocks:
+        raise ValueError("invalid block-count range")
+    indexed, index_provenance = load_or_build_source_index(
+        dataset,
+        data_root=data_root,
+        cache_path=source_index_cache,
+        progress_every_files=progress_every_files,
+    )
     records = []
     discovered = set()
-    for file_index, path_string in enumerate(dataset.all_files):
-        path = Path(path_string)
-        try:
-            relative = _canonical_source_path(str(path.relative_to(data_root)))
-        except ValueError as exc:
-            raise ValueError(f"dataset source lies outside data root: {path}") from exc
+    eligible_by_block_count = Counter()
+    outside_block_range = 0
+    for source in indexed:
+        relative = source.relative_path
         if relative in discovered:
             raise ValueError(f"dataset contains duplicate source path: {relative}")
         discovered.add(relative)
+        if not min_blocks <= source.block_count <= max_blocks:
+            outside_block_range += 1
+            continue
         if relative not in excluded_sources:
-            records.append(SourceFile(file_index, relative))
+            records.append(source)
+            eligible_by_block_count[source.block_count] += 1
 
     missing_exclusions = sorted(excluded_sources - discovered)
     if missing_exclusions:
@@ -205,6 +329,7 @@ def partition_source_files(
         raise ValueError("fewer than two non-holdout source files remain")
 
     records.sort(key=lambda row: _hash_order("select", seed, row.relative_path))
+    eligible_count = len(records)
     if max_files is not None:
         records = records[:max_files]
     # One source file has one fixed block count across its 112 configurations.
@@ -212,9 +337,7 @@ def partition_source_files(
     # omit high-weight sizes (an unstratified 15% split did omit 9/21 heavy n's).
     buckets = {}
     for record in records:
-        sample = dataset[record.file_index * int(dataset.layouts_per_file)]
-        block_count = _block_count(sample["input"][0])
-        buckets.setdefault(block_count, []).append(record)
+        buckets.setdefault(record.block_count, []).append(record)
     training = []
     validation = []
     for block_count in sorted(buckets):
@@ -236,7 +359,18 @@ def partition_source_files(
         {row.relative_path for row in training}
         & {row.relative_path for row in validation}
     )
-    return training, validation, len(discovered)
+    selection = {
+        "source_files_discovered": len(discovered),
+        "source_files_excluded": len(excluded_sources),
+        "source_files_outside_block_range": outside_block_range,
+        "eligible_before_limit": eligible_count,
+        "selected_after_limit": len(records),
+        "eligible_by_block_count": {
+            str(key): eligible_by_block_count[key]
+            for key in sorted(eligible_by_block_count)
+        },
+    }
+    return training, validation, selection, index_provenance
 
 
 class LayoutRejected(ValueError):
@@ -251,7 +385,7 @@ def _block_count(area_targets) -> int:
     return sum(_scalar(value) != -1.0 for value in _rows(area_targets))
 
 
-def layout_examples(sample, *, message_steps: int):
+def layout_examples(sample, *, message_steps: int, mib_feature_policy: str):
     """Build one layout's shared features and normalized center targets."""
     try:
         area_targets, b2b, p2b, pins, constraints = sample["input"]
@@ -313,6 +447,14 @@ def layout_examples(sample, *, message_steps: int):
         )
     except (IndexError, TypeError, ValueError, OverflowError) as exc:
         raise LayoutRejected("feature_extraction_failed") from exc
+    features, mib_metadata = apply_mib_feature_policy(
+        features,
+        policy=mib_feature_policy,
+        block_count=n,
+        area_targets=area_targets,
+        constraints=constraints,
+        target_positions=target_positions,
+    )
     targets = [
         [
             (x + width / 2.0 - min_x) / span_x,
@@ -324,7 +466,7 @@ def layout_examples(sample, *, message_steps: int):
         raise LayoutRejected("feature_schema_mismatch")
     if any(not math.isfinite(value) for row in features for value in row):
         raise LayoutRejected("nonfinite_features")
-    return features, targets, n
+    return features, targets, n, mib_metadata
 
 
 @dataclass
@@ -336,6 +478,9 @@ class ScanStats:
     rejections: Counter = field(default_factory=Counter)
     layouts_by_block_count: Counter = field(default_factory=Counter)
     accepted_sources: set[str] = field(default_factory=set)
+    mib_input_compatible_layouts: int = 0
+    mib_input_incompatible_layouts: int = 0
+    mib_feature_masked_layouts: int = 0
 
     def as_json(self):
         return {
@@ -349,6 +494,9 @@ class ScanStats:
                 str(key): self.layouts_by_block_count[key]
                 for key in sorted(self.layouts_by_block_count)
             },
+            "mib_input_compatible_layouts": self.mib_input_compatible_layouts,
+            "mib_input_incompatible_layouts": self.mib_input_incompatible_layouts,
+            "mib_feature_masked_layouts": self.mib_feature_masked_layouts,
         }
 
 
@@ -360,6 +508,7 @@ def stream_layouts(
     max_blocks: int,
     max_layouts_per_file: int | None,
     message_steps: int,
+    mib_feature_policy: str,
     layout_seed: int,
     stats: ScanStats,
     progress_every_files: int = 0,
@@ -387,8 +536,10 @@ def stream_layouts(
                 stats.rejections["outside_block_range"] += 1
                 continue
             try:
-                features, targets, n = layout_examples(
-                    sample, message_steps=message_steps
+                features, targets, n, mib_metadata = layout_examples(
+                    sample,
+                    message_steps=message_steps,
+                    mib_feature_policy=mib_feature_policy,
                 )
             except LayoutRejected as exc:
                 stats.rejections[exc.reason] += 1
@@ -396,6 +547,12 @@ def stream_layouts(
             stats.layouts_accepted += 1
             stats.blocks_accepted += n
             stats.layouts_by_block_count[n] += 1
+            if mib_metadata["input_compatible"]:
+                stats.mib_input_compatible_layouts += 1
+            else:
+                stats.mib_input_incompatible_layouts += 1
+            if mib_metadata["masked"]:
+                stats.mib_feature_masked_layouts += 1
             accepted_in_source = True
             yield np.asarray(features, dtype=np.float64), np.asarray(
                 targets, dtype=np.float64
@@ -601,6 +758,8 @@ def train_order_model(
     max_files: int | None,
     max_layouts_per_file: int | None,
     message_steps: int,
+    mib_feature_policy: str = "mask_incompatible",
+    source_index_cache: Path | None = None,
     progress_every_files: int = 0,
 ):
     if min_blocks < 1 or max_blocks < min_blocks:
@@ -609,6 +768,8 @@ def train_order_model(
         raise ValueError("max_layouts_per_file must be positive")
     if message_steps < 0:
         raise ValueError("message_steps must be nonnegative")
+    if mib_feature_policy not in MIB_POLICIES:
+        raise ValueError(f"unsupported MIB feature policy: {mib_feature_policy!r}")
 
     holdout_paths = (
         [holdout_manifest]
@@ -616,13 +777,17 @@ def train_order_model(
         else list(holdout_manifest)
     )
     holdout = load_holdout_sources(holdout_paths)
-    training, validation, discovered_count = partition_source_files(
+    training, validation, selection, source_index = partition_source_files(
         dataset,
         data_root=data_root,
         excluded_sources=holdout.paths,
         seed=seed,
         validation_fraction=validation_fraction,
         max_files=max_files,
+        min_blocks=min_blocks,
+        max_blocks=max_blocks,
+        source_index_cache=source_index_cache,
+        progress_every_files=progress_every_files,
     )
 
     train_stats = ScanStats(source_files=len(training))
@@ -634,6 +799,7 @@ def train_order_model(
         max_blocks=max_blocks,
         max_layouts_per_file=max_layouts_per_file,
         message_steps=message_steps,
+        mib_feature_policy=mib_feature_policy,
         layout_seed=seed,
         stats=train_stats,
         progress_every_files=progress_every_files,
@@ -653,6 +819,7 @@ def train_order_model(
         max_blocks=max_blocks,
         max_layouts_per_file=max_layouts_per_file,
         message_steps=message_steps,
+        mib_feature_policy=mib_feature_policy,
         layout_seed=seed,
         stats=validation_stats,
         progress_every_files=progress_every_files,
@@ -668,6 +835,7 @@ def train_order_model(
             "version": FEATURE_VERSION,
             "names": list(FEATURE_NAMES),
             "message_steps": message_steps,
+            "mib_policy": mib_feature_policy,
         },
         "target_schema": {
             "names": list(TARGET_NAMES),
@@ -690,6 +858,8 @@ def train_order_model(
             "max_layouts_per_file": max_layouts_per_file,
             "example_weighting": "one_per_block",
             "source_split": "file_disjoint_stratified_by_block_count",
+            "eligibility_order": "block_count_filter_before_hash_limit",
+            "mib_feature_policy": mib_feature_policy,
         },
         "provenance": {
             "trainer_sha256": _file_sha256(Path(__file__)),
@@ -698,8 +868,8 @@ def train_order_model(
             ),
             "dataset": "FloorSet-Lite",
             "data_root": _portable_path(data_root),
-            "source_files_discovered": discovered_count,
-            "source_files_excluded": len(holdout.paths),
+            "source_files_discovered": selection["source_files_discovered"],
+            "source_files_excluded": selection["source_files_excluded"],
             "holdout_manifests": [_portable_path(path) for path in holdout_paths],
             "holdout_manifest_sha256": holdout.manifest_sha256,
             "holdout_manifest_sha256s": list(holdout.manifest_sha256s),
@@ -711,6 +881,8 @@ def train_order_model(
             "source_partition_content_sha256": _partition_content_sha256(
                 dataset, training, validation
             ),
+            "source_selection": selection,
+            "source_index": source_index,
             "numpy_version": np.__version__,
             "python_version": platform.python_version(),
         },
@@ -759,7 +931,7 @@ def main():
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "results" / "models" / "order_ridge_v4.json",
+        default=ROOT / "results" / "models" / "order_ridge_v5_heavy.json",
     )
     parser.add_argument("--seed", type=int, default=20260710)
     parser.add_argument("--validation-fraction", type=float, default=0.15)
@@ -769,16 +941,28 @@ def main():
     parser.add_argument(
         "--max-files",
         type=int,
-        default=1024,
+        default=0,
         help="deterministically select this many non-holdout files; 0 uses all",
     )
     parser.add_argument(
         "--max-layouts-per-file",
         type=int,
-        default=24,
+        default=8,
         help="layouts read from each selected source file; 0 uses the dataset value",
     )
     parser.add_argument("--message-steps", type=int, default=4)
+    parser.add_argument(
+        "--mib-feature-policy",
+        choices=sorted(MIB_POLICIES),
+        default="mask_incompatible",
+        help="mask MIB channels when input annotations cannot share one legal shape",
+    )
+    parser.add_argument(
+        "--source-index-cache",
+        type=Path,
+        default=ROOT / "results" / "work" / "order_source_index_v1.json",
+        help="validated block-count index used before heavy-source limiting",
+    )
     parser.add_argument("--progress-every-files", type=int, default=25)
     args = parser.parse_args()
     max_files = args.max_files or None
@@ -786,6 +970,7 @@ def main():
     holdout_manifests = args.fold_manifest or [
         ROOT / "results" / "folds" / "heavy_clean_v1.json",
         ROOT / "results" / "folds" / "heavy_raw_hash_v1.json",
+        ROOT / "results" / "folds" / "heavy_sealed_v2.json",
     ]
 
     dataset = FloorplanDatasetLite(str(args.data_root))
@@ -801,6 +986,8 @@ def main():
         max_files=max_files,
         max_layouts_per_file=max_layouts,
         message_steps=args.message_steps,
+        mib_feature_policy=args.mib_feature_policy,
+        source_index_cache=args.source_index_cache,
         progress_every_files=args.progress_every_files,
     )
     _atomic_write_json(args.output, model)

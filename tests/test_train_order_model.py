@@ -85,6 +85,8 @@ def test_manifest_sources_are_all_excluded_before_deterministic_file_split(tmp_p
         seed=77,
         validation_fraction=0.25,
         max_files=8,
+        min_blocks=2,
+        max_blocks=2,
     )
     second = MODULE.partition_source_files(
         dataset,
@@ -93,12 +95,16 @@ def test_manifest_sources_are_all_excluded_before_deterministic_file_split(tmp_p
         seed=77,
         validation_fraction=0.25,
         max_files=8,
+        min_blocks=2,
+        max_blocks=2,
     )
     assert first == second
-    training, validation, discovered = first
+    training, validation, selection, source_index = first
     train_paths = {row.relative_path for row in training}
     validation_paths = {row.relative_path for row in validation}
-    assert discovered == len(files)
+    assert selection["source_files_discovered"] == len(files)
+    assert selection["eligible_before_limit"] == len(files) - len(excluded_relative)
+    assert len(source_index["payload_sha256"]) == 64
     assert len(training) == 6
     assert len(validation) == 2
     assert train_paths.isdisjoint(validation_paths)
@@ -137,6 +143,8 @@ def test_partition_fails_closed_when_a_manifest_source_is_not_in_dataset(tmp_pat
             seed=1,
             validation_fraction=0.2,
             max_files=None,
+            min_blocks=2,
+            max_blocks=2,
         )
 
 
@@ -152,20 +160,23 @@ def test_layout_targets_use_shared_feature_path_and_input_visible_constraints(mo
         ]
 
     monkeypatch.setattr(MODULE, "extract_order_features", fake_features)
-    features, targets, n = MODULE.layout_examples(_sample(), message_steps=3)
+    features, targets, n, mib_metadata = MODULE.layout_examples(
+        _sample(), message_steps=3, mib_feature_policy="mask_incompatible"
+    )
     target_positions = captured["args"][6]
     assert n == 2
     assert len(features[0]) == len(MODULE.FEATURE_NAMES)
     assert captured["kwargs"] == {"message_steps": 3}
     assert target_positions == [[-1.0, -1.0, 2.0, 2.0], [2.0, 2.0, 2.0, 2.0]]
     assert targets == [[0.25, 0.25], [0.75, 0.75]]
+    assert mib_metadata == {"input_compatible": True, "masked": False}
 
 
 def test_layout_stream_is_lazy_and_keeps_only_one_layout_batch(tmp_path):
     data_root = tmp_path / "data"
     files = [data_root / "floorset_lite/worker_0/layouts_0.th"]
     dataset = FakeDataset(files, _sample, layouts_per_file=3)
-    source = MODULE.SourceFile(0, "floorset_lite/worker_0/layouts_0.th")
+    source = MODULE.SourceFile(0, "floorset_lite/worker_0/layouts_0.th", 2)
     stats = MODULE.ScanStats(source_files=1)
     stream = MODULE.stream_layouts(
         dataset,
@@ -174,6 +185,7 @@ def test_layout_stream_is_lazy_and_keeps_only_one_layout_batch(tmp_path):
         max_blocks=2,
         max_layouts_per_file=None,
         message_steps=1,
+        mib_feature_policy="mask_incompatible",
         layout_seed=9,
         stats=stats,
     )
@@ -259,6 +271,7 @@ def test_end_to_end_artifact_is_reproducible_and_records_schema(tmp_path):
         "version": MODULE.FEATURE_VERSION,
         "names": list(MODULE.FEATURE_NAMES),
         "message_steps": 2,
+        "mib_policy": "mask_incompatible",
     }
     assert len(first["coefficients"]) == len(MODULE.FEATURE_NAMES)
     assert all(len(row) == 2 for row in first["coefficients"])
@@ -271,3 +284,104 @@ def test_end_to_end_artifact_is_reproducible_and_records_schema(tmp_path):
     assert first["stats"]["validation_fit"]["layouts"] > 0
     assert len(first["stats"]["validation_fit"]["pairwise_inversion_fraction"]) == 2
     assert len(first["payload_sha256"]) == 64
+
+
+def test_block_range_is_filtered_before_max_files_limit(tmp_path):
+    data_root = tmp_path / "data"
+    files = [
+        data_root / "floorset_lite" / "worker_0" / f"layouts_{i}.th"
+        for i in range(12)
+    ]
+
+    def sized_sample(index):
+        n = 2 if index < 6 else 5
+        sample = _sample(index)
+        if n == 2:
+            return sample
+        sample["input"] = (
+            [4.0] * n,
+            [],
+            [],
+            [],
+            [[0, 0, 0, 0, 0] for _ in range(n)],
+        )
+        sample["label"] = (
+            None,
+            [[2.0, 2.0, 2.0 * i, 0.0] for i in range(n)],
+            None,
+        )
+        return sample
+
+    training, validation, selection, _index = MODULE.partition_source_files(
+        FakeDataset(files, sized_sample, layouts_per_file=1),
+        data_root=data_root,
+        excluded_sources=frozenset(),
+        seed=13,
+        validation_fraction=0.25,
+        max_files=4,
+        min_blocks=5,
+        max_blocks=5,
+    )
+    selected = training + validation
+    assert len(selected) == 4
+    assert all(source.block_count == 5 for source in selected)
+    assert selection["eligible_before_limit"] == 6
+    assert selection["selected_after_limit"] == 4
+
+
+def test_source_index_cache_avoids_rescanning_and_is_integrity_checked(tmp_path):
+    data_root = tmp_path / "data"
+    files = [data_root / "floorset_lite" / "worker_0" / f"layouts_{i}.th" for i in range(4)]
+    for index, source in enumerate(files):
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_bytes(f"source-{index}".encode())
+    cache = tmp_path / "source-index.json"
+    first = FakeDataset(files, _sample, layouts_per_file=1)
+    MODULE.load_or_build_source_index(
+        first, data_root=data_root, cache_path=cache
+    )
+    assert first.calls == [0, 1, 2, 3]
+
+    def unexpected(_index):
+        raise AssertionError("valid source cache should avoid dataset loads")
+
+    second = FakeDataset(files, unexpected, layouts_per_file=1)
+    rows, provenance = MODULE.load_or_build_source_index(
+        second, data_root=data_root, cache_path=cache
+    )
+    assert len(rows) == 4
+    assert second.calls == []
+    assert len(provenance["payload_sha256"]) == 64
+
+    payload = json.loads(cache.read_text())
+    payload["payload_sha256"] = "0" * 64
+    cache.write_text(json.dumps(payload))
+    with pytest.raises(ValueError, match="integrity"):
+        MODULE.load_or_build_source_index(
+            FakeDataset(files, unexpected, layouts_per_file=1),
+            data_root=data_root,
+            cache_path=cache,
+        )
+
+
+def test_input_incompatible_mib_channels_are_masked(monkeypatch):
+    sample = _sample()
+    sample["input"] = (
+        [4.0, 9.0],
+        sample["input"][1],
+        sample["input"][2],
+        sample["input"][3],
+        [[0, 0, 1, 0, 0], [0, 0, 1, 0, 0]],
+    )
+
+    def all_one_features(*_args, **_kwargs):
+        return [[1.0] * len(MODULE.FEATURE_NAMES) for _ in range(2)]
+
+    monkeypatch.setattr(MODULE, "extract_order_features", all_one_features)
+    features, _targets, _n, metadata = MODULE.layout_examples(
+        sample, message_steps=1, mib_feature_policy="mask_incompatible"
+    )
+    assert metadata == {"input_compatible": False, "masked": True}
+    for row in features:
+        assert all(row[index] == 0.0 for index in MODULE.MIB_FEATURE_INDICES)
+        assert row[MODULE.FEATURE_NAMES.index("cluster_member")] == 1.0
