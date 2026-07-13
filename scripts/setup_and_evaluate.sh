@@ -20,11 +20,14 @@ pip install --upgrade "pip==26.1.2"
 # Install the official contest dependencies (torch, numpy, shapely, matplotlib,
 # tqdm, requests) plus pytest, rather than an ad-hoc list.
 pip install -r external/FloorSet/iccad2026contest/requirements.txt pytest
-cp contest_solution/my_optimizer.py external/FloorSet/iccad2026contest/my_optimizer.py
-cp contest_solution/dissect.py external/FloorSet/iccad2026contest/dissect.py
-cp contest_solution/topology_polish.py external/FloorSet/iccad2026contest/topology_polish.py
-cp contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/sequence_pair_sa.py
-cp contest_solution/test_my_optimizer.py external/FloorSet/iccad2026contest/test_my_optimizer.py
+CONTEST="$ROOT/external/FloorSet/iccad2026contest"
+LIVE_SOLVER_COMPONENT_TEXT="$(python "$ROOT/scripts/solver_components.py")"
+mapfile -t LIVE_SOLVER_COMPONENTS <<< "$LIVE_SOLVER_COMPONENT_TEXT"
+for component in "${LIVE_SOLVER_COMPONENTS[@]}"; do
+  cp "$ROOT/contest_solution/$component" "$CONTEST/$component"
+done
+cp "$ROOT/contest_solution/sequence_pair_sa.py" "$CONTEST/sequence_pair_sa.py"
+cp "$ROOT/contest_solution/test_my_optimizer.py" "$CONTEST/test_my_optimizer.py"
 cd external/FloorSet
 PYTHONPATH=. python lite_dataset_test.py
 cd iccad2026contest

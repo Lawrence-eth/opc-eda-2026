@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts import audit_results, check_official_sources, compare_results
+from scripts.solver_components import LIVE_SOLVER_COMPONENTS, SOLVER_ENTRYPOINT
 
 DEFAULT_MANIFEST = ROOT / "results" / "release_manifest.json"
 DEFAULT_SCAN_PATHS = (
@@ -321,18 +322,20 @@ def scan_public_safe(paths: Iterable[Path] | None = None) -> tuple[bool, list[st
     return not findings, findings
 
 
-def check_optimizer_sync(public_optimizer: Path, contest_optimizer: Path | None) -> tuple[bool, list[str]]:
+def check_optimizer_sync(
+    public_optimizer: Path, contest_optimizer: Path | None
+) -> tuple[bool, list[str]]:
     if contest_optimizer is None:
         return True, []
     pairs = [(public_optimizer, contest_optimizer)]
-    public_dissect = public_optimizer.with_name("dissect.py")
-    contest_dissect = contest_optimizer.with_name("dissect.py")
-    if public_dissect.exists() or contest_dissect.exists():
-        pairs.append((public_dissect, contest_dissect))
-    public_topology = public_optimizer.with_name("topology_polish.py")
-    contest_topology = contest_optimizer.with_name("topology_polish.py")
-    if public_topology.exists() or contest_topology.exists():
-        pairs.append((public_topology, contest_topology))
+    pairs.extend(
+        (
+            public_optimizer.with_name(component),
+            contest_optimizer.with_name(component),
+        )
+        for component in LIVE_SOLVER_COMPONENTS
+        if component != SOLVER_ENTRYPOINT
+    )
 
     messages: list[str] = []
     for public_path, contest_path in pairs:

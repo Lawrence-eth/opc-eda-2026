@@ -233,6 +233,8 @@ mkdir -p external && git clone https://github.com/IntelLabs/FloorSet.git externa
 ```bash
 cp contest_solution/my_optimizer.py contest_solution/dissect.py \
    contest_solution/topology_polish.py \
+   contest_solution/learned_order.py contest_solution/order_model_v5b.py \
+   contest_solution/golden_plus_repair.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
@@ -380,6 +382,10 @@ and everything in `MASTER_PLAYBOOK.md` Part II.6.
 | `contest_solution/my_optimizer.py` | THE solver (shelf + dissection portfolio + selector) |
 | `contest_solution/dissect.py` | the campaign engine (exact-area dissection) |
 | `contest_solution/topology_polish.py` | fixed-topology HPWL polish enabled for n≤90 |
+| `contest_solution/learned_order.py` | input-only learned-order feature extraction and inference |
+| `contest_solution/order_model_v5b.py` | generated deployment artifact consumed by learned ordering |
+| `contest_solution/golden_plus_repair.py` | fail-closed fixed-topology MIB repair |
+| `scripts/solver_components.py` | authoritative live-module registry used by copy, sync, and provenance gates |
 | `docs/WINNING_PLAN.md` | authoritative beta-to-final winning strategy and gates |
 | `contest_solution/sequence_pair_sa.py` | dormant SP-SA (historical) |
 | `packaging/` | executable package sources + build script + organizers' wrapper |

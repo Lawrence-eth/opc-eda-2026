@@ -63,6 +63,10 @@ never regress it; improve on top of it behind gates.
 | `contest_solution/my_optimizer.py` | THE solver (shelf + dissection portfolio + selector) |
 | `contest_solution/dissect.py` | exact-area dissection engine (the campaign's core) |
 | `contest_solution/topology_polish.py` | fixed-topology HPWL polish enabled for n≤90 |
+| `contest_solution/learned_order.py` | input-only learned-order features and inference |
+| `contest_solution/order_model_v5b.py` | generated learned-order deployment artifact |
+| `contest_solution/golden_plus_repair.py` | fail-closed fixed-topology MIB repair |
+| `scripts/solver_components.py` | authoritative registry for live copy/sync/provenance gates |
 | `docs/WINNING_PLAN.md` | authoritative beta/final winning plan |
 | `packaging/` | submission package sources (torch-free executable; see SUBMISSION_PLAN.md) |
 | `scripts/README.md` | supported tooling, workflows, and deprecated utilities |

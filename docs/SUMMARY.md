@@ -115,6 +115,8 @@ floor); theoretical bound 0.70. Golden itself violates soft constraints on
 # bootstrap: HANDOFF.md §5 (venv + FloorSet + auto-downloaded validation data)
 cp contest_solution/my_optimizer.py contest_solution/dissect.py \
    contest_solution/topology_polish.py \
+   contest_solution/learned_order.py contest_solution/order_model_v5b.py \
+   contest_solution/golden_plus_repair.py \
    contest_solution/sequence_pair_sa.py external/FloorSet/iccad2026contest/
 cd external/FloorSet/iccad2026contest
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py --evaluate my_optimizer.py
