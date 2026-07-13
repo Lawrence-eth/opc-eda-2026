@@ -50,6 +50,12 @@ _LEARNED_REPLACEMENT_WF = {
 }
 
 
+# Preregistered v6 share for the deterministic fractional-rank blend. Research
+# variants may change this single global constant; production never dispatches
+# on block count, case identity, evaluator output, or public-set behavior.
+_RANK_BLEND_V6_WEIGHT = 0.25
+
+
 _LEARNED_MODEL_UNSET = object()
 _LEARNED_MODEL_CACHE = _LEARNED_MODEL_UNSET
 
@@ -166,6 +172,134 @@ def _rank_mlp_prior(
             )
             for block in range(block_count)
         }
+    except Exception:
+        return None
+
+
+def _fractional_ranks(values, tolerance=1e-12):
+    """Return stable average ranks scaled to [0, 1].
+
+    This is the pure-stdlib deployment equivalent of the preregistered trainer
+    transform. Stable input order breaks only non-tied sorting ambiguity;
+    values within ``tolerance`` receive their shared average rank.
+    """
+    numbers = [float(value) for value in values]
+    if any(not math.isfinite(value) for value in numbers):
+        raise ValueError("rank inputs must be finite")
+    order = sorted(range(len(numbers)), key=lambda index: (numbers[index], index))
+    result = [0.0] * len(numbers)
+    denominator = max(1, len(numbers) - 1)
+    start = 0
+    while start < len(order):
+        end = start + 1
+        while (
+            end < len(order)
+            and abs(numbers[order[end]] - numbers[order[start]]) <= tolerance
+        ):
+            end += 1
+        rank = ((start + end - 1) / 2.0) / denominator
+        for position in range(start, end):
+            result[order[position]] = rank
+        start = end
+    return result
+
+
+def _fractional_rank_blend(v5_predictions, v6_predictions, v6_weight):
+    """Blend two coordinate predictors only after within-case rank conversion."""
+    weight = float(v6_weight)
+    if not math.isfinite(weight) or not 0.0 <= weight <= 1.0:
+        raise ValueError("v6 blend weight must be finite and in [0, 1]")
+    if len(v5_predictions) != len(v6_predictions):
+        raise ValueError("rank predictors must cover the same blocks")
+    block_count = len(v5_predictions)
+    if any(len(row) != 2 for row in v5_predictions) or any(
+        len(row) != 2 for row in v6_predictions
+    ):
+        raise ValueError("rank predictors must have x/y outputs")
+    v5_ranks = [
+        _fractional_ranks([row[axis] for row in v5_predictions])
+        for axis in range(2)
+    ]
+    v6_ranks = [
+        _fractional_ranks([row[axis] for row in v6_predictions])
+        for axis in range(2)
+    ]
+    return {
+        block: tuple(
+            (1.0 - weight) * v5_ranks[axis][block]
+            + weight * v6_ranks[axis][block]
+            for axis in range(2)
+        )
+        for block in range(block_count)
+    }
+
+
+def _blended_rank_prior(
+    block_count,
+    area_targets,
+    b2b_connectivity,
+    p2b_connectivity,
+    pins_pos,
+    constraints,
+    target_positions,
+    *,
+    v6_weight=_RANK_BLEND_V6_WEIGHT,
+):
+    """Compile both sealed predictors and emit one fail-closed blended prior.
+
+    Both artifacts use the same feature schema, message depth, and MIB policy,
+    so feature extraction and corruption masking are paid once per floorplan.
+    Any artifact/schema/output failure atomically restores the displaced
+    standard candidate rather than silently deploying a one-model blend.
+    """
+    try:
+        from learned_order import (
+            apply_mib_feature_policy,
+            compiled_artifact_predictions,
+            extract_order_features,
+        )
+        from rank_mlp import compiled_predictions as compiled_rank_predictions
+
+        v5_model = _compiled_learned_model()
+        v6_model = _compiled_rank_mlp_model()
+        if v5_model is None or v6_model is None:
+            return None
+        message_steps = v5_model.get("message_steps")
+        mib_policy = v5_model.get("mib_policy")
+        if (
+            message_steps != v6_model.get("message_steps")
+            or mib_policy != v6_model.get("mib_policy")
+        ):
+            return None
+        features = extract_order_features(
+            block_count,
+            area_targets,
+            b2b_connectivity,
+            p2b_connectivity,
+            pins_pos,
+            constraints,
+            target_positions,
+            message_steps=message_steps,
+        )
+        features, _mask_metadata = apply_mib_feature_policy(
+            features,
+            policy=mib_policy,
+            block_count=block_count,
+            area_targets=area_targets,
+            constraints=constraints,
+            target_positions=target_positions,
+        )
+        v5_predictions = compiled_artifact_predictions(
+            features, v5_model, message_steps=message_steps
+        )
+        v6_predictions = compiled_rank_predictions(
+            features, v6_model, message_steps=message_steps
+        )
+        if len(v5_predictions) != block_count:
+            return None
+        return _fractional_rank_blend(
+            v5_predictions, v6_predictions, v6_weight
+        )
     except Exception:
         return None
 
@@ -400,7 +534,7 @@ class MyOptimizer(FloorplanOptimizer):
         # the committed shelf result can only be replaced by something
         # strictly better on this case.
         reused_final_candidate = None
-        nonlearned_reference = None
+        available_nonlearned_reference = None
         try:
             candidates = [best_positions] if best_positions else []
             from dissect import (
@@ -465,7 +599,7 @@ class MyOptimizer(FloorplanOptimizer):
             learned_order = None
             replacement_wf = _LEARNED_REPLACEMENT_WF.get(block_count)
             if replacement_wf is not None and self._learned_order_enabled:
-                learned_order = _rank_mlp_prior(
+                learned_order = _blended_rank_prior(
                     block_count,
                     areas_l,
                     b2b_edges,
@@ -690,7 +824,7 @@ class MyOptimizer(FloorplanOptimizer):
                     else []
                 )
                 if learned_candidate is not None and nonlearned_candidates:
-                    nonlearned_reference = self._select_candidate(
+                    available_nonlearned_reference = self._select_candidate(
                         nonlearned_candidates,
                         constraints,
                         area_targets,
@@ -705,10 +839,10 @@ class MyOptimizer(FloorplanOptimizer):
                 if picked is not None:
                     if (
                         picked is learned_candidate
-                        and nonlearned_reference is not None
-                        and self._visibly_dominated_by_reference(
+                        and available_nonlearned_reference is not None
+                        and self._visibly_dominated_by_available_reference(
                             picked,
-                            nonlearned_reference,
+                            available_nonlearned_reference,
                             constraints,
                             area_targets,
                             b2b_edges,
@@ -717,7 +851,7 @@ class MyOptimizer(FloorplanOptimizer):
                             target_positions,
                         )
                     ):
-                        picked = nonlearned_reference
+                        picked = available_nonlearned_reference
                     self._learned_candidate_selected = (
                         learned_candidate is not None and picked is learned_candidate
                     )
@@ -850,16 +984,18 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 pass
 
-        # A learned/derived path may trade one visible component for another,
-        # but it may never survive when the best actually generated nonlearned
-        # candidate is no worse in HPWL, bbox area, and soft violations. This
-        # reference costs no extra solve and uses input-visible metrics only.
+        # Count-neutral runtime guard. The reference is only the best
+        # nonlearned candidate that remains available after the frozen slot
+        # replacement; it is not the displaced pass or an exact v32 rollback.
+        # Exact legacy-pool safety is evaluated separately by paired offline
+        # promotion gates. This zero-solve guard still rejects visible Pareto
+        # regressions against every nonlearned candidate actually generated.
         if (
             best_positions is not None
-            and nonlearned_reference is not None
-            and self._visibly_dominated_by_reference(
+            and available_nonlearned_reference is not None
+            and self._visibly_dominated_by_available_reference(
                 best_positions,
-                nonlearned_reference,
+                available_nonlearned_reference,
                 constraints,
                 area_targets,
                 b2b_edges,
@@ -868,7 +1004,7 @@ class MyOptimizer(FloorplanOptimizer):
                 target_positions,
             )
         ):
-            best_positions = nonlearned_reference
+            best_positions = available_nonlearned_reference
             self._learned_candidate_selected = False
 
         # Fixed-topology HPWL polish.  One weighted-median sweep preserves
@@ -957,7 +1093,7 @@ class MyOptimizer(FloorplanOptimizer):
                 best = pos
         return best
 
-    def _visibly_dominated_by_reference(
+    def _visibly_dominated_by_available_reference(
         self,
         candidate,
         reference,
@@ -968,10 +1104,11 @@ class MyOptimizer(FloorplanOptimizer):
         pins_pos,
         target_positions,
     ):
-        """Whether a generated nonlearned reference strictly Pareto-dominates.
+        """Whether an available generated reference strictly Pareto-dominates.
 
         All components are available from the optimizer input and output; no
-        golden baseline or held-out label participates in this safety gate.
+        golden baseline or held-out label participates in this runtime guard.
+        The caller must not interpret it as an exact displaced-slot rollback.
         """
         try:
             candidate_feasible = self._is_feasible(

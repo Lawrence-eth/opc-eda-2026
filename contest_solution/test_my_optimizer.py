@@ -69,7 +69,11 @@ except (ModuleNotFoundError, ImportError):
 from my_optimizer import (
     MyOptimizer,
     _LEARNED_REPLACEMENT_WF,
+    _blended_rank_prior,
+    _compiled_learned_model,
     _compiled_rank_mlp_model,
+    _fractional_rank_blend,
+    _fractional_ranks,
     _rank_mlp_prior,
     _should_try_anchored_third_pass,
     _should_try_preplaced_aspect_pass,
@@ -234,6 +238,86 @@ def test_rank_mlp_artifact_is_compiled_only_once(monkeypatch):
     assert len(calls) == 1
 
 
+def test_v5b_artifact_is_compiled_only_once(monkeypatch):
+    import learned_order
+
+    calls = []
+    real_compile = learned_order.compile_artifact
+    monkeypatch.setattr(
+        learned_order,
+        "compile_artifact",
+        lambda model: calls.append(model) or real_compile(model),
+    )
+    monkeypatch.setattr(
+        optimizer_module,
+        "_LEARNED_MODEL_CACHE",
+        optimizer_module._LEARNED_MODEL_UNSET,
+    )
+    assert _compiled_learned_model() is _compiled_learned_model()
+    assert len(calls) == 1
+
+
+def test_fractional_ranks_use_stable_average_ties():
+    assert _fractional_ranks([4.0, 1.0, 1.0, 3.0]) == [
+        1.0,
+        1.0 / 6.0,
+        1.0 / 6.0,
+        2.0 / 3.0,
+    ]
+    assert _fractional_ranks([7.0]) == [0.0]
+
+
+def test_fractional_rank_blend_is_global_and_coordinatewise():
+    v5 = [[0.0, 2.0], [1.0, 0.0], [2.0, 1.0]]
+    v6 = [[2.0, 0.0], [1.0, 1.0], [0.0, 2.0]]
+    assert _fractional_rank_blend(v5, v6, 0.25) == {
+        0: (0.25, 0.75),
+        1: (0.5, 0.125),
+        2: (0.75, 0.625),
+    }
+
+
+def test_blended_prior_fails_closed_if_either_model_is_missing(monkeypatch):
+    monkeypatch.setattr(optimizer_module, "_compiled_learned_model", lambda: {})
+    monkeypatch.setattr(optimizer_module, "_compiled_rank_mlp_model", lambda: None)
+    assert _blended_rank_prior(1, [], [], [], [], [], []) is None
+
+
+def test_blended_prior_extracts_and_masks_shared_features_once(monkeypatch):
+    import learned_order
+    import rank_mlp
+
+    calls = []
+    compiled = {"message_steps": 4, "mib_policy": "mask_incompatible"}
+    monkeypatch.setattr(optimizer_module, "_compiled_learned_model", lambda: compiled)
+    monkeypatch.setattr(optimizer_module, "_compiled_rank_mlp_model", lambda: compiled)
+    monkeypatch.setattr(
+        learned_order,
+        "extract_order_features",
+        lambda *args, **kwargs: calls.append("extract") or [[1.0], [2.0]],
+    )
+    monkeypatch.setattr(
+        learned_order,
+        "apply_mib_feature_policy",
+        lambda features, **kwargs: (calls.append("mask") or features, {}),
+    )
+    monkeypatch.setattr(
+        learned_order,
+        "compiled_artifact_predictions",
+        lambda *args, **kwargs: [[0.0, 1.0], [1.0, 0.0]],
+    )
+    monkeypatch.setattr(
+        rank_mlp,
+        "compiled_predictions",
+        lambda *args, **kwargs: [[1.0, 0.0], [0.0, 1.0]],
+    )
+    assert _blended_rank_prior(2, [], [], [], [], [], [], v6_weight=0.25) == {
+        0: (0.25, 0.75),
+        1: (0.75, 0.25),
+    }
+    assert calls == ["extract", "mask"]
+
+
 @pytest.mark.parametrize("kind", ["compile_failure", "wrong_width", "nonfinite"])
 def test_rank_mlp_prior_fails_closed_on_invalid_model_or_output(monkeypatch, kind):
     import my_optimizer as optimizer_module
@@ -250,7 +334,7 @@ def test_rank_mlp_prior_fails_closed_on_invalid_model_or_output(monkeypatch, kin
     assert _rank_mlp_prior(1, [], [], [], [], [], []) is None
 
 
-def test_visible_dominance_gate_rejects_strictly_inferior_geometry():
+def test_available_reference_guard_rejects_strictly_inferior_geometry():
     optimizer = MyOptimizer()
     area_targets = torch.ones(2)
     constraints = torch.zeros((2, 5))
@@ -259,7 +343,7 @@ def test_visible_dominance_gate_rejects_strictly_inferior_geometry():
     # strictly smaller bbox while every other visible component ties.
     candidate = [(0.0, 0.0, 1.0, 1.0), (2.0, 0.0, 1.0, 1.0)]
     reference = [(0.0, 0.0, 1.0, 1.0), (1.0, 0.0, 1.0, 1.0)]
-    assert optimizer._visibly_dominated_by_reference(
+    assert optimizer._visibly_dominated_by_available_reference(
         candidate,
         reference,
         constraints,
@@ -269,7 +353,7 @@ def test_visible_dominance_gate_rejects_strictly_inferior_geometry():
         [],
         targets,
     )
-    assert not optimizer._visibly_dominated_by_reference(
+    assert not optimizer._visibly_dominated_by_available_reference(
         reference,
         candidate,
         constraints,
@@ -303,7 +387,7 @@ def test_invalid_learned_slot_falls_back_to_displaced_standard_pass(
     monkeypatch.setattr(dissect_module, "dissect_solve", fake_dissect)
     monkeypatch.setattr(
         optimizer_module,
-        "_rank_mlp_prior",
+        "_blended_rank_prior",
         lambda *args, **kwargs: {
             index: (0.5, 0.5) for index in range(block_count)
         },
