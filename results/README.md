@@ -5,6 +5,10 @@ experiment dump. The release source of truth is `release_manifest.json`; it
 binds the solver commit and source hashes, public result, official FloorSet
 revision, and submission archive digest. Lower contest score is better.
 
+Large pre-cleanup scratch outputs and abandoned-worktree patches are indexed
+in [`ARCHIVE_INDEX.md`](ARCHIVE_INDEX.md) and stored as a checksum-bound
+private release asset rather than committed here.
+
 ## Current release: v32
 
 The frozen pre-beta release is tag `v32-prebeta-20260711` (repository commit
