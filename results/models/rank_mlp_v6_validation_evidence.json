@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "status": "rank_gate_passed_additive_decoded_probe_passed_count_neutral_gate_pending",
+  "artifact": {
+    "path": "results/models/rank_mlp_v6_validation.json",
+    "file_sha256": "b615f84e74c2dbe145f1181c2296b4dfdc3ad41909ed9b6948737158576deaf2",
+    "payload_sha256": "b8e36100a904e374c501ff9b4744fe2b9392bd76dfe0f428feed3f6659c9a42a",
+    "architecture": [60, 24, 12, 2],
+    "best_epoch": 30,
+    "best_checkpoint_rule": "minimum mean(rank_mae) + mean(pairwise_inversion_fraction)",
+    "trainer_sha256": "f0fd81097c9744f5f3dc02188250dcf879cf2f06ad0d4e4ee319299d6c2e204b",
+    "inference_sha256": "9fb5f369b933886ccee548a8ebb6b87e30c96d5d340127044f9aad4cf3b6399a",
+    "embedded_module_sha256": "23a52d2548bb540b6641920481987a86fc5d00037fc44b5cad3041a9575a5d8b"
+  },
+  "data_contract": {
+    "cache_manifest_payload_sha256": "95b7428d88c003928e6da9f652110433e6e0b90dd0d6cba0f03782e1172ebbdc",
+    "holdout_aggregate_sha256": "82cbae76d17c488dbed130d6a3672653efd9db934711d90e8ff5ae345d4d7a33",
+    "excluded_source_count": 741,
+    "split_unit": "source_file",
+    "train": {"sources": 1043, "layouts": 4172, "blocks": 458768},
+    "validation": {"sources": 116, "layouts": 464, "blocks": 51048},
+    "sealed_label_or_score_access": "none",
+    "fold4_access": "none"
+  },
+  "same_cache_rank_gate": {
+    "policy": {
+      "minimum_mean_rank_mae_relative_improvement": 0.03,
+      "minimum_mean_inversion_relative_improvement": 0.03,
+      "maximum_axis_regression": 0.0005
+    },
+    "embedded_v5b": {
+      "rank_mae": [0.07391738467515352, 0.05979456210610793],
+      "pairwise_inversion_fraction": [0.09832394483748345, 0.07903480288417528]
+    },
+    "rank_mlp_v6": {
+      "rank_mae": [0.05361269587726947, 0.032298136603879854],
+      "pairwise_inversion_fraction": [0.0693133662048112, 0.041586475896099324]
+    },
+    "mean_rank_mae_relative_improvement": 0.35749321919835386,
+    "mean_inversion_relative_improvement": 0.3747145628534022,
+    "passed": true
+  },
+  "stdlib_parity": {
+    "cached_blocks_compared": 257,
+    "max_absolute_difference_vs_torch": 5.58591796040453e-07,
+    "mean_absolute_difference_vs_torch": 9.09040264167077e-08,
+    "finite": true
+  },
+  "additive_decoded_probe": {
+    "purpose": "quality probe only; not the count-neutral promotion configuration",
+    "public": {
+      "official_evaluator_sha256": "64db37865b42baf11add62bdbf035690dca086cd4be7b5b4e58db756f20d8498",
+      "v5b_result_sha256": "6865291ccf14dca2a60c3b3d61953b83762cc90883f977c9c81fa56920878f92",
+      "additive_result_sha256": "7b38eb99b5bda3a9ab404d9a3096876243f5e0cb909704b24df39b9fde247b06",
+      "v5b_score": 1.610849549873686,
+      "additive_score": 1.6102881186092612,
+      "delta": -0.00056143126442465,
+      "wins": 1,
+      "losses": 1,
+      "ties": 98,
+      "feasible": 100,
+      "cases": 100,
+      "unoptimized_runtime_mean_v5b_seconds": 0.2052043557167053,
+      "unoptimized_runtime_mean_additive_seconds": 0.5045100498199463
+    },
+    "clean_fold0": {
+      "evaluation_harness_sha256": "0c6b1dffa52bf6e3971f8732b2fda9f43a4872cbebc517714a38061414c30c0a",
+      "fold_manifest_sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+      "v5b_paired_result_sha256": "abda2cc30ef1124751777f2ea289043f7b0cc9aac72e75e5a4d470e0316c8532",
+      "additive_result_sha256": "72a859449502d4eb010ff8a2be7a9406b5ea7c023a83bf6407b5da84687c4ef4",
+      "v5b_score": 1.773959728428498,
+      "additive_score": 1.7682530981710172,
+      "delta": -0.00570663025748086,
+      "wins": 16,
+      "losses": 0,
+      "ties": 89,
+      "feasible": 105,
+      "cases": 105,
+      "unoptimized_runtime_mean_v5b_seconds": 0.369249728443988,
+      "unoptimized_runtime_mean_additive_seconds": 0.6489934137079953
+    }
+  },
+  "coverage_vs_v5b_training": {
+    "v5b_train": {"sources": 985, "layouts": 7880},
+    "v6_validation_fit": {"sources": 1043, "layouts": 4172},
+    "observation": "v6 fits 58 more source files but 3708 fewer layouts because the structured cache retained four layouts per source rather than eight",
+    "permitted_cached_full_fit": {"sources": 1159, "layouts": 4636},
+    "deterministic_eight_layout_expansion": {"sources": 1159, "expected_layouts": 9272},
+    "expansion_decision": "defer until the immutable count-neutral decoded gate passes"
+  }
+}
