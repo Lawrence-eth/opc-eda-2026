@@ -8,9 +8,10 @@
 #
 # The executable must NOT bundle real torch (that is the whole point), so the
 # PyInstaller build runs in a dedicated venv that has pyinstaller only.
-# The official host is an Intel Xeon running Debian 13.  On a non-x86 build
-# host we re-enter this script in an amd64 Debian 13/Python 3.13 container;
-# shipping a native ARM PyInstaller binary would fail before solve() starts.
+# The official host is an Intel Xeon running Debian 13. Every normal build
+# re-enters this script in a digest-pinned AMD64 Debian 13/Python 3.13
+# container, even when the host is x86-64. This prevents an apparently valid
+# native build from silently inheriting the wrong glibc or Python runtime.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,18 +19,22 @@ PKG="$ROOT/packaging"
 SUB="$ROOT/submission"
 SRC="$SUB/src"
 TARGET_MACHINE="x86_64"
+TARGET_OS_ID="debian"
+TARGET_OS_VERSION="13"
+TARGET_PYTHON="3.13.14"
 BUILD_IMAGE="python:3.13.14-trixie@sha256:3c6de64d284d7cd73f91d8a959061da67030b0fbd8b964f8dad96fd73c2110c4"
 PIP_VERSION="26.1.2"
 PYINSTALLER_VERSION="6.21.0"
 PYINSTALLER_HOOKS_VERSION="2026.6"
 
-if [ "${ICCAD_AMD64_BUILD_CONTAINER:-0}" != "1" ] && [ "$(uname -m)" != "$TARGET_MACHINE" ]; then
+if [ "${ICCAD_AMD64_BUILD_CONTAINER:-0}" != "1" ] && [ "${ICCAD_ALLOW_NATIVE_BUILD:-0}" != "1" ]; then
   if ! command -v docker >/dev/null 2>&1; then
-    echo "ERROR: an x86-64 build host or Docker with linux/amd64 support is required" >&2
+    echo "ERROR: Docker with linux/amd64 support is required for the default reproducible build" >&2
+    echo "       ICCAD_ALLOW_NATIVE_BUILD=1 is accepted only on the exact target OS/Python" >&2
     exit 1
   fi
-  echo "== re-enter amd64 Debian 13 / Python 3.13 build container =="
-  docker run --rm --platform linux/amd64 \
+  echo "== enter pinned AMD64 Debian 13 / Python 3.13 build container =="
+  docker run --rm --pull=missing --platform linux/amd64 \
     --user "$(id -u):$(id -g)" \
     -e ICCAD_AMD64_BUILD_CONTAINER=1 \
     -e HOME=/tmp \
@@ -43,6 +48,25 @@ fi
 if [ "$(uname -m)" != "$TARGET_MACHINE" ]; then
   echo "ERROR: build environment is $(uname -m), expected $TARGET_MACHINE" >&2
   exit 1
+fi
+
+if [ ! -r /etc/os-release ]; then
+  echo "ERROR: cannot verify build operating system" >&2
+  exit 1
+fi
+# shellcheck disable=SC1091
+. /etc/os-release
+if [ "${ID:-}" != "$TARGET_OS_ID" ] || [ "${VERSION_ID:-}" != "$TARGET_OS_VERSION" ]; then
+  echo "ERROR: build OS is ${ID:-unknown} ${VERSION_ID:-unknown}; expected Debian 13" >&2
+  exit 1
+fi
+ACTUAL_PYTHON="$(python3 -c 'import platform; print(platform.python_version())')"
+if [ "$ACTUAL_PYTHON" != "$TARGET_PYTHON" ]; then
+  echo "ERROR: build Python is $ACTUAL_PYTHON; expected $TARGET_PYTHON" >&2
+  exit 1
+fi
+if [ "${ICCAD_ALLOW_NATIVE_BUILD:-0}" = "1" ] && [ "${ICCAD_AMD64_BUILD_CONTAINER:-0}" != "1" ]; then
+  echo "WARNING: explicit native-build override accepted after exact environment checks" >&2
 fi
 
 echo "== assemble shim sources =="
@@ -131,6 +155,9 @@ mkdir -p "$STAGE"
 cp -r "$SUB/dist" "$STAGE/dist"
 cp "$PKG/op_wrapper.py" "$STAGE/op_wrapper.py"          # organizers' wrapper, verbatim
 cp "$PKG/README_SUBMISSION.md" "$STAGE/README.md"
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$STAGE/THIRD_PARTY_NOTICES.md"
+mkdir -p "$STAGE/LICENSES"
+cp "$ROOT/LICENSES/Apache-2.0.txt" "$STAGE/LICENSES/Apache-2.0.txt"
 cp -r "$SRC" "$STAGE/source_fallback"                    # source fallback per guidelines
 printf '%s\n' \
   '# The x86-64 executable is fully self-contained (PyInstaller --onedir).' \
@@ -147,5 +174,11 @@ chmod 0755 "$STAGE/dist/my_optimizer/my_optimizer"
 
 tar --owner=0 --group=0 --numeric-owner \
   -czf "$SUB/iccad2026_submission.tar.gz" -C "$SUB" iccad2026_submission
+python3 "$ROOT/scripts/audit_submission_package.py" \
+  "$SUB/iccad2026_submission.tar.gz" \
+  --official-sources "$ROOT/docs/official_sources.json" \
+  --source-root "$ROOT" \
+  --require-notices \
+  --smoke
 ls -la "$SUB/iccad2026_submission.tar.gz"
 echo "OK"

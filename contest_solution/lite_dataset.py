@@ -1,3 +1,8 @@
+"""Modified from IntelLabs/FloorSet to make downloads non-interactive.
+
+See THIRD_PARTY_NOTICES.md and LICENSES/Apache-2.0.txt.
+"""
+
 import tarfile
 import os
 import requests

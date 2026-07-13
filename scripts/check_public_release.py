@@ -28,7 +28,7 @@ from typing import Any, Iterable
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts import audit_results, compare_results
+from scripts import audit_results, check_official_sources, compare_results
 
 DEFAULT_MANIFEST = ROOT / "results" / "release_manifest.json"
 DEFAULT_SCAN_PATHS = (
@@ -359,6 +359,11 @@ def run_checks(
     release_manifest: dict[str, Any] | None = None,
     manifest_root: Path = ROOT,
     verify_manifest_commit: bool = True,
+    official_sources_path: Path | None = None,
+    floorset_path: Path | None = None,
+    official_materials_dir: Path | None = None,
+    require_floorset: bool = False,
+    release_manifest_path: Path | None = None,
 ) -> tuple[bool, list[str]]:
     messages: list[str] = []
     ok = True
@@ -372,6 +377,20 @@ def run_checks(
         messages.append(f"release_manifest={'PASS' if manifest_ok else 'FAIL'}")
         messages.extend(f"  error: {error}" for error in manifest_errors)
         ok = ok and manifest_ok
+
+    if official_sources_path is not None:
+        official_ok, official_errors, official_notes = check_official_sources.verify_official_sources(
+            official_sources_path,
+            root=manifest_root,
+            floorset_path=floorset_path,
+            materials_dir=official_materials_dir,
+            require_floorset=require_floorset,
+            release_manifest_path=release_manifest_path,
+        )
+        messages.append(f"official_sources={'PASS' if official_ok else 'FAIL'}")
+        messages.extend(f"  note: {note}" for note in official_notes)
+        messages.extend(f"  error: {error}" for error in official_errors)
+        ok = ok and official_ok
 
     data = audit_results.load_result(result_json)
     audit_ok, audit_errors, audit_warnings = audit_results.audit_result(
@@ -454,6 +473,24 @@ def main() -> None:
     )
     parser.add_argument("--contest-optimizer", type=Path, default=None, help="Optional active contest optimizer to compare")
     parser.add_argument("--candidate", type=Path, default=None, help="Optional candidate full-result JSON to compare")
+    parser.add_argument(
+        "--official-sources",
+        type=Path,
+        default=check_official_sources.DEFAULT_MANIFEST,
+        help="Offline official-source manifest to verify",
+    )
+    parser.add_argument("--floorset", type=Path, default=None, help="Optional pinned FloorSet checkout")
+    parser.add_argument(
+        "--official-materials-dir",
+        type=Path,
+        default=None,
+        help="Optional directory containing the original downloaded PDFs and wrapper",
+    )
+    parser.add_argument(
+        "--require-floorset",
+        action="store_true",
+        help="Fail if no local FloorSet checkout is available for byte verification",
+    )
     args = parser.parse_args()
 
     try:
@@ -478,6 +515,11 @@ def main() -> None:
         contest_optimizer=args.contest_optimizer,
         candidate_json=args.candidate,
         release_manifest=manifest,
+        official_sources_path=args.official_sources,
+        floorset_path=args.floorset,
+        official_materials_dir=args.official_materials_dir,
+        require_floorset=args.require_floorset,
+        release_manifest_path=args.manifest,
     )
     print("Public release check: " + ("PASS" if ok else "FAIL"))
     for message in messages:

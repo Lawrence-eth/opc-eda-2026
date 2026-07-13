@@ -1,6 +1,9 @@
 """Torch-free stand-in for the pieces of iccad2026_evaluate.py that
 my_optimizer.py imports.
 
+Derived from IntelLabs/FloorSet under Apache-2.0 and substantially reduced for
+this submission. See THIRD_PARTY_NOTICES.md.
+
 Shipped inside the executable as `iccad2026_evaluate.py` so the unmodified
 my_optimizer.py imports resolve without pulling in the full official
 evaluator (torch / shapely / matplotlib). The three metric helpers are copied
