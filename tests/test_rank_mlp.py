@@ -99,3 +99,38 @@ def test_message_depth_is_fixed_to_training_schema():
     artifact = rank_mlp.seal_artifact(artifact)
     with pytest.raises(ValueError, match="message_steps"):
         rank_mlp.validate_artifact(artifact)
+
+
+def test_compiled_predictions_match_content_validated_path():
+    artifact = _artifact()
+    features = [
+        [1.0] + [0.0] * (rank_mlp.ARCHITECTURE[0] - 1),
+        [2.0] + [0.25] * (rank_mlp.ARCHITECTURE[0] - 1),
+    ]
+    compiled = rank_mlp.compile_artifact(artifact)
+    assert rank_mlp.compiled_predictions(
+        features, compiled, message_steps=4
+    ) == rank_mlp.artifact_predictions(features, artifact, message_steps=4)
+    assert isinstance(compiled["center"], tuple)
+    assert isinstance(compiled["layers"], tuple)
+
+
+def test_compilation_rejects_tampering_and_compiled_shape_drift():
+    artifact = _artifact()
+    artifact["linear_skip"]["bias"][0] = 9.0
+    with pytest.raises(ValueError, match="integrity"):
+        rank_mlp.compile_artifact(artifact)
+
+    compiled = rank_mlp.compile_artifact(_artifact())
+    compiled["skip_bias"] = ()
+    with pytest.raises(ValueError, match="dimensions"):
+        rank_mlp.compiled_predictions(
+            [[0.0] * rank_mlp.ARCHITECTURE[0]], compiled, message_steps=4
+        )
+
+    compiled = rank_mlp.compile_artifact(_artifact())
+    compiled["layers"] = (((), ()),) * 3
+    with pytest.raises(ValueError, match="layer dimensions"):
+        rank_mlp.compiled_predictions(
+            [[0.0] * rank_mlp.ARCHITECTURE[0]], compiled, message_steps=4
+        )

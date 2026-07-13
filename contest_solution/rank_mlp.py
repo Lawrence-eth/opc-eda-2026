@@ -159,6 +159,22 @@ def load_artifact(path: str | Path) -> dict[str, Any]:
     return validate_artifact(json.loads(Path(path).read_text(encoding="utf-8")))
 
 
+def compile_artifact(model: dict[str, Any]) -> dict[str, Any]:
+    """Validate/hash an artifact once and retain only immutable inference data."""
+    checked = validate_artifact(model)
+    parsed = checked["_validated"]
+    return {
+        "compiled_type": MODEL_TYPE,
+        "message_steps": checked["feature_schema"]["message_steps"],
+        "mib_policy": checked["feature_schema"]["mib_policy"],
+        "center": parsed["center"],
+        "inverse_scale": tuple(1.0 / value for value in parsed["scale"]),
+        "layers": parsed["layers"],
+        "skip_weights": parsed["skip_weights"],
+        "skip_bias": parsed["skip_bias"],
+    }
+
+
 def _dense(row, weights, bias, *, relu):
     outputs = []
     for output in range(len(bias)):
@@ -169,33 +185,110 @@ def _dense(row, weights, bias, *, relu):
     return outputs
 
 
-def artifact_predictions(features: Any, model: dict[str, Any], *, message_steps: int):
-    # Always revalidate here.  A caller-provided private cache must not be able
-    # to bypass schema or payload-integrity checks.
-    checked = validate_artifact(model)
-    if checked["feature_schema"]["message_steps"] != message_steps:
+def compiled_predictions(features: Any, compiled_model: Any, *, message_steps: int):
+    """Apply a once-validated artifact without reparsing or rehashing JSON."""
+    if not isinstance(compiled_model, dict):
+        raise ValueError("compiled rank MLP must be an object")
+    try:
+        compiled_type = compiled_model["compiled_type"]
+        artifact_steps = compiled_model["message_steps"]
+        center = compiled_model["center"]
+        inverse_scale = compiled_model["inverse_scale"]
+        layers = compiled_model["layers"]
+        skip_weights = compiled_model["skip_weights"]
+        skip_bias = compiled_model["skip_bias"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("compiled rank MLP is malformed") from exc
+    if compiled_type != MODEL_TYPE:
+        raise ValueError("compiled rank MLP type is unsupported")
+    if artifact_steps != message_steps:
         raise ValueError("rank MLP message_steps does not match inference")
-    parsed = checked["_validated"]
-    center, scale = parsed["center"], parsed["scale"]
+    if (
+        len(center) != ARCHITECTURE[0]
+        or len(inverse_scale) != ARCHITECTURE[0]
+        or len(layers) != 3
+        or len(skip_weights) != ARCHITECTURE[0]
+        or len(skip_bias) != ARCHITECTURE[-1]
+    ):
+        raise ValueError("compiled rank MLP dimensions do not match inference")
+    for layer, inputs, outputs in zip(layers, ARCHITECTURE, ARCHITECTURE[1:]):
+        if (
+            not isinstance(layer, (list, tuple))
+            or len(layer) != 2
+            or len(layer[0]) != inputs
+            or any(len(row) != outputs for row in layer[0])
+            or len(layer[1]) != outputs
+        ):
+            raise ValueError("compiled rank MLP layer dimensions do not match inference")
+    if any(len(row) != ARCHITECTURE[-1] for row in skip_weights):
+        raise ValueError("compiled rank MLP skip dimensions do not match inference")
     predictions = []
     for feature_row in features:
         if len(feature_row) != ARCHITECTURE[0]:
             raise ValueError("rank MLP feature width is invalid")
         row = [
-            (_number(value, "features") - center[index]) / scale[index]
+            (_number(value, "features") - center[index]) * inverse_scale[index]
             for index, value in enumerate(feature_row)
         ]
         hidden = row
-        for index, (weights, bias) in enumerate(parsed["layers"]):
+        for index, (weights, bias) in enumerate(layers):
             hidden = _dense(hidden, weights, bias, relu=index < 2)
         skip = _dense(
-            row, parsed["skip_weights"], parsed["skip_bias"], relu=False
+            row, skip_weights, skip_bias, relu=False
         )
         output = [hidden[index] + skip[index] for index in range(ARCHITECTURE[-1])]
         if not all(math.isfinite(value) for value in output):
             raise ValueError("rank MLP prediction is non-finite")
         predictions.append(output)
     return predictions
+
+
+def artifact_predictions(features: Any, model: dict[str, Any], *, message_steps: int):
+    # Never trust a caller-provided private parse cache. Compile from the
+    # content-bound artifact before entering the fast inference path.
+    return compiled_predictions(
+        features, compile_artifact(model), message_steps=message_steps
+    )
+
+
+def extract_compiled_rank_predictions(
+    block_count,
+    area_targets,
+    b2b_connectivity,
+    p2b_connectivity,
+    pins_pos,
+    constraints,
+    target_positions,
+    compiled_model,
+):
+    if not isinstance(compiled_model, dict):
+        raise ValueError("compiled rank MLP must be an object")
+    try:
+        message_steps = compiled_model["message_steps"]
+        mib_policy = compiled_model["mib_policy"]
+    except KeyError as exc:
+        raise ValueError("compiled rank MLP is malformed") from exc
+    features = extract_order_features(
+        block_count,
+        area_targets,
+        b2b_connectivity,
+        p2b_connectivity,
+        pins_pos,
+        constraints,
+        target_positions,
+        message_steps=message_steps,
+    )
+    features, metadata = apply_mib_feature_policy(
+        features,
+        policy=mib_policy,
+        block_count=block_count,
+        area_targets=area_targets,
+        constraints=constraints,
+        target_positions=target_positions,
+    )
+    return compiled_predictions(
+        features, compiled_model, message_steps=message_steps
+    ), metadata
 
 
 def extract_rank_predictions(
@@ -208,9 +301,7 @@ def extract_rank_predictions(
     target_positions,
     model,
 ):
-    checked = validate_artifact(model)
-    schema = checked["feature_schema"]
-    features = extract_order_features(
+    return extract_compiled_rank_predictions(
         block_count,
         area_targets,
         b2b_connectivity,
@@ -218,16 +309,5 @@ def extract_rank_predictions(
         pins_pos,
         constraints,
         target_positions,
-        message_steps=schema["message_steps"],
+        compile_artifact(model),
     )
-    features, metadata = apply_mib_feature_policy(
-        features,
-        policy=schema["mib_policy"],
-        block_count=block_count,
-        area_targets=area_targets,
-        constraints=constraints,
-        target_positions=target_positions,
-    )
-    return artifact_predictions(
-        features, checked, message_steps=schema["message_steps"]
-    ), metadata

@@ -23,6 +23,24 @@ from iccad2026_evaluate import FloorplanOptimizer, calculate_bbox_area, calculat
 Rect = Tuple[float, float, float, float]
 
 
+_RANK_MLP_MODEL_UNSET = object()
+_RANK_MLP_MODEL_CACHE = _RANK_MLP_MODEL_UNSET
+
+
+def _compiled_rank_mlp_model():
+    """Validate/compile the sealed v6 artifact once, failing closed forever."""
+    global _RANK_MLP_MODEL_CACHE
+    if _RANK_MLP_MODEL_CACHE is _RANK_MLP_MODEL_UNSET:
+        try:
+            from rank_mlp import compile_artifact
+            from rank_model_v6_validation import MODEL
+
+            _RANK_MLP_MODEL_CACHE = compile_artifact(MODEL)
+        except Exception:
+            _RANK_MLP_MODEL_CACHE = None
+    return _RANK_MLP_MODEL_CACHE
+
+
 def _learned_order_prior(
     block_count,
     area_targets,
@@ -71,10 +89,12 @@ def _rank_mlp_prior(
 ):
     """Return validated v6 coordinate-rank priors, or ``None`` fail-closed."""
     try:
-        from rank_mlp import extract_rank_predictions
-        from rank_model_v6_validation import MODEL
+        from rank_mlp import extract_compiled_rank_predictions
 
-        predictions, _mask_metadata = extract_rank_predictions(
+        compiled_model = _compiled_rank_mlp_model()
+        if compiled_model is None:
+            return None
+        predictions, _mask_metadata = extract_compiled_rank_predictions(
             block_count,
             area_targets,
             b2b_connectivity,
@@ -82,9 +102,13 @@ def _rank_mlp_prior(
             pins_pos,
             constraints,
             target_positions,
-            MODEL,
+            compiled_model,
         )
-        if len(predictions) != block_count:
+        if (
+            len(predictions) != block_count
+            or any(len(row) != 2 for row in predictions)
+            or any(not math.isfinite(float(value)) for row in predictions for value in row)
+        ):
             return None
         return {
             block: (

@@ -67,6 +67,8 @@ except (ModuleNotFoundError, ImportError):
 
 from my_optimizer import (
     MyOptimizer,
+    _compiled_rank_mlp_model,
+    _rank_mlp_prior,
     _should_try_anchored_third_pass,
     _should_try_preplaced_aspect_pass,
 )
@@ -190,3 +192,37 @@ def test_optimizer_uses_exact_fixed_dimensions():
     assert math.isclose(pos[1][3], 16.0)
     assert check_overlap(pos) == 0
     assert check_dimension_hard_constraints(pos, target_positions, constraints, block_count) == 0
+
+
+def test_rank_mlp_artifact_is_compiled_only_once(monkeypatch):
+    import my_optimizer as optimizer_module
+    import rank_mlp
+
+    calls = []
+    real_compile = rank_mlp.compile_artifact
+    monkeypatch.setattr(
+        rank_mlp,
+        "compile_artifact",
+        lambda model: calls.append(model) or real_compile(model),
+    )
+    monkeypatch.setattr(
+        optimizer_module, "_RANK_MLP_MODEL_CACHE", optimizer_module._RANK_MLP_MODEL_UNSET
+    )
+    assert _compiled_rank_mlp_model() is _compiled_rank_mlp_model()
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("kind", ["compile_failure", "wrong_width", "nonfinite"])
+def test_rank_mlp_prior_fails_closed_on_invalid_model_or_output(monkeypatch, kind):
+    import my_optimizer as optimizer_module
+    import rank_mlp
+
+    if kind == "compile_failure":
+        monkeypatch.setattr(optimizer_module, "_compiled_rank_mlp_model", lambda: None)
+    else:
+        monkeypatch.setattr(optimizer_module, "_compiled_rank_mlp_model", lambda: {})
+        output = [[[0.5]], {}] if kind == "wrong_width" else [[[float("nan"), 0.5]], {}]
+        monkeypatch.setattr(
+            rank_mlp, "extract_compiled_rank_predictions", lambda *args: output
+        )
+    assert _rank_mlp_prior(1, [], [], [], [], [], []) is None
