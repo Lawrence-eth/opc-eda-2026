@@ -82,24 +82,27 @@ _GOLDEN_PLUS_MIB_CONFIG = RepairConfig(
     enable_boundary=False,
     enable_mib=True,
     enable_grouping=False,
+    require_safe_mib_pattern=True,
 )
 
 best_positions = repair_fixed_topology(
     best_positions,
-    areas_l,
+    area_targets,
     b2b_edges,
     p2b_edges,
     pins_l,
-    con_l,
-    tp_l,
+    constraints,
+    target_positions,
     config=_GOLDEN_PLUS_MIB_CONFIG,
 )
 ```
 
-Reuse already-materialized plain lists where possible. The optional
-`target_positions` argument (`tp_l` above) enforces fixed/preplaced geometry;
-omit it only if those targets are unavailable and the incumbent itself is the
-required reference.
+Use the original tensor-or-list inputs for area, constraints, and target
+positions: the dissection-local `areas_l`, `con_l`, and `tp_l` variables may
+not exist when an earlier dissection step fails. The optional
+`target_positions` argument enforces fixed/preplaced geometry; omit it only if
+those targets are unavailable and the incumbent itself is the required
+reference.
 
 For packaging, copy `contest_solution/golden_plus_repair.py` into
 `submission/src`, add `golden_plus_repair` to hidden imports, and include it in
