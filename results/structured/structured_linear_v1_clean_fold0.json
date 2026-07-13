@@ -1,0 +1,138 @@
+{
+  "contract": {
+    "manifest_policy": "existing v1 development folds only",
+    "metric_runtime_factor": 1.0,
+    "offline_best_of_is_deployable": false,
+    "sealed_v2_access": "prohibited"
+  },
+  "experiment": "structured_predictor_development_v1",
+  "modes": {
+    "learned": {
+      "confidence": {
+        "count": 105,
+        "max": 0.5002263998692764,
+        "mean": 0.08572022774747601,
+        "median": 0.0,
+        "p95": 0.5000377073442337
+      },
+      "decoded": {
+        "candidate_feasible": 0,
+        "candidate_feasible_rate": 0.0,
+        "confidence_accepted": 0,
+        "failure_taxonomy": {
+          "hard_infeasible": 18,
+          "prediction_error:preplaced_anchor_conflict": 87
+        },
+        "full_layout_exact": 0,
+        "geometry_exact": 0,
+        "produced_with_fallback_feasible": 105,
+        "produced_with_fallback_feasible_rate": 1.0
+      },
+      "label_accuracy": {
+        "full_label_exact_rate": 0.0,
+        "horizontal_edge": 0.09550021843599825,
+        "horizontal_root": 0.9904761904761905,
+        "shape": 0.5504761904761905,
+        "vertical_support_or_floor": 0.2584415584415584
+      },
+      "runtime_seconds": {
+        "increment_over_v32": {
+          "count": 105,
+          "max": 1.3433089840691537,
+          "mean": 0.7131930330690618,
+          "median": 0.6258103030268103,
+          "p95": 1.1683013449655846
+        },
+        "model_only": {
+          "count": 105,
+          "max": 1.3433089840691537,
+          "mean": 0.7131930330690618,
+          "median": 0.6258103030268103,
+          "p95": 1.1683013449655846
+        }
+      },
+      "score_rf1": {
+        "candidate_only": 10.0,
+        "confidence_gated_v32_fallback": 1.7905805258896408,
+        "offline_best_of_weighted_delta": 0.0,
+        "offline_best_of_wins": 0,
+        "offline_v32_best_of": 1.7905805258896408
+      }
+    },
+    "skyline": {
+      "confidence": {
+        "count": 105,
+        "max": 0.5002263998692764,
+        "mean": 0.08572026724721458,
+        "median": 0.0,
+        "p95": 0.5000377073442337
+      },
+      "decoded": {
+        "candidate_feasible": 18,
+        "candidate_feasible_rate": 0.17142857142857143,
+        "confidence_accepted": 0,
+        "failure_taxonomy": {
+          "candidate": 18,
+          "prediction_error:preplaced_anchor_conflict": 87
+        },
+        "full_layout_exact": 0,
+        "geometry_exact": 0,
+        "produced_with_fallback_feasible": 105,
+        "produced_with_fallback_feasible_rate": 1.0
+      },
+      "label_accuracy": {
+        "full_label_exact_rate": 0.0,
+        "horizontal_edge": 0.09550021843599825,
+        "horizontal_root": 0.9904761904761905,
+        "shape": 0.5504761904761905,
+        "vertical_support_or_floor": 0.13714285714285715
+      },
+      "runtime_seconds": {
+        "increment_over_v32": {
+          "count": 105,
+          "max": 1.4824225909542292,
+          "mean": 0.7018901531994787,
+          "median": 0.6340000759810209,
+          "p95": 1.1000312219839543
+        },
+        "model_only": {
+          "count": 105,
+          "max": 1.4824225909542292,
+          "mean": 0.7018901531994787,
+          "median": 0.6340000759810209,
+          "p95": 1.1000312219839543
+        }
+      },
+      "score_rf1": {
+        "candidate_only": 9.90297205237392,
+        "confidence_gated_v32_fallback": 1.7905805258896408,
+        "offline_best_of_weighted_delta": 0.0,
+        "offline_best_of_wins": 0,
+        "offline_v32_best_of": 1.7905805258896408
+      }
+    }
+  },
+  "provenance": {
+    "folds": [
+      0
+    ],
+    "manifest": "results/folds/heavy_clean_v1.json",
+    "manifest_sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+    "model": "results/models/structured_linear_v1.json",
+    "model_sha256": "d4222a5551994778d961766dc97f7dcf29c8903f469405c1d0dc10828ffc7a64",
+    "official_evaluator_sha256": "64db37865b42baf11add62bdbf035690dca086cd4be7b5b4e58db756f20d8498",
+    "solver_dir": "/tmp/opc-structured-predictor/contest_solution"
+  },
+  "schema_version": 1,
+  "summary": {
+    "baseline_v32_runtime_seconds": {
+      "count": 105,
+      "max": 1.248184912954457,
+      "mean": 0.5301434346474707,
+      "median": 0.4666281450772658,
+      "p95": 1.0285010280786082
+    },
+    "baseline_v32_score_rf1": 1.7905805258896408,
+    "cases": 105
+  }
+}

@@ -38,3 +38,24 @@ membership. v4 is therefore the unmasked baseline, not the final model. The
 next ablation must compare masked-all, compatible-only MIB features, and a
 hybrid clean MIB head on decoded contest score. Coordinate accuracy alone is
 never promotion evidence.
+
+## Structured linear v1 (rejected)
+
+`structured_linear_v1.json` is the first complete input-only dual-parent
+baseline. It combines the 60 block features with a compact eight-dimensional
+projection, categorical exact factor-pair shape heads, and direct pair scorers
+for horizontal parent/side and vertical support/floor. The JSON is readable by
+the pure-stdlib `contest_solution/structured_predictor.py` path and binds its
+schema, source-exclusion union, trainer, inference code, decoder, features, and
+payload by SHA-256.
+
+The full source-diverse run trained on 4,172 layouts / 1,043 sources and
+validated on 464 layouts / 116 disjoint sources after excluding 741 sources
+from clean-v1, raw-v1, and sealed-v2. It achieved 46.71% shape, 9.22%
+horizontal-edge, and 28.07% vertical-label accuracy, but zero exact layouts.
+Public and clean-v1 evaluation found zero placement wins, so confidence remains
+fail-closed and the model is not integrated into v32. See
+[`../structured/README.md`](../structured/README.md) for the complete verdict.
+
+Artifact file SHA-256:
+`d4222a5551994778d961766dc97f7dcf29c8903f469405c1d0dc10828ffc7a64`.
