@@ -47,10 +47,63 @@ should_try_preplaced_aspect_pass = (
 )
 dissect_module = importlib.import_module("dissect")
 topology_polish_module = importlib.import_module("topology_polish")
+golden_plus_module = importlib.import_module("golden_plus_repair")
 
 
 def _constraints(block_count):
     return torch.zeros((block_count, 5), dtype=torch.float32)
+
+
+def _single_block_inputs():
+    return (
+        1,
+        torch.tensor([4.0]),
+        torch.empty((0, 3)),
+        torch.empty((0, 3)),
+        torch.empty((0, 2)),
+        torch.zeros((1, 5)),
+        torch.full((1, 4), -1.0),
+    )
+
+
+def test_production_repair_uses_narrow_config_and_original_inputs(monkeypatch):
+    captured = {}
+
+    def capture(positions, *args, config):
+        captured["positions"] = positions
+        captured["args"] = args
+        captured["config"] = config
+        return positions
+
+    monkeypatch.setattr(golden_plus_module, "repair_fixed_topology", capture)
+    inputs = _single_block_inputs()
+    result = MyOptimizer().solve(*inputs)
+
+    assert result == captured["positions"]
+    assert captured["args"][0] is inputs[1]
+    assert captured["args"][4] is inputs[5]
+    assert captured["args"][5] is inputs[6]
+    config = captured["config"]
+    assert config.enable_boundary is False
+    assert config.enable_mib is True
+    assert config.enable_grouping is False
+    assert config.require_safe_mib_pattern is True
+
+
+def test_production_repair_exception_preserves_solver_output(monkeypatch):
+    inputs = _single_block_inputs()
+    monkeypatch.setattr(
+        golden_plus_module,
+        "repair_fixed_topology",
+        lambda positions, *args, **kwargs: positions,
+    )
+    baseline = MyOptimizer().solve(*inputs)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("injected repair failure")
+
+    monkeypatch.setattr(golden_plus_module, "repair_fixed_topology", fail)
+    assert MyOptimizer().solve(*inputs) == baseline
 
 
 def test_list_hpwl_matches_official_arithmetic_for_lists_and_tensors():

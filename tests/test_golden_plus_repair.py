@@ -1,4 +1,8 @@
 from dataclasses import replace
+import importlib.util
+from pathlib import Path
+
+import pytest
 
 from contest_solution.golden_plus_repair import (
     RepairConfig,
@@ -219,3 +223,58 @@ def test_public_metric_primitives_match_hand_calculation():
 
     assert calculate_hpwl(positions, b2b, p2b, pins) == 9.0
     assert calculate_bbox_area(positions) == 15.0
+
+
+def test_mib_repair_matches_real_torch_and_packaging_tensor_stub():
+    torch = pytest.importorskip("torch")
+    stub_path = Path(__file__).resolve().parents[1] / "packaging" / "torch_stub.py"
+    spec = importlib.util.spec_from_file_location("submission_torch_stub", stub_path)
+    assert spec is not None and spec.loader is not None
+    torch_stub = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(torch_stub)
+
+    square = 40.0**0.5
+    positions = [
+        (0.0, 0.0, square, square),
+        (20.0, 0.0, square, square),
+        (40.0, 0.0, 4.0, 10.0),
+        (0.0, 20.0, 1.0, 1.0),
+    ]
+    areas = [40.0, 40.0, 40.0, 1.0]
+    constraints = [
+        [0, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 1, 0, 0],
+        [0, 0, 0, 0, 0],
+    ]
+    targets = [[-1.0] * 4 for _ in positions]
+    config = RepairConfig(
+        enable_boundary=False,
+        enable_mib=True,
+        enable_grouping=False,
+        require_safe_mib_pattern=True,
+    )
+
+    real = repair_fixed_topology(
+        positions,
+        torch.tensor(areas),
+        [],
+        [],
+        torch.empty((0, 2)),
+        torch.tensor(constraints),
+        torch.tensor(targets),
+        config=config,
+    )
+    packaged = repair_fixed_topology(
+        positions,
+        torch_stub.Tensor(areas),
+        [],
+        [],
+        torch_stub.Tensor([]),
+        torch_stub.Tensor(constraints),
+        torch_stub.Tensor(targets),
+        config=config,
+    )
+
+    assert packaged == real
+    assert real[0][2:] == real[1][2:] == real[2][2:] == (4.0, 10.0)
