@@ -319,3 +319,36 @@ def test_public_slot_map_parser_accepts_frozen_schema2_artifact():
         "replacement_wf_by_size": {"100": 1.0, "120": 0.9},
     }
     assert PUBLIC.parse_slot_map(payload) == {100: 1.0, 120: 0.9}
+
+
+def test_public_hard_target_extraction_ignores_stored_metrics():
+    polygons = PUBLIC.torch.tensor(
+        [
+            [[2.0, 3.0], [6.0, 3.0], [6.0, 8.0], [2.0, 8.0]],
+            [[-1.0, -1.0], [10.0, 4.0], [13.0, 4.0], [13.0, 6.0]],
+        ]
+    )
+    metrics = object()
+
+    assert PUBLIC._hard_target_positions_from_labels((polygons, metrics), 2) == [
+        (2.0, 3.0, 4.0, 5.0),
+        (10.0, 4.0, 3.0, 2.0),
+    ]
+
+
+@pytest.mark.parametrize(
+    "polygons, message",
+    [
+        (PUBLIC.torch.tensor([[[-1.0, -1.0], [-1.0, -1.0]]]), "no valid"),
+        (PUBLIC.torch.tensor([[[0.0, 0.0], [0.0, 1.0]]]), "nonpositive"),
+        (
+            PUBLIC.torch.tensor([[[0.0, 0.0], [float("nan"), 1.0]]]),
+            "non-finite",
+        ),
+    ],
+)
+def test_public_hard_target_extraction_rejects_malformed_geometry(
+    polygons, message
+):
+    with pytest.raises(ValueError, match=message):
+        PUBLIC._hard_target_positions_from_labels((polygons, object()), 1)

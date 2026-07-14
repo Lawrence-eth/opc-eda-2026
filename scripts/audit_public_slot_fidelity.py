@@ -86,6 +86,68 @@ def _optimizer_targets(constraints, golden_positions, n):
     return targets
 
 
+def _hard_target_positions_from_labels(labels, block_count):
+    """Reconstruct rectangles without reading or computing golden metrics.
+
+    The official public labels contain polygon coordinates followed by stored
+    quality metrics. This audit needs polygon geometry only to recreate the
+    fixed/preplaced hard-target input that the evaluator passes to solve().
+    Keeping the extraction local prevents a rejection-only structural check
+    from accidentally computing or consuming public golden HPWL/area values.
+    """
+
+    if not isinstance(labels, (tuple, list)) or not labels:
+        raise ValueError("public label does not contain polygon geometry")
+    polygons = labels[0]
+    if len(polygons) < block_count:
+        raise ValueError("public label contains too few block polygons")
+    positions = []
+    for block_index in range(block_count):
+        block = polygons[block_index]
+        if (
+            not isinstance(block, torch.Tensor)
+            or block.ndim != 2
+            or block.shape[1] < 2
+        ):
+            raise ValueError(
+                f"public block {block_index} has malformed polygon geometry"
+            )
+        coordinates = block[:, :2]
+        padding = (coordinates[:, 0] == -1) & (coordinates[:, 1] == -1)
+        mismatched_padding = (coordinates[:, 0] == -1) ^ (coordinates[:, 1] == -1)
+        if bool(mismatched_padding.any()):
+            raise ValueError(
+                f"public block {block_index} has malformed polygon padding"
+            )
+        if not bool(torch.isfinite(coordinates[~padding]).all()):
+            raise ValueError(
+                f"public block {block_index} has non-finite polygon geometry"
+            )
+        valid = coordinates[~padding]
+        if valid.shape[0] == 0:
+            raise ValueError(
+                f"public block {block_index} has no valid polygon vertices"
+            )
+        minimum = valid.min(dim=0).values
+        maximum = valid.max(dim=0).values
+        rectangle = (
+            float(minimum[0]),
+            float(minimum[1]),
+            float(maximum[0] - minimum[0]),
+            float(maximum[1] - minimum[1]),
+        )
+        if not all(math.isfinite(value) for value in rectangle):
+            raise ValueError(
+                f"public block {block_index} produced a non-finite rectangle"
+            )
+        if rectangle[2] <= 0.0 or rectangle[3] <= 0.0:
+            raise ValueError(
+                f"public block {block_index} produced nonpositive dimensions"
+            )
+        positions.append(rectangle)
+    return positions
+
+
 def main():
     # Parser and contract tests do not require an installed official checkout.
     # The actual audit imports the evaluator only when executing its CLI.
@@ -122,10 +184,8 @@ def main():
         n = int((area != -1).sum().item())
         if n not in slot_map:
             continue
-        _baseline, golden_positions = evaluator._extract_baseline(
-            test_id, labels, b2b, p2b, pins, n
-        )
-        targets = _optimizer_targets(constraints, golden_positions, n)
+        hard_target_positions = _hard_target_positions_from_labels(labels, n)
+        targets = _optimizer_targets(constraints, hard_target_positions, n)
         optimizer._debug_disabled_standard_wf = None
         control = _snapshot(optimizer.solve(
             n, area.clone(), b2b.clone(), p2b.clone(), pins.clone(),
@@ -174,6 +234,9 @@ def main():
             "solver_dir": _portable_path(args.solver_dir),
             "slot_map_sha256": hashlib.sha256(args.slot_map.read_bytes()).hexdigest(),
             "uses_golden_costs": False,
+            "reads_stored_golden_metrics": False,
+            "computes_golden_hpwl_or_area": False,
+            "golden_geometry_use": "fixed/preplaced hard-target reconstruction only",
             "policy": "rejection_only_no_slot_retuning",
         },
         "provenance": {
