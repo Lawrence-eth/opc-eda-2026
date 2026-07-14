@@ -31,6 +31,7 @@ from evaluate_training_holdout import (  # noqa: E402
     _git_state,
     _load_optimizer,
     _optimizer_targets,
+    _portable_path,
     _positions_from_training_label,
     _resolve_manifest_cases,
     _solver_component_hashes,
@@ -88,6 +89,11 @@ def main():
     parser.add_argument("--solver-dir", type=Path, default=SOLUTION_DIR)
     parser.add_argument("--fold-manifest", type=Path, required=True)
     parser.add_argument("--fold", type=int, required=True)
+    parser.add_argument(
+        "--expected-component",
+        action="append",
+        help="explicit test/research component registry override",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -100,6 +106,8 @@ def main():
         raise RuntimeError("solver does not expose the learned-control switch")
     if not hasattr(optimizer, "_debug_disabled_standard_wf"):
         raise RuntimeError("solver does not expose the standard-slot audit switch")
+    if not hasattr(optimizer, "_debug_primary_selected_base_wf"):
+        raise RuntimeError("solver does not expose primary slot attribution")
     optimizer._learned_order_enabled = False
     solver_globals = optimizer._select_candidate.__func__.__globals__
     rows = []
@@ -124,6 +132,8 @@ def main():
             constraints, targets,
         )
         selected_wf = getattr(optimizer, "_debug_selected_base_wf", None)
+        primary_selected_wf = getattr(optimizer, "_debug_primary_selected_base_wf", None)
+        baseline_sha256 = _position_sha256(baseline_positions)
         removals = {}
         for wf in SLOTS:
             optimizer._debug_disabled_standard_wf = wf
@@ -137,13 +147,15 @@ def main():
                 targets.clone(),
             ), n)
             removed_metrics = _visible_metrics(
-                optimizer, solver_globals, removed_positions, area, b2b, p2b, pins,
-                constraints, targets,
+                optimizer, solver_globals, removed_positions, area, b2b, p2b,
+                pins, constraints, targets,
             )
-            positions_equal = removed_positions == baseline_positions
+            removed_sha256 = _position_sha256(removed_positions)
+            positions_equal = removed_sha256 == baseline_sha256
             metrics_equal = _metrics_equal(removed_metrics, baseline_metrics)
             removals[str(wf)] = {
-                "final_positions_sha256": _position_sha256(removed_positions),
+                "execution": "full_solver_rerun_with_slot_removed",
+                "final_positions_sha256": removed_sha256,
                 "final_positions_equal": positions_equal,
                 "visible_metrics": removed_metrics,
                 "visible_metrics_equal": metrics_equal,
@@ -156,7 +168,8 @@ def main():
                 "sample_index": sample_index,
                 "block_count": n,
                 "selected_standard_wf": selected_wf,
-                "baseline_final_positions_sha256": _position_sha256(baseline_positions),
+                "primary_selected_standard_wf": primary_selected_wf,
+                "baseline_final_positions_sha256": baseline_sha256,
                 "baseline_visible_metrics": baseline_metrics,
                 "removals": removals,
             }
@@ -177,13 +190,14 @@ def main():
         "schema_version": 2,
         "mode": "legacy_v32_final_output_slot_removal_fidelity",
         "config": {
-            "solver_dir": str(args.solver_dir),
-            "fold_manifest": str(args.fold_manifest),
+            "solver_dir": _portable_path(args.solver_dir),
+            "fold_manifest": _portable_path(args.fold_manifest),
             "fold": args.fold,
             "manifest": manifest,
             "learned_enabled": False,
             "golden_cost_computed": False,
             "comparison_stage": "complete_deployed_solver_output",
+            "removal_method": "full solver rerun for every paid standard slot",
             "final_preserved_requires": [
                 "bit_exact_positions",
                 "feasibility_equal",
@@ -194,7 +208,9 @@ def main():
         },
         "provenance": {
             "harness_sha256": _file_sha256(Path(__file__)),
-            "solver_components": _solver_component_hashes(args.solver_dir),
+            "solver_components": _solver_component_hashes(
+                args.solver_dir, args.expected_component
+            ),
             "solver_git": _git_state(args.solver_dir),
         },
         "slots": list(SLOTS),

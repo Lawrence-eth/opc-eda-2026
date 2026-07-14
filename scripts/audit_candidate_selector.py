@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import math
+import struct
 import sys
 import time
 import types
@@ -41,11 +42,11 @@ from evaluate_training_holdout import (  # noqa: E402
 from lite_dataset import FloorplanDatasetLite  # noqa: E402
 
 
-ARTIFACT_SCHEMA_VERSION = 2
-RAW_MODE = "deployed_proxy_vs_offline_golden_baseline_oracle"
-COMBINED_MODE = "combined_deployed_proxy_vs_offline_oracle"
+ARTIFACT_SCHEMA_VERSION = 3
+RAW_MODE = "guarded_final_learned_challenger_vs_nonlearned_reference"
+COMBINED_MODE = "combined_guarded_final_challenger_audit"
 RUNTIME_FACTOR_MODE = "neutral_rf_1"
-ORACLE_POLICY = "min_pinned_official_cost_on_primary_candidate_snapshots"
+ORACLE_POLICY = "min_pinned_official_cost_on_final_two_candidate_snapshots"
 
 
 def _identity_index(items, selected):
@@ -73,6 +74,13 @@ def _snapshot_positions(positions, expected_count):
             return None
         snapshot.append(values)
     return snapshot
+
+
+def _positions_sha256(positions):
+    digest = hashlib.sha256()
+    for row in positions:
+        digest.update(struct.pack("!4d", *row))
+    return digest.hexdigest()
 
 
 def _install_audit_hook(optimizer):
@@ -133,6 +141,7 @@ def _install_audit_hook(optimizer):
                         + metric.mib_violations
                     ),
                     "official_cost": float(metric.cost),
+                    "positions_sha256": _positions_sha256(positions),
                 }
             )
 
@@ -323,6 +332,8 @@ def _validate_case(row, context):
         "scoring_label_sha256",
         "candidate_count",
         "proxy_regret",
+        "solve_return_positions_sha256",
+        "nonlearned_reference_positions_sha256",
     ):
         _require_field(row, field, context)
     if not isinstance(row["case_id"], str) or not row["case_id"]:
@@ -340,6 +351,29 @@ def _validate_case(row, context):
         raise ValueError(f"{context}.case_id does not match source_file/file_offset")
     for field in ("input_sha256", "optimizer_target_sha256", "scoring_label_sha256"):
         _require_sha256(row[field], f"{context}.{field}")
+    for field in (
+        "solve_return_positions_sha256",
+        "nonlearned_reference_positions_sha256",
+    ):
+        _require_sha256(row[field], f"{context}.{field}")
+    candidates = row.get("candidates")
+    deployed_index = row.get("deployed_proxy_index")
+    if (
+        not isinstance(candidates, list)
+        or len(candidates) != row["candidate_count"]
+        or isinstance(deployed_index, bool)
+        or not isinstance(deployed_index, int)
+        or not 0 <= deployed_index < len(candidates)
+    ):
+        raise ValueError(f"{context} has malformed deployed candidate evidence")
+    if candidates[0].get("positions_sha256") != row[
+        "nonlearned_reference_positions_sha256"
+    ]:
+        raise ValueError(f"{context} candidate0/reference mismatch")
+    if candidates[deployed_index].get("positions_sha256") != row[
+        "solve_return_positions_sha256"
+    ]:
+        raise ValueError(f"{context} deployed/return mismatch")
     try:
         regret = float(row["proxy_regret"])
     except (TypeError, ValueError) as error:
@@ -365,6 +399,9 @@ def _extract_contract(artifact, path):
     oracle_policy = _require_field(config, "oracle_policy", f"{path}.config")
     if oracle_policy != ORACLE_POLICY:
         raise ValueError(f"{path}.config.oracle_policy is unsupported")
+    learned_mode = _require_field(config, "learned_mode", f"{path}.config")
+    if learned_mode not in ("replacement", "additive", "additive_first_pass"):
+        raise ValueError(f"{path}.config.learned_mode is unsupported")
 
     manifest = _require_mapping(
         _require_field(config, "manifest", f"{path}.config"),
@@ -501,6 +538,7 @@ def _extract_contract(artifact, path):
         "evaluation_harness_sha256": harness_sha256,
         "runtime_factor_mode": runtime_mode,
         "oracle_policy": oracle_policy,
+        "learned_mode": learned_mode,
         "solver_source_sha256": solver_source_sha256,
         "solver_component_sha256": solver_components,
     }
@@ -568,6 +606,11 @@ def main():
         help="combine existing raw selector-audit artifacts without solving",
     )
     parser.add_argument("--max-cases", type=int, help="bounded smoke/debug prefix")
+    parser.add_argument(
+        "--expected-component",
+        action="append",
+        help="explicit test/research component registry override",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -619,7 +662,7 @@ def main():
         optimizer._hpwl_baseline = None
         optimizer._area_baseline = None
         started = time.perf_counter()
-        optimizer.solve(
+        returned_positions = optimizer.solve(
             n,
             area.clone(),
             b2b.clone(),
@@ -646,6 +689,22 @@ def main():
                 f"final learned decision malformed for {identity['case_id']}"
             )
         deployed_index = 1 if optimizer._learned_candidate_selected else 0
+        returned_snapshot = _snapshot_positions(returned_positions, n)
+        reference_snapshot = _snapshot_positions(
+            optimizer._debug_final_nonlearned_reference, n
+        )
+        if returned_snapshot is None or reference_snapshot is None:
+            raise RuntimeError(f"final solver output malformed for {identity['case_id']}")
+        returned_sha256 = _positions_sha256(returned_snapshot)
+        reference_sha256 = _positions_sha256(reference_snapshot)
+        if primary["candidates"][0].get("positions_sha256") != reference_sha256:
+            raise RuntimeError(
+                f"candidate0 is not the final nonlearned reference for {identity['case_id']}"
+            )
+        if primary["candidates"][deployed_index].get("positions_sha256") != returned_sha256:
+            raise RuntimeError(
+                f"deployed candidate does not match solve return for {identity['case_id']}"
+            )
         _apply_deployed_index(
             primary,
             deployed_index,
@@ -663,6 +722,8 @@ def main():
                 "block_count": n,
                 "solver_runtime_seconds": runtime,
                 "all_decision_count": len(optimizer._audit_decisions),
+                "solve_return_positions_sha256": returned_sha256,
+                "nonlearned_reference_positions_sha256": reference_sha256,
             }
         )
         rows.append(primary)
@@ -675,7 +736,14 @@ def main():
             "solver_dir": _portable_path(args.solver_dir),
             "fold_manifest": _portable_path(args.fold_manifest),
             "fold": args.fold,
-            "learned_mode": args.learned_mode,
+            "learned_mode": optimizer._learned_order_mode,
+            "reference_semantics": (
+                "exact_in_process_v32"
+                if optimizer._learned_order_mode in (
+                    "additive", "additive_first_pass"
+                )
+                else "final_v32_minus_preregistered_slot"
+            ),
             "max_cases": args.max_cases,
             "manifest": manifest,
             "mode": RAW_MODE,
@@ -685,7 +753,9 @@ def main():
         "provenance": {
             "evaluation_harness_sha256": _file_sha256(Path(__file__)),
             "solver_source_sha256": _source_tree_sha256(args.solver_dir),
-            "solver_component_sha256": _solver_component_hashes(args.solver_dir),
+            "solver_component_sha256": _solver_component_hashes(
+                args.solver_dir, args.expected_component
+            ),
             "solver_git": _git_state(args.solver_dir),
             "evaluator_sha256": _file_sha256(
                 OFFICIAL_ROOT / "iccad2026contest" / "iccad2026_evaluate.py"

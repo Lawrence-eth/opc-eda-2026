@@ -24,29 +24,26 @@ Rect = Tuple[float, float, float, float]
 
 
 # Standard dissection slot displaced by the learned heavy candidate. Each
-# listed slot had zero deployed-selector wins across legacy-v32 clean+raw
-# development folds 0-2. Ties use the globally least-selected width first
-# (1.0, 0.9, 1.1, 1.2, 0.8). Sizes 101/109/112 have no redundant standard
-# slot and intentionally abstain. The learned candidate itself runs at wf=1.1.
+# listed removal preserved the observed complete v32 output on clean+raw
+# development folds 0-2 and survived fold-3 structural rejection. Public
+# rejection is provisional and must be repeated on the combined integration.
+# This is observed evidence, not a claim of exact hidden-case rollback.
+# Every omitted size retains all five paid v32 passes and abstains from learned
+# replacement. The learned candidate itself runs at wf=1.1.
 _LEARNED_REPLACEMENT_WF = {
     100: 1.0,
     102: 1.0,
-    103: 1.2,
+    103: 1.0,
     104: 1.0,
-    105: 1.0,
     106: 0.9,
-    107: 0.8,
+    107: 1.2,
     108: 1.0,
     110: 0.9,
     111: 1.0,
-    113: 0.9,
     114: 1.0,
     115: 1.0,
     116: 1.0,
     117: 1.0,
-    118: 1.0,
-    119: 1.0,
-    120: 1.0,
 }
 
 
@@ -98,10 +95,22 @@ def _learned_order_prior(
             return None
         if len(predictions) != block_count:
             return None
+        canonical_predictions = []
+        for block in range(block_count):
+            if len(predictions[block]) != 2:
+                return None
+            x = float(predictions[block][0])
+            y = float(predictions[block][1])
+            # Check before clamping: min/max can otherwise turn infinities
+            # into plausible boundary coordinates and silently suppress the
+            # displaced standard pass.
+            if not math.isfinite(x) or not math.isfinite(y):
+                return None
+            canonical_predictions.append((x, y))
         return {
             block: (
-                min(1.0, max(0.0, float(predictions[block][0]))),
-                min(1.0, max(0.0, float(predictions[block][1]))),
+                min(1.0, max(0.0, canonical_predictions[block][0])),
+                min(1.0, max(0.0, canonical_predictions[block][1])),
             )
             for block in range(block_count)
         }
@@ -240,6 +249,7 @@ class MyOptimizer(FloorplanOptimizer):
         self._learned_candidate_attempted = False
         self._learned_candidate_selected = False
         self._learned_candidate_trade_accepted = False
+        self._debug_primary_selected_base_wf = None
         self._debug_selected_base_wf = None
         self._debug_disabled_standard_wf = None
         self._debug_final_nonlearned_reference = None
@@ -250,6 +260,7 @@ class MyOptimizer(FloorplanOptimizer):
         self._learned_candidate_attempted = False
         self._learned_candidate_selected = False
         self._learned_candidate_trade_accepted = False
+        self._debug_primary_selected_base_wf = None
         self._debug_selected_base_wf = None
         self._debug_final_nonlearned_reference = None
         # Load baselines (golden hpwl/area) for the real-cost selector, if present.
@@ -465,14 +476,21 @@ class MyOptimizer(FloorplanOptimizer):
                     cand = dissect_solve(*dis_args, **kwargs)
                 except Exception:
                     cand = None
-                try:
-                    learned_output = (
-                        learned_slot and bool(cand) and len(cand) == block_count
+                if learned_slot:
+                    cand = self._canonical_learned_candidate(
+                        cand,
+                        block_count,
+                        constraints,
+                        area_targets,
+                        target_positions,
                     )
-                    valid_output = bool(cand) and len(cand) == block_count
-                except Exception:
-                    learned_output = False
-                    valid_output = False
+                    learned_output = cand is not None
+                    valid_output = learned_output
+                else:
+                    try:
+                        valid_output = bool(cand) and len(cand) == block_count
+                    except Exception:
+                        valid_output = False
                 if learned_slot and not valid_output:
                     # Fail closed to the displaced paid pass for exceptions,
                     # None/empty results, and malformed output lengths.
@@ -511,11 +529,14 @@ class MyOptimizer(FloorplanOptimizer):
                     )
                 except Exception:
                     cand = None
-                try:
-                    valid_output = bool(cand) and len(cand) == block_count
-                except Exception:
-                    valid_output = False
-                if valid_output:
+                cand = self._canonical_learned_candidate(
+                    cand,
+                    block_count,
+                    constraints,
+                    area_targets,
+                    target_positions,
+                )
+                if cand is not None:
                     learned_candidate = cand
                     self._learned_candidate_attempted = True
             # Edge boundary queues used to be largest-first. One extra
@@ -674,6 +695,10 @@ class MyOptimizer(FloorplanOptimizer):
                     candidates, constraints, area_targets, b2b_edges,
                     p2b_edges, pins_l, target_positions)
                 if picked is not None:
+                    for base_wf, base_candidate in dis_cands.items():
+                        if picked is base_candidate:
+                            self._debug_primary_selected_base_wf = base_wf
+                            break
                     if (fast_first and picked is candidates[0]):
                         # the fast (no-SA) shelf beat every dissection —
                         # rare; now invest in the full-SA shelf and re-pick
@@ -1030,6 +1055,40 @@ class MyOptimizer(FloorplanOptimizer):
             return delta_quality <= 4.0 * (-delta_violations)
         except Exception:
             return False
+
+    def _canonical_learned_candidate(
+        self,
+        candidate,
+        block_count,
+        constraints,
+        area_targets,
+        target_positions,
+    ):
+        """Return finite canonical rectangles or fail closed to ``None``."""
+        if candidate is None or isinstance(candidate, (str, bytes, dict)):
+            return None
+        try:
+            if len(candidate) != block_count:
+                return None
+            canonical = []
+            for row in candidate:
+                if row is None or isinstance(row, (str, bytes, dict)):
+                    return None
+                if len(row) != 4:
+                    return None
+                rectangle = tuple(float(value) for value in row)
+                if not all(math.isfinite(value) for value in rectangle):
+                    return None
+                if rectangle[2] <= 0.0 or rectangle[3] <= 0.0:
+                    return None
+                canonical.append(rectangle)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not self._is_feasible(
+            canonical, constraints, area_targets, target_positions
+        ):
+            return None
+        return canonical
 
     def _boundary_reshape_candidate(self, positions, constraints, area_targets,
                                     b2b, p2b, pins_pos, target_positions):
@@ -3532,6 +3591,24 @@ class MyOptimizer(FloorplanOptimizer):
         constraint. (In the live shelf path fixed/preplaced are exact by
         construction and never perturbed, so omitting target_positions is safe;
         passing it makes the gate complete for any other candidate source.)"""
+        if positions is None or isinstance(positions, (str, bytes, dict)):
+            return False
+        try:
+            canonical = []
+            for row in positions:
+                if row is None or isinstance(row, (str, bytes, dict)):
+                    return False
+                if len(row) != 4:
+                    return False
+                rectangle = tuple(float(value) for value in row)
+                if not all(math.isfinite(value) for value in rectangle):
+                    return False
+                if rectangle[2] <= 0.0 or rectangle[3] <= 0.0:
+                    return False
+                canonical.append(rectangle)
+        except (TypeError, ValueError, OverflowError):
+            return False
+        positions = canonical
         n = len(positions)
         for i in range(n):
             x1, y1, w1, h1 = positions[i]

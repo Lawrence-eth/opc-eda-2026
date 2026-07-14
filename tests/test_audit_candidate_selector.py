@@ -35,6 +35,12 @@ def test_candidate_snapshot_is_exact_length_finite_and_detached():
     assert MODULE._snapshot_positions([[0.0, 0.0, 0.0, 1.0]], 1) is None
 
 
+def test_packed_position_hash_distinguishes_signed_zero():
+    positive = [(0.0, 0.0, 1.0, 1.0)]
+    negative = [(-0.0, 0.0, 1.0, 1.0)]
+    assert MODULE._positions_sha256(positive) != MODULE._positions_sha256(negative)
+
+
 def test_summary_weights_regret_and_reports_tail_risk():
     rows = [
         {
@@ -74,6 +80,10 @@ def test_summary_weights_regret_and_reports_tail_risk():
 
 
 def _audit_case(source, offset, sample_index, block_count=100):
+    reference_sha = hashlib.sha256(
+        f"reference-{sample_index}".encode()
+    ).hexdigest()
+    learned_sha = hashlib.sha256(f"learned-{sample_index}".encode()).hexdigest()
     return {
         "case_id": f"{source}#{offset}",
         "source_file": source,
@@ -95,19 +105,28 @@ def _audit_case(source, offset, sample_index, block_count=100):
         "proxy_false_accept": False,
         "proxy_missed_win": True,
         "proxy_index": 1,
+        "selector_proxy_index": 1,
+        "deployed_proxy_index": 1,
         "oracle_index": 0,
         "pareto_dominant_indices": [],
+        "solve_return_positions_sha256": learned_sha,
+        "nonlearned_reference_positions_sha256": reference_sha,
+        "candidates": [
+            {"positions_sha256": reference_sha},
+            {"positions_sha256": learned_sha},
+        ],
     }
 
 
 def _artifact(fold, rows):
     return {
-        "schema_version": 2,
+        "schema_version": MODULE.ARTIFACT_SCHEMA_VERSION,
         "config": {
             "fold": fold,
             "mode": MODULE.RAW_MODE,
             "runtime_factor_mode": MODULE.RUNTIME_FACTOR_MODE,
             "oracle_policy": MODULE.ORACLE_POLICY,
+            "learned_mode": "additive",
             "manifest": {
                 "sha256": MANIFEST_SHA,
                 "schema_version": 3,
@@ -164,7 +183,7 @@ def test_combine_is_provenance_bound_and_records_input_hashes(tmp_path):
 
     result = MODULE.combine_artifacts([first, second])
 
-    assert result["schema_version"] == 2
+    assert result["schema_version"] == MODULE.ARTIFACT_SCHEMA_VERSION
     assert result["summary"]["cases"] == 2
     assert result["evaluation_contract"]["manifest_sha256"] == MANIFEST_SHA
     assert result["evaluation_contract"]["solver_source_sha256"] == SOLVER_SHA
@@ -186,6 +205,7 @@ def test_combine_is_provenance_bound_and_records_input_hashes(tmp_path):
             ("provenance", "solver_component_sha256", "my_optimizer.py"),
             "c" * 64,
         ),
+        (("config", "learned_mode"), "replacement"),
     ],
 )
 def test_combine_rejects_evaluation_or_solver_contract_mismatch(
@@ -205,7 +225,7 @@ def test_combine_rejects_evaluation_or_solver_contract_mismatch(
 @pytest.mark.parametrize(
     ("path", "value", "message"),
     [
-        (("schema_version",), 3, "schema_version"),
+        (("schema_version",), 2, "schema_version"),
         (("config", "runtime_factor_mode"), "timed", "runtime_factor_mode"),
         (("config", "oracle_policy"), "different", "oracle_policy"),
         (("provenance", "evaluation_harness_sha256"), None, "required field"),

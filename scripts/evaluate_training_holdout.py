@@ -374,19 +374,18 @@ def _source_tree_sha256(path: Path):
     return digest.hexdigest()
 
 
-def _solver_component_hashes(path: Path):
-    missing = [
-        name for name in LIVE_SOLVER_COMPONENTS if not (path / name).is_file()
-    ]
+def _solver_component_hashes(path: Path, component_names=None):
+    names = tuple(
+        LIVE_SOLVER_COMPONENTS if component_names is None else component_names
+    )
+    if not names or len(names) != len(set(names)):
+        raise ValueError("live solver component registry is empty or duplicated")
+    missing = [name for name in names if not (path / name).is_file()]
     if missing:
         raise FileNotFoundError(
-            "live solver component(s) missing from "
-            f"{path}: {', '.join(missing)}"
+            f"live solver components are missing from {path}: {missing}"
         )
-    return {
-        name: _file_sha256(path / name)
-        for name in LIVE_SOLVER_COMPONENTS
-    }
+    return {name: _file_sha256(path / name) for name in names}
 
 
 def _git_state(path: Path):

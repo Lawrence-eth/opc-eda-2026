@@ -74,6 +74,7 @@ from my_optimizer import (
 )
 from dissect import dissect_solve
 import dissect as dissect_module
+import learned_order as learned_order_module
 import my_optimizer as optimizer_module
 
 
@@ -82,9 +83,17 @@ def test_learned_replacement_slots_match_frozen_audit_artifact():
         Path(__file__).resolve().parents[1]
         / "results"
         / "models"
-        / "order_v5b_redundant_slots_v1.json"
+        / "order_v5b_final_fidelity_provisional_v2.json"
     )
     artifact = json.loads(path.read_bytes())
+    assert artifact["schema_version"] == 2
+    assert artifact["mode"] == (
+        "legacy_v32_final_output_preserving_slot_calibration"
+    )
+    assert artifact["contract"]["comparison_stage"] == (
+        "complete_deployed_solver_output"
+    )
+    assert "packed-byte final positions" in artifact["contract"]["invariant"]
     expected = {
         int(block_count): float(width_factor)
         for block_count, width_factor in artifact[
@@ -92,7 +101,14 @@ def test_learned_replacement_slots_match_frozen_audit_artifact():
         ].items()
     }
     assert _LEARNED_REPLACEMENT_WF == expected
-    assert artifact["abstain_sizes"] == [101, 109, 112]
+    assert artifact["development_abstain_sizes"] == [101, 112]
+    assert artifact["confirmation_rejected_sizes"] == [
+        105, 109, 113, 118, 119, 120
+    ]
+    assert artifact["public_rejected_sizes"] == []
+    assert artifact["abstain_sizes"] == [
+        101, 105, 109, 112, 113, 118, 119, 120
+    ]
 
 
 def test_anchored_third_pass_gate_accepts_case_81_feature_pocket():
@@ -158,6 +174,49 @@ def test_dissect_first_pass_only_skips_second_paid_pass(monkeypatch):
 
     assert result == [(0.0, 0.0, 2.0, 2.0)]
     assert calls == ["p1"]
+
+
+def test_dissect_rejects_conflicting_first_pass_flags(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        dissect_module,
+        "_dissect_once",
+        lambda *args, **kwargs: calls.append(kwargs["pass_name"]),
+    )
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        dissect_module.dissect_solve(
+            n=1,
+            areas=[1.0],
+            b2b_edges=[],
+            p2b_edges=[],
+            pins=[],
+            constraints=[[0, 0, 0, 0, 0]],
+            target_positions=None,
+            first_pass_only=True,
+            return_first_pass=True,
+        )
+    assert calls == []
+
+
+@pytest.mark.parametrize("bad_value", [math.nan, math.inf, -math.inf])
+def test_learned_prior_rejects_nonfinite_predictions_before_clamping(
+    monkeypatch, bad_value
+):
+    monkeypatch.setattr(optimizer_module, "_compiled_learned_model", lambda: object())
+    monkeypatch.setattr(
+        learned_order_module,
+        "extract_compiled_artifact_predictions",
+        lambda *args, **kwargs: ([(bad_value, 0.5), (0.5, 0.5)], {}),
+    )
+    assert optimizer_module._learned_order_prior(
+        2,
+        [1.0, 1.0],
+        [],
+        [],
+        [],
+        [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+        None,
+    ) is None
 
 
 def test_dissect_without_learned_prior_is_scalar_identical_to_v32_fixture():
@@ -237,17 +296,25 @@ def test_optimizer_uses_exact_fixed_dimensions():
     assert check_dimension_hard_constraints(pos, target_positions, constraints, block_count) == 0
 
 
-@pytest.mark.parametrize("invalid_kind", ["none", "empty", "wrong_length"])
+@pytest.mark.parametrize(
+    "invalid_kind",
+    [
+        "none",
+        "empty",
+        "wrong_length",
+        "row_width",
+        "nan",
+        "inf",
+        "zero_dimension",
+        "overlap",
+        "fixed_mismatch",
+    ],
+)
 def test_invalid_learned_slot_falls_back_to_displaced_standard_pass(
     monkeypatch, invalid_kind
 ):
     block_count = 100
     standard = [(1.1 * index, 0.0, 1.0, 1.0) for index in range(block_count)]
-    invalid = {
-        "none": None,
-        "empty": [],
-        "wrong_length": standard[:1],
-    }[invalid_kind]
     calls = []
 
     def fake_dissect(*args, **kwargs):
@@ -272,6 +339,26 @@ def test_invalid_learned_slot_falls_back_to_displaced_standard_pass(
     pins = torch.empty((0, 2))
     constraints = torch.zeros((block_count, 5))
     targets = torch.full((block_count, 4), -1.0)
+    malformed = list(standard)
+    if invalid_kind == "row_width":
+        malformed[0] = (0.0, 0.0, 1.0)
+    elif invalid_kind == "nan":
+        malformed[0] = (math.nan, 0.0, 1.0, 1.0)
+    elif invalid_kind == "inf":
+        malformed[0] = (0.0, 0.0, math.inf, 1.0)
+    elif invalid_kind == "zero_dimension":
+        malformed[0] = (0.0, 0.0, 0.0, 1.0)
+    elif invalid_kind == "overlap":
+        malformed[1] = malformed[0]
+    elif invalid_kind == "fixed_mismatch":
+        constraints[0, 0] = 1
+        targets[0] = torch.tensor([0.0, 0.0, 1.0, 1.0])
+        malformed[0] = (-3.0, 0.0, 2.0, 0.5)
+    invalid = {
+        "none": None,
+        "empty": [],
+        "wrong_length": standard[:1],
+    }.get(invalid_kind, malformed)
 
     assert optimizer.solve(
         block_count, area_targets, b2b, p2b, pins, constraints, targets
@@ -316,7 +403,7 @@ def test_additive_learning_is_withheld_until_final_v32_reference(monkeypatch):
     selector_pools = []
 
     def select_first(candidates, *args, **kwargs):
-        selector_pools.append(tuple(candidate is learned for candidate in candidates))
+        selector_pools.append(tuple(candidate == learned for candidate in candidates))
         return candidates[0]
 
     monkeypatch.setattr(optimizer, "_select_candidate", select_first)

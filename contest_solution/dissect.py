@@ -852,6 +852,10 @@ def dissect_solve(n, areas, b2b_edges, p2b_edges, pins, constraints,
                   learned_prior_weight=0.65, first_pass_only=False):
     """Two-pass frame-of-rows dissection (pass 2 re-orders with pass 1's
     actual positions — one Gauss-Seidel sweep). Returns positions or None."""
+    if first_pass_only and return_first_pass:
+        raise ValueError(
+            "first_pass_only and return_first_pass are mutually exclusive"
+        )
     p1 = _dissect_once(n, areas, b2b_edges, p2b_edges, pins, constraints,
                        target_positions, width_factor, pin_scale, order_ops,
                        prev=None, trace=trace, pass_name="p1",
