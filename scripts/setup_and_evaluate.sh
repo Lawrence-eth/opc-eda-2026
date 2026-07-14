@@ -28,6 +28,8 @@ for component in "${LIVE_SOLVER_COMPONENTS[@]}"; do
 done
 cp "$ROOT/contest_solution/sequence_pair_sa.py" "$CONTEST/sequence_pair_sa.py"
 cp "$ROOT/contest_solution/test_my_optimizer.py" "$CONTEST/test_my_optimizer.py"
+"$ROOT/.venv/bin/python" "$ROOT/scripts/preflight_official_solver.py" \
+  --solver-dir "$CONTEST"
 cd external/FloorSet
 PYTHONPATH=. python lite_dataset_test.py
 cd iccad2026contest
