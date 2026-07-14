@@ -57,6 +57,7 @@ artifacts:
 |---|---|---|
 | [`check_official_sources.py`](check_official_sources.py) | Verify the pinned FloorSet commit/tree/files, tracked wrapper and document extracts, and optional original Drive downloads without network access. | CI requires the pinned checkout; pass `--materials-dir` to recheck locally retained PDFs. |
 | [`audit_submission_package.py`](audit_submission_package.py) | Reject unsafe archives, wrong-architecture or too-new ELF payloads, wrapper/source drift, real-torch leakage, and optionally smoke-run the binary. | Pass `--release-manifest` for a frozen asset and `--smoke` on AMD64. New builds require notices. |
+| [`package_mode_tournament.py`](package_mode_tournament.py) | Report-only package construction and timing | Build `off`, `replacement`, `additive`, and `additive_first_pass` packages from one explicit committed tree without editing the source worktree, then benchmark the audited binaries through the exact organizer wrapper in a balanced Williams sequence. This does not change or select the production default. |
 | [`setup_and_evaluate.sh`](setup_and_evaluate.sh) | Bootstrap the pinned official checkout, run tests, run the official 100-case evaluator, save positions, and audit the result. | Mutates `.venv` and the optimizer copy under `external/FloorSet`; set `OUTPUT=/tmp/opc-eda-evaluation.json` to avoid replacing a repository artifact. |
 | [`preflight_official_solver.py`](preflight_official_solver.py) | Import and behavior-check the registry-copied solver before official evaluation. | `setup_and_evaluate.sh` runs it with real Torch; it rejects model-integrity drift, incomplete replacement coverage, unexpected abstentions, and a broken safe-MIB repair path. |
 | [`solver_components.py`](solver_components.py) | Define the authoritative live solver-module set used by copy, synchronization, and holdout-provenance workflows. | Add every new live implementation module here, together with any generated deployment artifact it imports. |
@@ -73,6 +74,50 @@ and [`packaging/README_SUBMISSION.md`](../packaging/README_SUBMISSION.md). Build
 the archive is a mutating operation; follow it with wrapper position parity,
 `audit_results.py`, and `check_public_release.py` as described in
 [`HANDOFF.md`](../HANDOFF.md).
+
+### Four-mode package timing (report only)
+
+The package tournament never edits `contest_solution/`. Its build command
+requires an explicit Git revision containing the running orchestrator and the
+mode-independent package self-test, exports that revision with `git archive`,
+and performs all mode substitutions in disposable copies. The substitution
+gate requires exactly one byte-for-byte default assignment and checks the
+entire copied tree before each build; `replacement` is a byte-identical
+control. Output and temporary workspace paths must be outside this repository.
+
+Building all four pinned-container packages is intentionally expensive and is
+not a routine test:
+
+```bash
+.venv/bin/python scripts/package_mode_tournament.py build \
+  --commit "$(git rev-parse HEAD)" \
+  --output-dir /tmp/opc-four-mode-packages
+```
+
+Every archive is audited with notices and `--smoke`, including the packaged
+learned-model/replacement and safe-MIB module probes. The build manifest binds
+the source commit/tree, exact patch, every live and archived-source hash,
+binary and package hashes, audit logs, wrapper, build harness, and audit
+harness.
+
+Timing requires explicit public case IDs so a full campaign cannot start by
+accident. One cycle is the complete four-row Williams design—16 wrapper/binary
+executions per case. Each run invokes the pinned official evaluator on the
+package's verbatim organizer `op_wrapper.py`; `MY_OPT_BIN` is removed. The
+timing gate rehashes and re-audits all packages first, rejects infeasibility or
+nondeterministic repeated positions, and writes raw official result files plus
+a hash-bound summary atomically:
+
+```bash
+.venv/bin/python scripts/package_mode_tournament.py time \
+  --build-manifest /tmp/opc-four-mode-packages/build_manifest.json \
+  --case-id 79 --case-id 81 --case-id 99 --cycles 1 \
+  --output-dir /tmp/opc-four-mode-timing
+```
+
+Run timing only on the native AMD64 machine whose measurements are intended as
+evidence. The four modes remain report-only benchmark treatments; policy
+promotion is governed by the holdout selector and its closed calibration gate.
 
 ## Supported fold, model, and research tools
 
