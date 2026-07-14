@@ -6,6 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts.solver_components import LIVE_SOLVER_COMPONENTS
 
 
@@ -66,3 +68,42 @@ def test_source_fallback_live_module_selftest_exercises_learned_and_mib(tmp_path
         safe_mib["positions"]
     )
     assert all(row[2:] == [4.0, 10.0] for row in safe_mib["positions"][:3])
+
+
+@pytest.mark.parametrize("default_mode", ["off", "additive", "additive_first_pass"])
+def test_live_module_selftest_is_independent_of_promoted_mode(
+    tmp_path, default_mode
+):
+    for component in LIVE_SOLVER_COMPONENTS:
+        shutil.copy2(ROOT / "contest_solution" / component, tmp_path / component)
+    optimizer_path = tmp_path / "my_optimizer.py"
+    optimizer_source = optimizer_path.read_text(encoding="utf-8")
+    frozen_default = 'self._learned_order_mode = "replacement"'
+    assert optimizer_source.count(frozen_default) == 1
+    optimizer_path.write_text(
+        optimizer_source.replace(
+            frozen_default,
+            f'self._learned_order_mode = "{default_mode}"',
+        ),
+        encoding="utf-8",
+    )
+    shutil.copy2(ROOT / "packaging" / "torch_stub.py", tmp_path / "torch.py")
+    shutil.copy2(
+        ROOT / "packaging" / "eval_stub.py",
+        tmp_path / "iccad2026_evaluate.py",
+    )
+    shutil.copy2(ROOT / "packaging" / "solver_main.py", tmp_path / "solver_main.py")
+
+    completed = subprocess.run(
+        [sys.executable, str(tmp_path / "solver_main.py"), "--self-test-live-modules"],
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+        env={**os.environ, "PYTHONHASHSEED": "0"},
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    learned = json.loads(completed.stdout)["learned"]
+    assert learned["candidate_attempted"] is True
+    assert learned["abstention_verified"] is True

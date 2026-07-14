@@ -182,6 +182,11 @@ def _learned_self_test():
         raise RuntimeError("packaged learned candidate was not produced")
     raw_rows = [[float(value) for value in row] for row in raw_candidate]
     optimizer = MyOptimizer(verbose=False)
+    # Test the learned replacement capability explicitly. The promoted policy
+    # may legitimately be off/additive/first-pass, but that must not weaken the
+    # package check for the sealed model and its fail-closed replacement path.
+    optimizer._learned_order_enabled = True
+    optimizer._learned_order_mode = "replacement"
     positions = optimizer.solve(
         n,
         torch.Tensor(areas),
@@ -207,6 +212,8 @@ def _learned_self_test():
         raise RuntimeError("learned replacement map has no heavy abstention case")
     abstention_n = abstention_sizes[0]
     abstention_optimizer = MyOptimizer(verbose=False)
+    abstention_optimizer._learned_order_enabled = True
+    abstention_optimizer._learned_order_mode = "replacement"
     abstention_positions = abstention_optimizer.solve(
         abstention_n,
         torch.Tensor([1.0] * abstention_n),
