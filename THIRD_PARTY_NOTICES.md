@@ -27,3 +27,17 @@ The text files under `docs/extracted/` are searchable extracts of official
 Problem C materials supplied for contest participation. Their source URLs and
 downloaded-file hashes are recorded in `docs/official_sources.json`. No claim
 of authorship or additional license is made for those materials.
+
+## FloorSet dataset
+
+Source: <https://huggingface.co/datasets/IntelLabs/FloorSet>
+
+License: [Creative Commons Attribution 4.0 International
+(CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/).
+
+The embedded learned-order model was trained from FloorSet examples. The
+submission does not redistribute those examples; it contains only the derived
+model parameters and inference code. Attribution is to Intel Labs and the
+FloorSet authors identified by the source repository and dataset card. The
+derived model and its compact deployment format are modifications created for
+this contest entry and are not an official Intel release.

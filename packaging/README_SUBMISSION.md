@@ -10,7 +10,7 @@ dist/my_optimizer/my_optimizer   x86-64 Debian 13 PyInstaller executable
 op_wrapper.py                    the organizers' example wrapper, verbatim
 source_fallback/                 pure-Python source (stdlib only), same solver
 requirements.txt                 nothing to install for the executable path
-THIRD_PARTY_NOTICES.md           provenance for organizer/FloorSet material
+THIRD_PARTY_NOTICES.md           provenance and dataset attribution
 LICENSES/Apache-2.0.txt          FloorSet's Apache-2.0 license
 README.md                        this file
 ```
