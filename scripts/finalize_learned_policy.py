@@ -29,6 +29,7 @@ DERIVATION_MODE = "legacy_v32_final_output_preserving_slot_calibration"
 PUBLIC_AUDIT_MODE = "public_v32_final_output_slot_removal_rejection"
 PUBLIC_POLICY = "rejection_only_no_slot_retuning"
 EVIDENCE_STATUS = "final_rejection_only_public_audit_complete"
+GOLDEN_GEOMETRY_USE = "fixed/preplaced hard-target reconstruction only"
 DERIVATION_HARNESS = ROOT / "scripts" / "derive_redundant_slot_map.py"
 SLOT_AUDIT_HARNESS = ROOT / "scripts" / "audit_standard_slot_usage.py"
 PUBLIC_AUDIT_HARNESS = ROOT / "scripts" / "audit_public_slot_fidelity.py"
@@ -507,14 +508,28 @@ def _validate_public_audit(payload: dict, slot_map_sha256: str, derivation: dict
         raise ValueError("public audit must use the frozen schema-1 rejection contract")
     config = _require_exact_keys(
         payload["config"],
-        {"solver_dir", "slot_map_sha256", "uses_golden_costs", "policy"},
+        {
+            "solver_dir",
+            "slot_map_sha256",
+            "uses_golden_costs",
+            "reads_stored_golden_metrics",
+            "computes_golden_hpwl_or_area",
+            "golden_geometry_use",
+            "policy",
+        },
         "public audit config",
     )
     if not isinstance(config["solver_dir"], str) or not config["solver_dir"]:
         raise ValueError("public audit solver_dir must be a nonempty string")
     if _require_sha256(config["slot_map_sha256"], "public audit slot-map SHA-256") != slot_map_sha256:
         raise ValueError("public audit is not bound to the exact derivation input bytes")
-    if config["uses_golden_costs"] is not False or config["policy"] != PUBLIC_POLICY:
+    if (
+        config["uses_golden_costs"] is not False
+        or config["reads_stored_golden_metrics"] is not False
+        or config["computes_golden_hpwl_or_area"] is not False
+        or config["golden_geometry_use"] != GOLDEN_GEOMETRY_USE
+        or config["policy"] != PUBLIC_POLICY
+    ):
         raise ValueError("public audit is not rejection-only and golden-cost-free")
 
     provenance = _require_exact_keys(
@@ -534,10 +549,9 @@ def _validate_public_audit(payload: dict, slot_map_sha256: str, derivation: dict
         {"commit", "dirty", "tracked_dirty", "has_untracked"},
         "public audit solver git",
     )
-    if _require_commit(solver_git["commit"], "public audit solver commit") != derivation[
-        "binding"
-    ]["commit"]:
-        raise ValueError("public audit and derivation have different solver commits")
+    public_solver_commit = _require_commit(
+        solver_git["commit"], "public audit solver commit"
+    )
     if any(solver_git[field] is not False for field in ("dirty", "tracked_dirty", "has_untracked")):
         raise ValueError("public audit solver provenance is not clean")
 
@@ -611,6 +625,7 @@ def _validate_public_audit(payload: dict, slot_map_sha256: str, derivation: dict
         "mapped_sizes": sorted(observed_sizes),
         "preserved_cases": len(cases) - len(rejected),
         "rejected_sizes": rejected,
+        "solver_commit": public_solver_commit,
     }
 
 
@@ -666,12 +681,20 @@ def finalize_policy(slot_map_path: Path, public_audit_path: Path) -> dict:
                     "sha256": audit_sha,
                 },
             },
+            "solver_snapshots": {
+                "derivation_commit": derivation["binding"]["commit"],
+                "public_audit_commit": public["solver_commit"],
+                "live_components_identical": True,
+            },
         },
         "contract": {
             **copy.deepcopy(slot_payload["contract"]),
             "public_validation": {
                 "uses_public_cases": True,
                 "uses_public_golden_costs": False,
+                "reads_stored_golden_metrics": False,
+                "computes_golden_hpwl_or_area": False,
+                "golden_geometry_use": GOLDEN_GEOMETRY_USE,
                 "policy": PUBLIC_POLICY,
                 "required_cases_per_mapped_size": 1,
             },

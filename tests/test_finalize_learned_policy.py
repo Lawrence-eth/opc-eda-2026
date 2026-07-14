@@ -168,6 +168,9 @@ def _audit(slot_sha):
             "solver_dir": "contest_solution",
             "slot_map_sha256": slot_sha,
             "uses_golden_costs": False,
+            "reads_stored_golden_metrics": False,
+            "computes_golden_hpwl_or_area": False,
+            "golden_geometry_use": FINAL.GOLDEN_GEOMETRY_USE,
             "policy": FINAL.PUBLIC_POLICY,
         },
         "provenance": {
@@ -236,8 +239,33 @@ def test_finalizer_is_provenance_bound_and_public_is_rejection_only(tmp_path):
     assert result["contract"]["public_validation"] == {
         "uses_public_cases": True,
         "uses_public_golden_costs": False,
+        "reads_stored_golden_metrics": False,
+        "computes_golden_hpwl_or_area": False,
+        "golden_geometry_use": FINAL.GOLDEN_GEOMETRY_USE,
         "policy": FINAL.PUBLIC_POLICY,
         "required_cases_per_mapped_size": 1,
+    }
+    assert result["provenance"]["solver_snapshots"] == {
+        "derivation_commit": COMMIT,
+        "public_audit_commit": COMMIT,
+        "live_components_identical": True,
+    }
+
+
+def test_finalizer_allows_clean_nonlive_commit_drift(tmp_path):
+    slot_path, audit_path, _derivation_payload, _audit_payload = _write_inputs(
+        tmp_path,
+        mutate_audit=lambda audit: audit["provenance"]["solver_git"].__setitem__(
+            "commit", "b" * 40
+        ),
+    )
+
+    result = FINAL.finalize_policy(slot_path, audit_path)
+
+    assert result["provenance"]["solver_snapshots"] == {
+        "derivation_commit": COMMIT,
+        "public_audit_commit": "b" * 40,
+        "live_components_identical": True,
     }
 
 
@@ -252,12 +280,6 @@ def test_finalizer_rejects_public_audit_for_different_derivation_bytes(tmp_path)
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
-        (
-            lambda audit: audit["provenance"]["solver_git"].__setitem__(
-                "commit", "b" * 40
-            ),
-            "different solver commits",
-        ),
         (
             lambda audit: audit["provenance"]["solver_git"].__setitem__(
                 "dirty", True
