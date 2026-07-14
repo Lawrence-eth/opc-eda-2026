@@ -6,7 +6,9 @@ The selector consumes the six development comparison artifacts produced for
 their reported statistics: every referenced holdout and manifest is rehashed,
 the complete holdout contract is validated, and ``compare_fold_results`` is
 replayed with the recorded seed and sample count.  An optional pair of fold-3
-comparisons confirms exactly the one development finalist selected here.
+comparisons confirms exactly the one development finalist selected here. Once
+that policy is frozen, an optional pair of sealed fold-4 comparisons can only
+confirm it or trigger the same fail-closed fallback to ``off``.
 
 This is an evidence compositor, not an evaluator.  It never imports the live
 solver and never runs FloorSet cases.
@@ -47,6 +49,7 @@ CHALLENGERS = MODES[1:]
 PANELS = ("clean", "raw")
 DEV_FOLDS = (0, 1, 2)
 CALIBRATION_FOLD = 3
+SEALED_FOLD = 4
 EXPECTED_CASES_PER_FOLD = 105
 EXPECTED_BLOCK_COUNTS = tuple(range(100, 121))
 EXPECTED_PER_SIZE = 5
@@ -96,6 +99,24 @@ THRESHOLDS = {
         },
     },
     "calibration": {
+        "clean": {
+            "maximum_pooled_delta_exclusive": 0.0,
+            "minimum_bootstrap_probability_improves": 0.90,
+            "maximum_pseudo_ci95_upper": 0.0,
+            "maximum_worst_case_score_contribution": 0.00025,
+            "maximum_regression_cvar_5pct": 0.00010,
+            "maximum_worst_sampled_pseudo_delta": 0.002,
+        },
+        "raw": {
+            "maximum_pooled_delta": 0.00025,
+            "maximum_bootstrap_ci95_upper": 0.001,
+            "maximum_pseudo_ci95_upper": 0.001,
+            "maximum_worst_case_score_contribution": 0.00025,
+            "maximum_regression_cvar_5pct": 0.00010,
+            "maximum_worst_sampled_pseudo_delta": 0.002,
+        },
+    },
+    "sealed": {
         "clean": {
             "maximum_pooled_delta_exclusive": 0.0,
             "minimum_bootstrap_probability_improves": 0.90,
@@ -1338,7 +1359,7 @@ def _panel_checks(payload: dict[str, Any], panel: str, stage: str) -> list[dict[
                 _check("maximum_fold_delta", max(row["delta_candidate_minus_baseline"] for row in payload["folds"]), "<=", threshold["maximum_fold_delta"], max(row["delta_candidate_minus_baseline"] for row in payload["folds"]) <= threshold["maximum_fold_delta"]),
             ]
         )
-    elif stage == "calibration" and panel == "clean":
+    elif stage in {"calibration", "sealed"} and panel == "clean":
         checks.extend(
             [
                 _check("pooled_delta", delta, "<", threshold["maximum_pooled_delta_exclusive"], delta < threshold["maximum_pooled_delta_exclusive"]),
@@ -1536,6 +1557,7 @@ def select_policy_tournament(
     expected_commit: str,
     artifact_root: Path,
     calibration_paths: dict[str, Path] | None = None,
+    sealed_paths: dict[str, Path] | None = None,
     require_clean_selector_git: bool = False,
 ) -> dict[str, Any]:
     selector_provenance = _selector_provenance(require_clean=require_clean_selector_git)
@@ -1639,6 +1661,7 @@ def select_policy_tournament(
         },
         "dev_finalist": dev_finalist,
         "calibration": None,
+        "sealed_confirmation": None,
         "final_mode": "off" if dev_finalist == "off" else None,
         "status": "off_selected" if dev_finalist == "off" else "requires_calibration",
     }
@@ -1655,6 +1678,7 @@ def select_policy_tournament(
             if path in calibration_seen or path in seen_comparison_paths:
                 raise ValueError(f"calibration comparison artifact is reused: {path}")
             calibration_seen.add(path)
+            seen_comparison_paths.add(path)
             calibration[panel] = _load_and_recompute_comparison(
                 path,
                 panel=panel,
@@ -1705,6 +1729,74 @@ def select_policy_tournament(
         ledger["final_mode"] = dev_finalist if passed else "off"
         ledger["status"] = (
             "calibration_passed" if passed else "calibration_failed_fallback_off"
+        )
+
+    if sealed_paths is not None:
+        if calibration_paths is None or ledger["status"] != "calibration_passed":
+            raise ValueError(
+                "sealed evidence is permitted only after the development finalist passes fold 3"
+            )
+        if set(sealed_paths) != set(PANELS):
+            raise ValueError("both clean and raw sealed-fold comparisons are required")
+        sealed: dict[str, dict[str, Any]] = {}
+        for panel in PANELS:
+            path = sealed_paths[panel].resolve()
+            if path in seen_comparison_paths:
+                raise ValueError(f"sealed comparison artifact is reused: {path}")
+            seen_comparison_paths.add(path)
+            sealed[panel] = _load_and_recompute_comparison(
+                path,
+                panel=panel,
+                candidate_mode=dev_finalist,
+                folds=(SEALED_FOLD,),
+                artifact_root=artifact_root,
+                campaign=campaign,
+                holdout_cache=holdout_cache,
+            )
+            if (
+                sealed[panel]["payload"]["evaluation_contract"]
+                != comparisons[dev_finalist][panel]["payload"]["evaluation_contract"]
+            ):
+                raise ValueError(f"{panel} sealed-fold evaluation contract differs from development")
+        _validate_matrix_contracts(
+            {dev_finalist: sealed},
+            folds=(SEALED_FOLD,),
+            expected_unique_artifacts=4,
+            modes=(dev_finalist,),
+        )
+        panel_results = {
+            panel: _gate_result(sealed[panel]["payload"], panel, "sealed")
+            for panel in PANELS
+        }
+        reasons = [
+            f"{panel}.{reason}"
+            for panel in PANELS
+            for reason in panel_results[panel]["reasons"]
+        ]
+        passed = not reasons
+        ledger["sealed_confirmation"] = {
+            "fold": SEALED_FOLD,
+            "policy_frozen_before_evaluation": True,
+            "comparison_artifacts": {
+                panel: sealed[panel]["artifact"] for panel in PANELS
+            },
+            "holdout_artifacts": {
+                panel: {
+                    "off": sealed[panel]["baseline_records"][0]["artifact"],
+                    dev_finalist: sealed[panel]["candidate_records"][0]["artifact"],
+                }
+                for panel in PANELS
+            },
+            "passed": passed,
+            "reasons": reasons,
+            "panels": panel_results,
+            "fallback_mode": "off",
+        }
+        ledger["final_mode"] = dev_finalist if passed else "off"
+        ledger["status"] = (
+            "sealed_confirmation_passed"
+            if passed
+            else "sealed_confirmation_failed_fallback_off"
         )
 
     return ledger
@@ -1764,10 +1856,16 @@ def main() -> None:
             )
     parser.add_argument("--fold3-clean", type=Path)
     parser.add_argument("--fold3-raw", type=Path)
+    parser.add_argument("--sealed-clean", type=Path)
+    parser.add_argument("--sealed-raw", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if (args.fold3_clean is None) != (args.fold3_raw is None):
         parser.error("--fold3-clean and --fold3-raw must be supplied together")
+    if (args.sealed_clean is None) != (args.sealed_raw is None):
+        parser.error("--sealed-clean and --sealed-raw must be supplied together")
+    if args.sealed_clean is not None and args.fold3_clean is None:
+        parser.error("sealed evidence requires the fold-3 evidence pair")
 
     try:
         ledger = select_policy_tournament(
@@ -1777,6 +1875,11 @@ def main() -> None:
             calibration_paths=(
                 {"clean": args.fold3_clean, "raw": args.fold3_raw}
                 if args.fold3_clean is not None
+                else None
+            ),
+            sealed_paths=(
+                {"clean": args.sealed_clean, "raw": args.sealed_raw}
+                if args.sealed_clean is not None
                 else None
             ),
             require_clean_selector_git=True,

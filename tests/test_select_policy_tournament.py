@@ -117,13 +117,22 @@ def _holdout_payload(campaign, panel, mode, fold, cost):
 
 
 class TournamentFixture:
-    def __init__(self, root, campaign, costs, *, include_calibration=False):
+    def __init__(
+        self, root, campaign, costs, *, include_calibration=False, include_sealed=False
+    ):
         self.root = root
         self.campaign = campaign
         self.holdouts = {}
         self.dev = {mode: {} for mode in MODULE.CHALLENGERS}
         self.calibration = None
-        folds = MODULE.DEV_FOLDS + ((MODULE.CALIBRATION_FOLD,) if include_calibration else ())
+        self.sealed = None
+        if include_sealed:
+            include_calibration = True
+        folds = MODULE.DEV_FOLDS
+        if include_calibration:
+            folds += (MODULE.CALIBRATION_FOLD,)
+        if include_sealed:
+            folds += (MODULE.SEALED_FOLD,)
         for panel in MODULE.PANELS:
             for mode in MODULE.MODES:
                 for fold in folds:
@@ -143,6 +152,12 @@ class TournamentFixture:
                 path = root / "compare" / f"{panel}-replacement-fold3.json"
                 self._write_comparison(path, panel, "replacement", (MODULE.CALIBRATION_FOLD,))
                 self.calibration[panel] = path
+        if include_sealed:
+            self.sealed = {}
+            for panel in MODULE.PANELS:
+                path = root / "compare" / f"{panel}-replacement-sealed.json"
+                self._write_comparison(path, panel, "replacement", (MODULE.SEALED_FOLD,))
+                self.sealed[panel] = path
 
     def _write_comparison(self, path, panel, mode, folds):
         manifest_path = ROOT / MODULE.PANEL_MANIFEST_PATHS[panel]
@@ -166,12 +181,13 @@ class TournamentFixture:
         )
         self._write_comparison(path, panel, mode, folds)
 
-    def select(self, *, calibration=False):
+    def select(self, *, calibration=False, sealed=False):
         return MODULE.select_policy_tournament(
             development_paths=self.dev,
             expected_commit=self.campaign["expected_commit"],
             artifact_root=self.root,
             calibration_paths=self.calibration if calibration else None,
+            sealed_paths=self.sealed if sealed else None,
         )
 
 
@@ -276,6 +292,47 @@ def test_fold3_failure_falls_back_to_off_without_trying_another_mode(tmp_path, c
     assert "clean.pooled_delta" in result["calibration"]["reasons"]
     assert result["final_mode"] == "off"
     assert result["status"] == "calibration_failed_fallback_off"
+
+
+def test_sealed_fold_can_only_confirm_the_frozen_finalist(tmp_path, campaign):
+    costs = _default_costs()
+    costs[("clean", "replacement", 3)] = 1.99
+    costs[("raw", "replacement", 3)] = 2.0001
+    costs[("clean", "replacement", 4)] = 1.98
+    costs[("raw", "replacement", 4)] = 2.0001
+    fixture = TournamentFixture(tmp_path, campaign, costs, include_sealed=True)
+
+    result = fixture.select(calibration=True, sealed=True)
+
+    assert result["sealed_confirmation"]["policy_frozen_before_evaluation"] is True
+    assert result["sealed_confirmation"]["passed"] is True
+    assert result["final_mode"] == "replacement"
+    assert result["status"] == "sealed_confirmation_passed"
+
+
+def test_sealed_fold_failure_falls_back_to_off(tmp_path, campaign):
+    costs = _default_costs()
+    costs[("clean", "replacement", 3)] = 1.99
+    costs[("raw", "replacement", 3)] = 2.0001
+    costs[("clean", "replacement", 4)] = 2.01
+    costs[("raw", "replacement", 4)] = 2.0
+    fixture = TournamentFixture(tmp_path, campaign, costs, include_sealed=True)
+
+    result = fixture.select(calibration=True, sealed=True)
+
+    assert result["sealed_confirmation"]["passed"] is False
+    assert "clean.pooled_delta" in result["sealed_confirmation"]["reasons"]
+    assert result["final_mode"] == "off"
+    assert result["status"] == "sealed_confirmation_failed_fallback_off"
+
+
+def test_sealed_evidence_is_rejected_without_fold3_composition(tmp_path, campaign):
+    fixture = TournamentFixture(
+        tmp_path, campaign, _default_costs(), include_sealed=True
+    )
+
+    with pytest.raises(ValueError, match="only after.*fold 3"):
+        fixture.select(sealed=True)
 
 
 def test_tampered_comparison_statistics_are_recomputed_and_rejected(tmp_path, campaign):
@@ -446,6 +503,12 @@ def test_every_gate_threshold_has_explicit_boundary_semantics():
         ("calibration", "raw", "pooled_delta", "maximum_pooled_delta", "max"),
         ("calibration", "raw", "bootstrap_ci95_upper", "maximum_bootstrap_ci95_upper", "max"),
         ("calibration", "raw", "pseudo_ci95_upper", "maximum_pseudo_ci95_upper", "max"),
+        ("sealed", "clean", "pooled_delta", "maximum_pooled_delta_exclusive", "exclusive_max"),
+        ("sealed", "clean", "bootstrap_probability_improves", "minimum_bootstrap_probability_improves", "min"),
+        ("sealed", "clean", "pseudo_ci95_upper", "maximum_pseudo_ci95_upper", "max"),
+        ("sealed", "raw", "pooled_delta", "maximum_pooled_delta", "max"),
+        ("sealed", "raw", "bootstrap_ci95_upper", "maximum_bootstrap_ci95_upper", "max"),
+        ("sealed", "raw", "pseudo_ci95_upper", "maximum_pseudo_ci95_upper", "max"),
     ]
     shared = (
         ("worst_case_score_contribution", "maximum_worst_case_score_contribution", "max"),
@@ -454,7 +517,7 @@ def test_every_gate_threshold_has_explicit_boundary_semantics():
     )
     cases.extend(
         (stage, panel, metric, key, direction)
-        for stage in ("development", "calibration")
+        for stage in ("development", "calibration", "sealed")
         for panel in MODULE.PANELS
         for metric, key, direction in shared
     )
