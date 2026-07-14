@@ -137,6 +137,29 @@ def test_dissect_solve_can_return_reusable_first_pass():
     assert len(first) == 1
 
 
+def test_dissect_first_pass_only_skips_second_paid_pass(monkeypatch):
+    calls = []
+
+    def fake_once(*args, **kwargs):
+        calls.append(kwargs["pass_name"])
+        return [(0.0, 0.0, 2.0, 2.0)]
+
+    monkeypatch.setattr(dissect_module, "_dissect_once", fake_once)
+    result = dissect_module.dissect_solve(
+        n=1,
+        areas=[4.0],
+        b2b_edges=[],
+        p2b_edges=[],
+        pins=[],
+        constraints=[[0, 0, 0, 0, 0]],
+        target_positions=None,
+        first_pass_only=True,
+    )
+
+    assert result == [(0.0, 0.0, 2.0, 2.0)]
+    assert calls == ["p1"]
+
+
 def test_dissect_without_learned_prior_is_scalar_identical_to_v32_fixture():
     kwargs = dict(
         n=2,
@@ -262,3 +285,103 @@ def test_invalid_learned_slot_falls_back_to_displaced_standard_pass(
     ]
     assert "learned_order" not in fallback
     assert not optimizer._learned_candidate_attempted
+
+
+def test_additive_learning_is_withheld_until_final_v32_reference(monkeypatch):
+    block_count = 100
+    standard = [(1.1 * index, 0.0, 1.0, 1.0) for index in range(block_count)]
+    learned = [(1.1 * index, 2.0, 1.0, 1.0) for index in range(block_count)]
+    standard_widths = []
+
+    def fake_dissect(*args, **kwargs):
+        if "learned_order" in kwargs:
+            return learned
+        if kwargs.get("width_factor") in (0.8, 0.9, 1.0, 1.1, 1.2):
+            standard_widths.append(kwargs["width_factor"])
+        if kwargs.get("return_first_pass"):
+            return list(standard), list(standard)
+        return list(standard)
+
+    monkeypatch.setattr(dissect_module, "dissect_solve", fake_dissect)
+    monkeypatch.setattr(
+        optimizer_module,
+        "_learned_order_prior",
+        lambda *args, **kwargs: {
+            index: (0.5, 0.5) for index in range(block_count)
+        },
+    )
+    optimizer = MyOptimizer()
+    optimizer._learned_order_mode = "additive"
+    monkeypatch.setattr(optimizer, "_solve_one", lambda *args, **kwargs: standard)
+    selector_pools = []
+
+    def select_first(candidates, *args, **kwargs):
+        selector_pools.append(tuple(candidate is learned for candidate in candidates))
+        return candidates[0]
+
+    monkeypatch.setattr(optimizer, "_select_candidate", select_first)
+    area_targets = torch.ones(block_count)
+    empty_edges = torch.empty((0, 3))
+    constraints = torch.zeros((block_count, 5))
+
+    result = optimizer.solve(
+        block_count,
+        area_targets,
+        empty_edges,
+        empty_edges,
+        torch.empty((0, 2)),
+        constraints,
+        torch.full((block_count, 4), -1.0),
+    )
+
+    assert result == standard
+    assert set((0.8, 0.9, 1.0, 1.1, 1.2)).issubset(standard_widths)
+    assert all(not any(pool) for pool in selector_pools[:-1])
+    assert selector_pools[-1] == (False, True)
+    assert optimizer._debug_final_nonlearned_reference == standard
+
+
+@pytest.mark.parametrize(
+    ("candidate_hpwl", "candidate_area", "candidate_soft", "accepted"),
+    [
+        (80.0, 80.0, 15, False),  # violation delta above the hard cap
+        (101.0, 100.0, 10, False),  # no violation win: quality must not rise
+        (99.0, 100.0, 10, True),
+        (103.9, 104.0, 8, True),  # <0.08 quality rise paid by -0.02 V_rel
+        (104.1, 104.0, 8, False),
+    ],
+)
+def test_learned_trade_gate_uses_only_visible_quality_and_violations(
+    monkeypatch,
+    candidate_hpwl,
+    candidate_area,
+    candidate_soft,
+    accepted,
+):
+    optimizer = MyOptimizer()
+    incumbent = [(0.0, 0.0, 1.0, 1.0)]
+    candidate = [(2.0, 0.0, 1.0, 1.0)]
+    metrics = {
+        id(incumbent): (100.0, 100.0, 10),
+        id(candidate): (candidate_hpwl, candidate_area, candidate_soft),
+    }
+    monkeypatch.setattr(
+        optimizer_module,
+        "_calculate_hpwl_edges",
+        lambda positions, *args: metrics[id(positions)][0],
+    )
+    monkeypatch.setattr(
+        optimizer_module,
+        "calculate_bbox_area",
+        lambda positions: metrics[id(positions)][1],
+    )
+    monkeypatch.setattr(optimizer, "_is_feasible", lambda *args: True)
+    monkeypatch.setattr(optimizer, "_n_soft", lambda *args: 100)
+    monkeypatch.setattr(
+        optimizer,
+        "_soft_violation_count",
+        lambda positions, constraints: metrics[id(positions)][2],
+    )
+    assert optimizer._accept_learned_trade(
+        candidate, incumbent, None, [], [], [], [], None
+    ) is accepted

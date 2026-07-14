@@ -242,6 +242,34 @@ def summarize(rows):
     }
 
 
+def _apply_deployed_index(decision, deployed_index, trade_gate_accepted):
+    """Rewrite a captured selector decision to the final guarded deployment."""
+    decision["selector_proxy_index"] = decision["proxy_index"]
+    decision["deployed_proxy_index"] = deployed_index
+    decision["trade_gate_accepted"] = bool(trade_gate_accepted)
+    decision["proxy_index"] = deployed_index
+    rows = decision["candidates"]
+    incumbent_cost = rows[0]["official_cost"]
+    oracle_index = decision["oracle_index"]
+    oracle_cost = rows[oracle_index]["official_cost"]
+    proxy_cost = rows[deployed_index]["official_cost"]
+    decision.update(
+        {
+            "incumbent_cost": incumbent_cost,
+            "proxy_cost": proxy_cost,
+            "oracle_cost": oracle_cost,
+            "proxy_regret": proxy_cost - oracle_cost,
+            "proxy_false_accept": bool(
+                deployed_index != 0 and proxy_cost > incumbent_cost + 1e-12
+            ),
+            "proxy_missed_win": bool(
+                oracle_cost < proxy_cost - 1e-12
+                and oracle_index != deployed_index
+            ),
+        }
+    )
+
+
 def _require_mapping(value, context):
     if not isinstance(value, dict):
         raise ValueError(f"{context} must be an object")
@@ -522,6 +550,11 @@ def main():
     parser.add_argument("--data-root", type=Path, default=OFFICIAL_ROOT)
     parser.add_argument("--solver-dir", type=Path, default=SOLUTION_DIR)
     parser.add_argument(
+        "--learned-mode",
+        choices=("solver-default", "replacement", "additive", "additive_first_pass"),
+        default="solver-default",
+    )
+    parser.add_argument(
         "--fold-manifest",
         type=Path,
         default=ROOT / "results" / "folds" / "heavy_clean_v1.json",
@@ -555,9 +588,14 @@ def main():
             parser.error("--max-cases must be positive")
         selected = selected[: args.max_cases]
     optimizer = _load_optimizer(args.solver_dir)
+    if args.learned_mode != "solver-default":
+        if not hasattr(optimizer, "_learned_order_mode"):
+            parser.error("solver does not expose _learned_order_mode")
+        optimizer._learned_order_mode = args.learned_mode
     optimizer._baselines_by_n = {}
     _install_audit_hook(optimizer)
     rows = []
+    abstained = []
     for ordinal, (sample_index, sample, identity) in enumerate(selected, 1):
         area, b2b, p2b, pins, constraints = sample["input"]
         _tree, fp_sol, stored_metrics = sample["label"]
@@ -593,10 +631,26 @@ def main():
         runtime = time.perf_counter() - started
         if not optimizer._audit_decisions:
             raise RuntimeError(f"no selector decision captured for {identity['case_id']}")
-        # The first selector call is the primary shelf/dissection portfolio.
-        # Later repairs depend on this proxy-selected path and therefore are not
-        # a clean counterfactual pool (some can also contain more trial moves).
-        primary = optimizer._audit_decisions[0]
+        if not optimizer._learned_candidate_attempted:
+            abstained.append(identity["case_id"])
+            if ordinal % 10 == 0 or ordinal == len(selected):
+                print(f"audited {ordinal}/{len(selected)}", flush=True)
+            continue
+        # Learning is withheld from every path-dependent decision.  Therefore
+        # the last heavy selector call is exactly [final v32 counterfactual,
+        # learned challenger].  Rewrite its proxy index to the post-trade-gate
+        # deployed choice before computing regret/precision.
+        primary = optimizer._audit_decisions[-1]
+        if primary["candidate_count"] != 2:
+            raise RuntimeError(
+                f"final learned decision malformed for {identity['case_id']}"
+            )
+        deployed_index = 1 if optimizer._learned_candidate_selected else 0
+        _apply_deployed_index(
+            primary,
+            deployed_index,
+            optimizer._learned_candidate_trade_accepted,
+        )
         primary.update(
             {
                 "case_id": identity["case_id"],
@@ -621,6 +675,7 @@ def main():
             "solver_dir": _portable_path(args.solver_dir),
             "fold_manifest": _portable_path(args.fold_manifest),
             "fold": args.fold,
+            "learned_mode": args.learned_mode,
             "max_cases": args.max_cases,
             "manifest": manifest,
             "mode": RAW_MODE,
@@ -637,7 +692,13 @@ def main():
             ),
             "official_floorset_git": _git_state(OFFICIAL_ROOT),
         },
-        "summary": summarize(rows),
+        "summary": {
+            **summarize(rows),
+            "manifest_cases": len(selected),
+            "learned_attempted_cases": len(rows),
+            "learned_abstained_cases": len(abstained),
+        },
+        "abstained_case_ids": abstained,
         "cases": rows,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -24,7 +24,7 @@ import sys
 # packaging/torch_stub.py and `iccad2026_evaluate` is packaging/eval_stub.py,
 # both shipped next to this file. my_optimizer.py is used unmodified.
 import torch
-from my_optimizer import MyOptimizer
+from my_optimizer import MyOptimizer, _compiled_learned_model
 
 
 def _fallback(block_count, area_targets, constraints, target_positions):
@@ -87,7 +87,45 @@ def _positions_ok(positions, block_count):
     return True
 
 
+def _learned_self_test():
+    """Exercise the live learned path for source/binary package parity."""
+    n = 100
+    areas = [1.0 + 0.01 * (index % 7) for index in range(n)]
+    b2b = [
+        [index, index + 1, 1.0 + 0.1 * (index % 5)]
+        for index in range(n - 1)
+    ]
+    pins = [[0.0, 0.0], [50.0, 30.0], [100.0, 80.0]]
+    p2b = [
+        [index % len(pins), index, 1.0]
+        for index in range(0, n, 9)
+    ]
+    constraints = [[0.0, 0.0, 0.0, 0.0, 0.0] for _ in range(n)]
+    optimizer = MyOptimizer(verbose=False)
+    positions = optimizer.solve(
+        n,
+        torch.Tensor(areas),
+        b2b,
+        p2b,
+        torch.Tensor(pins),
+        torch.Tensor(constraints),
+        None,
+    )
+    result = {
+        "model_compiled": _compiled_learned_model() is not None,
+        "learned_attempted": bool(optimizer._learned_candidate_attempted),
+        "positions": [list(map(float, row)) for row in positions],
+    }
+    if not result["model_compiled"] or not result["learned_attempted"]:
+        raise RuntimeError("packaged learned path did not execute")
+    sys.stdout.write(json.dumps(result))
+    sys.stdout.flush()
+
+
 def main():
+    if sys.argv[1:] == ["--self-test-learned"]:
+        _learned_self_test()
+        return
     payload = json.loads(sys.stdin.read())
     n = int(payload["block_count"])
     at_l = payload.get("area_targets") or []

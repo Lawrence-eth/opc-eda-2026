@@ -495,6 +495,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-root", type=Path, default=ROOT / "external" / "FloorSet")
     parser.add_argument("--solver-dir", type=Path, default=SOLUTION_DIR)
+    parser.add_argument(
+        "--learned-mode",
+        choices=(
+            "solver-default", "off", "replacement", "additive",
+            "additive_first_pass",
+        ),
+        default="solver-default",
+        help="research override for solvers exposing _learned_order_mode",
+    )
     parser.add_argument("--min-blocks", type=int, default=100)
     parser.add_argument("--max-blocks", type=int, default=120)
     parser.add_argument("--per-size", type=int, default=5)
@@ -541,6 +550,11 @@ def main():
         )
         selected = [(index, sample, None) for index, sample in sampled]
     optimizer = _load_optimizer(args.solver_dir)
+    if args.learned_mode != "solver-default":
+        if not hasattr(optimizer, "_learned_order_mode"):
+            parser.error("solver does not expose _learned_order_mode")
+        optimizer._learned_order_mode = args.learned_mode
+        optimizer._learned_order_enabled = args.learned_mode != "off"
     solver_rows = []
     golden_rows = []
 
@@ -654,6 +668,7 @@ def main():
                 None if manifest_provenance else args.require_golden_mib_clean
             ),
             "solver_dir": _portable_path(args.solver_dir),
+            "learned_mode": args.learned_mode,
             "indices_from": _portable_path(args.indices_from),
             "fold_manifest": _portable_path(args.fold_manifest),
             "fold": args.fold if args.fold_manifest else None,

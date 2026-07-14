@@ -150,6 +150,31 @@ echo "== smoke test the binary =="
 EOF
 echo
 
+echo "== learned source/binary parity =="
+PYTHONPATH="$SRC" "$BUILD_VENV/bin/python" \
+  "$SRC/solver_main.py" --self-test-learned \
+  > "$SUB/build/source_learned_selftest.json"
+"$SUB/dist/my_optimizer/my_optimizer" --self-test-learned \
+  > "$SUB/build/binary_learned_selftest.json"
+python3 - \
+  "$SUB/build/source_learned_selftest.json" \
+  "$SUB/build/binary_learned_selftest.json" <<'PY'
+import json
+import pathlib
+import sys
+
+source = json.loads(pathlib.Path(sys.argv[1]).read_text())
+binary = json.loads(pathlib.Path(sys.argv[2]).read_text())
+for name, payload in (("source", source), ("binary", binary)):
+    if payload.get("model_compiled") is not True:
+        raise SystemExit(f"ERROR: {name} learned model did not compile")
+    if payload.get("learned_attempted") is not True:
+        raise SystemExit(f"ERROR: {name} learned dissection did not execute")
+if binary.get("positions") != source.get("positions"):
+    raise SystemExit("ERROR: packaged learned positions differ from source shim")
+print("verified packaged learned execution and exact source parity")
+PY
+
 # PyInstaller imports the shim sources during analysis; do not ship bytecode
 # cache files in the documented source fallback.
 find "$SRC" -type d -name __pycache__ -prune -exec rm -rf {} +
