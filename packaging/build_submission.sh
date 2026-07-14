@@ -72,12 +72,37 @@ fi
 echo "== assemble shim sources =="
 rm -rf "$SRC" "$SUB/dist" "$SUB/build"
 mkdir -p "$SRC"
-cp "$ROOT/contest_solution/my_optimizer.py" "$SRC/my_optimizer.py"
-cp "$ROOT/contest_solution/dissect.py"      "$SRC/dissect.py"
-cp "$ROOT/contest_solution/topology_polish.py" "$SRC/topology_polish.py"
-cp "$ROOT/contest_solution/learned_order.py" "$SRC/learned_order.py"
-cp "$ROOT/contest_solution/order_model_v5b.py" "$SRC/order_model_v5b.py"
-cp "$ROOT/contest_solution/golden_plus_repair.py" "$SRC/golden_plus_repair.py"
+if ! LIVE_SOLVER_COMPONENT_TEXT="$(python3 "$ROOT/scripts/solver_components.py")"; then
+  echo "ERROR: live solver component registry validation failed" >&2
+  exit 1
+fi
+mapfile -t LIVE_SOLVER_COMPONENTS <<<"$LIVE_SOLVER_COMPONENT_TEXT"
+if [ "${#LIVE_SOLVER_COMPONENTS[@]}" -eq 0 ]; then
+  echo "ERROR: live solver component registry is empty" >&2
+  exit 1
+fi
+declare -A SEEN_SOLVER_MODULES=()
+LIVE_HIDDEN_IMPORTS=()
+for component in "${LIVE_SOLVER_COMPONENTS[@]}"; do
+  if [ -z "$component" ] || [ "${component##*/}" != "$component" ] || \
+     [ "${component##*.}" != "py" ]; then
+    echo "ERROR: invalid live solver component: $component" >&2
+    exit 1
+  fi
+  module="${component%.py}"
+  if [ -n "${SEEN_SOLVER_MODULES[$module]:-}" ]; then
+    echo "ERROR: duplicate live solver module: $module" >&2
+    exit 1
+  fi
+  source_path="$ROOT/contest_solution/$component"
+  if [ ! -f "$source_path" ]; then
+    echo "ERROR: live solver component is missing: $source_path" >&2
+    exit 1
+  fi
+  SEEN_SOLVER_MODULES[$module]=1
+  cp "$source_path" "$SRC/$component"
+  LIVE_HIDDEN_IMPORTS+=(--hidden-import "$module")
+done
 cp "$PKG/torch_stub.py"                     "$SRC/torch.py"
 cp "$PKG/eval_stub.py"                      "$SRC/iccad2026_evaluate.py"
 cp "$PKG/solver_main.py"                    "$SRC/solver_main.py"
@@ -100,12 +125,7 @@ cd "$SUB"
 "$BUILD_VENV/bin/pyinstaller" --noconfirm --onedir --name my_optimizer \
   --distpath "$SUB/dist" --workpath "$SUB/build" --specpath "$SUB/build" \
   --paths "$SRC" \
-  --hidden-import my_optimizer \
-  --hidden-import dissect \
-  --hidden-import topology_polish \
-  --hidden-import learned_order \
-  --hidden-import order_model_v5b \
-  --hidden-import golden_plus_repair \
+  "${LIVE_HIDDEN_IMPORTS[@]}" \
   --hidden-import iccad2026_evaluate \
   --hidden-import torch \
   "$SRC/solver_main.py" >/dev/null
@@ -149,31 +169,6 @@ echo "== smoke test the binary =="
 {"block_count": 3, "area_targets": [100.0, 25.0, 4.0], "b2b_connectivity": [[0,1,1.0],[1,2,2.0]], "p2b_connectivity": [], "pins_pos": [], "constraints": [[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]], "target_positions": null}
 EOF
 echo
-
-echo "== learned source/binary parity =="
-PYTHONPATH="$SRC" "$BUILD_VENV/bin/python" \
-  "$SRC/solver_main.py" --self-test-learned \
-  > "$SUB/build/source_learned_selftest.json"
-"$SUB/dist/my_optimizer/my_optimizer" --self-test-learned \
-  > "$SUB/build/binary_learned_selftest.json"
-python3 - \
-  "$SUB/build/source_learned_selftest.json" \
-  "$SUB/build/binary_learned_selftest.json" <<'PY'
-import json
-import pathlib
-import sys
-
-source = json.loads(pathlib.Path(sys.argv[1]).read_text())
-binary = json.loads(pathlib.Path(sys.argv[2]).read_text())
-for name, payload in (("source", source), ("binary", binary)):
-    if payload.get("model_compiled") is not True:
-        raise SystemExit(f"ERROR: {name} learned model did not compile")
-    if payload.get("learned_attempted") is not True:
-        raise SystemExit(f"ERROR: {name} learned dissection did not execute")
-if binary.get("positions") != source.get("positions"):
-    raise SystemExit("ERROR: packaged learned positions differ from source shim")
-print("verified packaged learned execution and exact source parity")
-PY
 
 # PyInstaller imports the shim sources during analysis; do not ship bytecode
 # cache files in the documented source fallback.

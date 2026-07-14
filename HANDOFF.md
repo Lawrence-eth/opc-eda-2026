@@ -272,7 +272,13 @@ cd external/FloorSet/iccad2026contest && rm -rf dist
 cp -r ../../../submission/dist . && cp ../../../packaging/op_wrapper.py .
 PYTHONPATH=.. ../../../.venv/bin/python iccad2026_evaluate.py \
     --evaluate op_wrapper.py --output ../../../results/wrapper_check.json
-# REQUIRED: same total as the in-process run and 0 position diffs
+../../../.venv/bin/python ../../../scripts/audit_results.py \
+    ../../../results/<source-run>.json --expected-cases 100 --require-positions
+../../../.venv/bin/python ../../../scripts/audit_results.py \
+    ../../../results/wrapper_check.json --expected-cases 100 --require-positions
+../../../.venv/bin/python ../../../scripts/check_position_parity.py \
+    ../../../results/<source-run>.json ../../../results/wrapper_check.json
+# REQUIRED: exact saved positions on all 100 cases; runtime fields are ignored
 ```
 
 5.5 **Binary fuzz** (hidden-set insurance): on an AMD64 host, run

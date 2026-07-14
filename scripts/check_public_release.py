@@ -29,7 +29,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from scripts import audit_results, check_official_sources, compare_results
-from scripts.solver_components import LIVE_SOLVER_COMPONENTS, SOLVER_ENTRYPOINT
+from scripts.solver_components import (
+    LIVE_SOLVER_COMPONENTS,
+    PACKAGE_SUPPORT_SOURCE_BINDINGS,
+    SOLVER_ENTRYPOINT,
+)
 
 DEFAULT_MANIFEST = ROOT / "results" / "release_manifest.json"
 DEFAULT_SCAN_PATHS = (
@@ -184,6 +188,23 @@ def validate_release_manifest(
     if not isinstance(sources, dict) or not sources:
         errors.append("solver.sources must be a non-empty path-to-SHA-256 object")
         sources = {}
+    required_solver_sources = {
+        f"contest_solution/{component}" for component in LIVE_SOLVER_COMPONENTS
+    }
+    missing_solver_sources = sorted(required_solver_sources - sources.keys())
+    if missing_solver_sources:
+        errors.append(
+            "solver.sources missing live solver components: "
+            + ", ".join(missing_solver_sources)
+        )
+    missing_package_sources = sorted(
+        set(PACKAGE_SUPPORT_SOURCE_BINDINGS) - sources.keys()
+    )
+    if missing_package_sources:
+        errors.append(
+            "solver.sources missing package support sources: "
+            + ", ".join(missing_package_sources)
+        )
     entrypoint = solver.get("entrypoint")
     if not isinstance(entrypoint, str) or entrypoint not in sources:
         errors.append("solver.entrypoint must name one of solver.sources")

@@ -47,6 +47,8 @@ artifacts:
 .venv/bin/python scripts/analyze_results.py results/integrated_v32.json --top 20
 .venv/bin/python scripts/compare_results.py \
   results/integrated_v31.json results/integrated_v32.json
+.venv/bin/python scripts/check_position_parity.py \
+  results/<source-run>.json results/<packaged-wrapper-run>.json
 ```
 
 ## Supported release and evaluation tools
@@ -60,6 +62,7 @@ artifacts:
 | [`check_public_release.py`](check_public_release.py) | Fail-closed release gate for manifest hashes, source and package provenance, result integrity, score limits, public-safe text, and optional optimizer-copy parity. | The no-argument command consumes [`results/release_manifest.json`](../results/release_manifest.json). Run it after building the exact archive intended for release. |
 | [`audit_results.py`](audit_results.py) | Validate evaluator JSON structure, summaries, finite metrics, case IDs, feasibility, and optionally every saved rectangle. | Run before comparing or publishing any full result. `--require-positions` is expected for a release artifact. |
 | [`compare_results.py`](compare_results.py) | Compare a public full-result candidate with a baseline and fail on infeasibility, missing cases, or a non-improvement. | This is the RF=1 public-quality gate; it is not a holdout uncertainty test and does not infer the leaderboard runtime denominator. |
+| [`check_position_parity.py`](check_position_parity.py) | Require exact saved rectangle and non-runtime quality parity between source and packaged-wrapper evaluator runs. | Defaults to a complete 100-case panel, audits both inputs, and compares coordinates as IEEE-754 binary64 values; both runs must save positions. |
 | [`analyze_results.py`](analyze_results.py) | Rank score contributors, summarize block-count bands, attribute soft violations, and optionally write diagnostic sidecars. | Always pass the intended result explicitly; the historical default is not the incumbent. Writing enriched diagnostics requires the official contest directory. |
 | [`fuzz_binary.py`](fuzz_binary.py) | Exercise the packaged executable end to end on training cases through the exact JSON protocol. | Preferred robustness gate for the shipped artifact. It requires training shards and a native AMD64 binary or an explicit compatible launcher. |
 

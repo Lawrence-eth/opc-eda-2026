@@ -12,9 +12,10 @@ This is NOT a general tensor library. It implements exactly the operations
 my_optimizer.py performs on its inputs: dim/shape/len/iteration, int/tuple/
 slice indexing (including the (slice, int) column pattern), item/tolist/max/
 sum, and scalar comparisons (scalars are float subclasses, so comparisons and
-float()/int() work natively). Equivalence with real torch is enforced by
-packaging/equivalence_test.py, which requires bit-identical positions on all
-100 validation cases.
+float()/int() work natively). The direct real-torch/shim fixture is maintained
+in tests/test_golden_plus_repair.py. Full evaluator runs are compared with
+scripts/check_position_parity.py, which requires exact IEEE-754 positions and
+matching non-runtime quality fields on all 100 validation cases.
 """
 
 

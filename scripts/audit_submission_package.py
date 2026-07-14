@@ -25,6 +25,14 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.solver_components import (  # noqa: E402
+    LIVE_SOLVER_COMPONENTS,
+    PACKAGE_SUPPORT_SOURCE_BINDINGS,
+    validate_live_solver_components,
+)
+
 DEFAULT_ARCHIVE = ROOT / "submission" / "iccad2026_submission.tar.gz"
 DEFAULT_OFFICIAL_SOURCES = ROOT / "docs" / "official_sources.json"
 EXPECTED_ROOT = "iccad2026_submission"
@@ -34,18 +42,17 @@ MAX_COMPRESSED_BYTES = 512 * 1024 * 1024
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
 MAX_MEMBERS = 10_000
 GLIBC_RE = re.compile(rb"GLIBC_(\d+)\.(\d+)")
+EXPECTED_LEARNED_MODEL_PAYLOAD_SHA256 = (
+    "c94b4af92a7088f04206a5fa20dfbf807f945d9bdd80d9ffcbdc0b8b45f18beb"
+)
 
-SOURCE_BINDINGS = {
-    "contest_solution/my_optimizer.py": "source_fallback/my_optimizer.py",
-    "contest_solution/dissect.py": "source_fallback/dissect.py",
-    "contest_solution/topology_polish.py": "source_fallback/topology_polish.py",
-    "contest_solution/learned_order.py": "source_fallback/learned_order.py",
-    "contest_solution/order_model_v5b.py": "source_fallback/order_model_v5b.py",
-    "contest_solution/golden_plus_repair.py": "source_fallback/golden_plus_repair.py",
-    "packaging/torch_stub.py": "source_fallback/torch.py",
-    "packaging/eval_stub.py": "source_fallback/iccad2026_evaluate.py",
-    "packaging/solver_main.py": "source_fallback/solver_main.py",
+LIVE_SOLVER_COMPONENTS = validate_live_solver_components(LIVE_SOLVER_COMPONENTS)
+LIVE_SOURCE_BINDINGS = {
+    f"contest_solution/{component}": f"source_fallback/{component}"
+    for component in LIVE_SOLVER_COMPONENTS
 }
+SUPPORT_SOURCE_BINDINGS = dict(PACKAGE_SUPPORT_SOURCE_BINDINGS)
+SOURCE_BINDINGS = {**LIVE_SOURCE_BINDINGS, **SUPPORT_SOURCE_BINDINGS}
 
 
 class PackageAuditError(ValueError):
@@ -102,11 +109,45 @@ def release_source_hashes(path: Path) -> dict[str, str]:
     sources = solver.get("sources") if isinstance(solver, dict) else None
     if not isinstance(sources, dict) or not sources:
         raise PackageAuditError("release manifest lacks solver.sources")
+    required_sources = set(SOURCE_BINDINGS)
+    missing_sources = sorted(required_sources - sources.keys())
+    if missing_sources:
+        raise PackageAuditError(
+            "release manifest solver.sources lacks archived sources: "
+            + ", ".join(missing_sources)
+        )
     packaged: dict[str, str] = {}
+    packaged_sources: dict[str, str] = {}
     for source_name, digest in sources.items():
-        if not isinstance(source_name, str) or not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        if not isinstance(source_name, str):
             raise PackageAuditError("release manifest solver.sources is malformed")
-        packaged[f"source_fallback/{Path(source_name).name}"] = digest
+        source_path = PurePosixPath(source_name)
+        if (
+            not source_name
+            or source_name.startswith("/")
+            or "\\" in source_name
+            or not source_path.parts
+            or str(source_path) != source_name
+            or any(part in {"", ".", ".."} for part in source_path.parts)
+        ):
+            raise PackageAuditError(
+                f"release manifest solver source path is unsafe: {source_name!r}"
+            )
+        if not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+            raise PackageAuditError("release manifest solver.sources is malformed")
+        packaged_name = SOURCE_BINDINGS.get(
+            source_name, f"source_fallback/{source_path.name}"
+        )
+        folded_name = packaged_name.casefold()
+        previous = packaged_sources.get(folded_name)
+        if previous is not None and previous != source_name:
+            raise PackageAuditError(
+                "release manifest solver source basenames collide: "
+                f"{previous!r} and {source_name!r}"
+            )
+        packaged_sources[folded_name] = source_name
+        packaged[packaged_name] = digest
+
     return packaged
 
 
@@ -141,6 +182,106 @@ def _elf_machine(data: bytes, name: str) -> int:
     return struct.unpack(byte_order + "H", data[18:20])[0]
 
 
+def _run_json_process(
+    command: list[str],
+    *,
+    description: str,
+    stdin_payload: dict[str, Any] | None = None,
+    timeout: int = 60,
+) -> tuple[Any, str]:
+    stdin_text = None if stdin_payload is None else json.dumps(stdin_payload) + "\n"
+    try:
+        completed = subprocess.run(
+            command,
+            input=stdin_text,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+            check=False,
+            env={**os.environ, "PYTHONHASHSEED": "0"},
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise PackageAuditError(f"{description} failed to start or finish: {exc}") from exc
+    if completed.returncode != 0:
+        raise PackageAuditError(
+            f"{description} exited {completed.returncode}: {completed.stderr[-500:]}"
+        )
+    try:
+        return json.loads(completed.stdout), completed.stdout
+    except json.JSONDecodeError as exc:
+        raise PackageAuditError(f"{description} stdout is not one JSON value: {exc}") from exc
+
+
+def _validate_live_self_test(payload: Any, description: str) -> None:
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        raise PackageAuditError(f"{description} has an invalid live-self-test schema")
+    learned = payload.get("learned")
+    safe_mib = payload.get("safe_mib")
+    digest_fields = (
+        "model_payload_sha256",
+        "compiled_model_sha256",
+        "prior_sha256",
+        "raw_candidate_sha256",
+    )
+    if (
+        not isinstance(learned, dict)
+        or any(
+            not isinstance(learned.get(field), str)
+            or re.fullmatch(r"[0-9a-f]{64}", learned[field]) is None
+            for field in digest_fields
+        )
+        or learned.get("model_payload_sha256")
+        != EXPECTED_LEARNED_MODEL_PAYLOAD_SHA256
+        or learned.get("candidate_attempted") is not True
+        or learned.get("abstention_verified") is not True
+        or isinstance(learned.get("production_eligible_block_count"), bool)
+        or not isinstance(learned.get("production_eligible_block_count"), int)
+        or not 100 <= learned["production_eligible_block_count"] <= 120
+        or isinstance(learned.get("abstention_block_count"), bool)
+        or not isinstance(learned.get("abstention_block_count"), int)
+        or not 100 <= learned["abstention_block_count"] <= 120
+        or not learned.get("final_positions")
+        or not _positions_payload_ok(learned.get("final_positions"))
+        or len(learned["final_positions"])
+        != learned["production_eligible_block_count"]
+    ):
+        raise PackageAuditError(f"{description} did not exercise every learned module")
+    if (
+        not isinstance(safe_mib, dict)
+        or safe_mib.get("repaired") is not True
+        or not _positions_payload_ok(safe_mib.get("positions"), expected_count=4)
+        or not isinstance(safe_mib.get("positions_sha256"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", safe_mib["positions_sha256"]) is None
+        or safe_mib["positions_sha256"]
+        != sha256_bytes(
+            json.dumps(
+                safe_mib["positions"],
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        )
+    ):
+        raise PackageAuditError(f"{description} did not exercise safe-MIB repair")
+
+
+def _positions_payload_ok(value: Any, expected_count: int | None = None) -> bool:
+    if not isinstance(value, list) or (expected_count is not None and len(value) != expected_count):
+        return False
+    return all(
+        isinstance(row, list)
+        and len(row) == 4
+        and all(
+            not isinstance(item, bool)
+            and isinstance(item, (int, float))
+            and math.isfinite(float(item))
+            for item in row
+        )
+        for row in value
+    )
+
+
 def _smoke(extracted_root: Path) -> None:
     if platform.machine().lower() not in {"x86_64", "amd64"}:
         raise PackageAuditError("--smoke requires an AMD64 host or configured emulator")
@@ -154,40 +295,37 @@ def _smoke(extracted_root: Path) -> None:
         "constraints": [[0, 0, 0, 0, 0]] * 3,
         "target_positions": None,
     }
-    try:
-        completed = subprocess.run(
-            [str(binary)],
-            input=json.dumps(request) + "\n",
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=15,
-            check=False,
-            env={**os.environ, "PYTHONHASHSEED": "0"},
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise PackageAuditError(f"binary smoke run failed to start or finish: {exc}") from exc
-    if completed.returncode != 0:
-        raise PackageAuditError(
-            f"binary smoke run exited {completed.returncode}: {completed.stderr[-500:]}"
-        )
-    try:
-        response = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise PackageAuditError(f"binary smoke stdout is not one JSON value: {exc}") from exc
+    response, _response_stdout = _run_json_process(
+        [str(binary)],
+        description="binary smoke run",
+        stdin_payload=request,
+        timeout=15,
+    )
     if not isinstance(response, dict) or set(response) != {"positions"}:
         raise PackageAuditError("binary smoke output must be exactly an object containing positions")
     positions = response["positions"]
     if not isinstance(positions, list) or len(positions) != request["block_count"]:
         raise PackageAuditError("binary smoke output has the wrong block count")
-    for index, row in enumerate(positions):
-        if (
-            not isinstance(row, list)
-            or len(row) != 4
-            or any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in row)
-            or any(not math.isfinite(float(value)) for value in row)
-        ):
-            raise PackageAuditError(f"binary smoke output row {index} is not four finite numbers")
+    if not _positions_payload_ok(positions, expected_count=request["block_count"]):
+        raise PackageAuditError("binary smoke output contains an invalid position row")
+
+    source_entrypoint = (
+        extracted_root / EXPECTED_ROOT / "source_fallback" / "solver_main.py"
+    )
+    source_self_test, source_self_test_stdout = _run_json_process(
+        [sys.executable, str(source_entrypoint), "--self-test-live-modules"],
+        description="source live-module self-test",
+    )
+    binary_self_test, binary_self_test_stdout = _run_json_process(
+        [str(binary), "--self-test-live-modules"],
+        description="binary live-module self-test",
+    )
+    _validate_live_self_test(source_self_test, "source live-module self-test")
+    _validate_live_self_test(binary_self_test, "binary live-module self-test")
+    if source_self_test_stdout != binary_self_test_stdout:
+        raise PackageAuditError(
+            "source and binary live-module self-test payloads differ"
+        )
 
 
 def audit_archive(

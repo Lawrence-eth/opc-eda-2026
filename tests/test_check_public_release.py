@@ -3,7 +3,11 @@ import hashlib
 from pathlib import Path
 
 from scripts import check_public_release
-from scripts.solver_components import LIVE_SOLVER_COMPONENTS, SOLVER_ENTRYPOINT
+from scripts.solver_components import (
+    LIVE_SOLVER_COMPONENTS,
+    PACKAGE_SUPPORT_SOURCE_BINDINGS,
+    SOLVER_ENTRYPOINT,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -18,9 +22,21 @@ def _live_solver_tree(root: Path, text: str = "x = 1\n") -> Path:
 
 
 def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
-    source = tmp_path / "contest_solution" / "my_optimizer.py"
-    source.parent.mkdir()
-    source.write_text("def solve():\n    return []\n", encoding="utf-8")
+    source_dir = tmp_path / "contest_solution"
+    source_dir.mkdir()
+    sources = {}
+    for component in LIVE_SOLVER_COMPONENTS:
+        component_path = source_dir / component
+        component_path.write_text(
+            f"# fixture: {component}\n", encoding="utf-8"
+        )
+        sources[f"contest_solution/{component}"] = _sha256(component_path)
+    for source_name in PACKAGE_SUPPORT_SOURCE_BINDINGS:
+        support_path = tmp_path / source_name
+        support_path.parent.mkdir(parents=True, exist_ok=True)
+        support_path.write_text(f"# fixture: {source_name}\n", encoding="utf-8")
+        sources[source_name] = _sha256(support_path)
+    source = source_dir / SOLVER_ENTRYPOINT
 
     result = tmp_path / "results" / "incumbent.json"
     result.parent.mkdir()
@@ -46,7 +62,7 @@ def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
             "version": "test",
             "commit": "1" * 40,
             "entrypoint": "contest_solution/my_optimizer.py",
-            "sources": {"contest_solution/my_optimizer.py": _sha256(source)},
+            "sources": sources,
         },
         "public_result": {
             "path": "results/incumbent.json",
@@ -159,6 +175,42 @@ def test_release_manifest_rejects_artifact_drift(tmp_path):
     assert not ok
     assert any("solver.sources" in error and "hash mismatch" in error for error in errors)
     assert any("submission_package.sha256 hash mismatch" in error for error in errors)
+
+
+def test_release_manifest_requires_every_live_solver_component(tmp_path):
+    manifest, _, _, _ = _release_fixture(tmp_path)
+    missing = "contest_solution/golden_plus_repair.py"
+    del manifest["solver"]["sources"][missing]
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+
+    assert not ok
+    assert any(
+        "missing live solver components" in error and missing in error
+        for error in errors
+    )
+
+
+def test_release_manifest_requires_package_support_sources(tmp_path):
+    manifest, _, _, _ = _release_fixture(tmp_path)
+    missing = "packaging/solver_main.py"
+    del manifest["solver"]["sources"][missing]
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+
+    assert not ok
+    assert any(
+        "missing package support sources" in error and missing in error
+        for error in errors
+    )
 
 
 def test_release_manifest_rejects_result_metadata_drift(tmp_path):
