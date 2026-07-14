@@ -1,3 +1,4 @@
+import copy
 import importlib.util
 import json
 import math
@@ -325,6 +326,182 @@ def test_strict_json_rejects_duplicate_keys_and_nonfinite_values():
         MODULE._decode_json(b'{"value": 1, "value": 2}', "fixture")
     with pytest.raises(ValueError, match="non-finite JSON constant"):
         MODULE._decode_json(b'{"value": NaN}', "fixture")
+
+
+def test_infeasible_challenger_fails_its_gate_without_aborting_selection(
+    tmp_path, campaign
+):
+    fixture = TournamentFixture(tmp_path, campaign, _default_costs())
+    path = fixture.holdouts[("clean", "replacement", 0)]
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["cases"][0]["is_feasible"] = False
+    payload["cases"][0]["cost"] = 10.0
+    payload["solver_all"] = MODULE._summary(payload["cases"])
+    clean_rows = [row for row in payload["cases"] if row["golden_mib_violations"] == 0]
+    payload["solver_golden_mib_clean"] = MODULE._summary(clean_rows)
+    payload["solver_by_size"] = {
+        str(size): MODULE._summary(
+            [row for row in payload["cases"] if row["block_count"] == size]
+        )
+        for size in MODULE.EXPECTED_BLOCK_COUNTS
+    }
+    _write(path, payload)
+    fixture.rebuild("clean", "replacement")
+
+    result = fixture.select()
+
+    replacement = result["development"]["challengers"]["replacement"]
+    assert replacement["passed"] is False
+    assert "clean.full_feasibility" in replacement["reasons"]
+    assert result["dev_finalist"] == "off"
+    assert result["status"] == "off_selected"
+
+
+def test_manifest_partition_audit_rejects_cross_panel_fold_drift(campaign):
+    manifests = copy.deepcopy(campaign["manifests"])
+    clean_folds = manifests["clean"]["payload"]["manifests"]
+    raw_folds = manifests["raw"]["payload"]["manifests"]
+    raw_sources = {
+        case["source_file"] for fold in raw_folds for case in fold["cases"]
+    }
+    replacement = next(
+        case["source_file"]
+        for case in clean_folds[1]["cases"]
+        if case["source_file"] not in raw_sources
+    )
+    raw_folds[0]["cases"][0]["source_file"] = replacement
+
+    with pytest.raises(ValueError, match="different folds"):
+        MODULE._partition_audit(manifests)
+
+
+def test_campaign_binds_partition_and_model_training_exclusions(campaign):
+    partition = campaign["partition_audit"]
+    assert partition["overlap_fold_alignment"] == "exact"
+    assert partition["overlapping_sources"] == 516
+    model = campaign["model_exclusion_audit"]
+    assert model["excluded_source_union_count"] == 741
+    assert [row["sha256"] for row in model["holdout_manifests"]] == [
+        "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+        "9b4ff6a36e1945718411a83045f598228c2b301fdfa22340e33c297da9ac41ec",
+        "a514c565d0e51603c069e120e35fada96993b24596457a352744321de123df28",
+    ]
+
+
+def _passing_gate_payload():
+    return {
+        "cases": 315,
+        "candidate_feasible": 315,
+        "delta_candidate_minus_baseline": -0.01,
+        "bootstrap": {
+            "delta_ci95": [-0.02, -0.005],
+            "probability_candidate_improves": 1.0,
+        },
+        "pseudo_test_one_per_block_count": {
+            "delta_ci95": [-0.02, -0.001],
+            "worst_sampled_delta": 0.0,
+        },
+        "tail_risk": {
+            "worst_case_score_contribution": 0.0,
+            "regression_cvar_5pct_score_contribution": 0.0,
+        },
+        "folds": [{"delta_candidate_minus_baseline": -0.01}],
+    }
+
+
+def test_every_gate_threshold_has_explicit_boundary_semantics():
+    def set_value(payload, metric, value):
+        if metric == "pooled_delta":
+            payload["delta_candidate_minus_baseline"] = value
+        elif metric == "bootstrap_probability_improves":
+            payload["bootstrap"]["probability_candidate_improves"] = value
+        elif metric == "bootstrap_ci95_upper":
+            payload["bootstrap"]["delta_ci95"][1] = value
+        elif metric == "pseudo_ci95_upper":
+            payload["pseudo_test_one_per_block_count"]["delta_ci95"][1] = value
+        elif metric == "maximum_fold_delta":
+            payload["folds"][0]["delta_candidate_minus_baseline"] = value
+        elif metric == "worst_case_score_contribution":
+            payload["tail_risk"]["worst_case_score_contribution"] = value
+        elif metric == "regression_cvar_5pct":
+            payload["tail_risk"]["regression_cvar_5pct_score_contribution"] = value
+        elif metric == "worst_sampled_pseudo_delta":
+            payload["pseudo_test_one_per_block_count"]["worst_sampled_delta"] = value
+        else:  # pragma: no cover - the frozen table below is exhaustive.
+            raise AssertionError(metric)
+
+    cases = [
+        ("development", "clean", "pooled_delta", "maximum_pooled_delta", "max"),
+        ("development", "clean", "bootstrap_probability_improves", "minimum_bootstrap_probability_improves", "min"),
+        ("development", "clean", "bootstrap_ci95_upper", "maximum_bootstrap_ci95_upper", "max"),
+        ("development", "clean", "pseudo_ci95_upper", "maximum_pseudo_ci95_upper", "max"),
+        ("development", "clean", "maximum_fold_delta", "maximum_fold_delta", "max"),
+        ("development", "raw", "pooled_delta", "maximum_pooled_delta", "max"),
+        ("development", "raw", "bootstrap_ci95_upper", "maximum_bootstrap_ci95_upper", "max"),
+        ("development", "raw", "pseudo_ci95_upper", "maximum_pseudo_ci95_upper", "max"),
+        ("development", "raw", "maximum_fold_delta", "maximum_fold_delta", "max"),
+        ("calibration", "clean", "pooled_delta", "maximum_pooled_delta_exclusive", "exclusive_max"),
+        ("calibration", "clean", "bootstrap_probability_improves", "minimum_bootstrap_probability_improves", "min"),
+        ("calibration", "clean", "pseudo_ci95_upper", "maximum_pseudo_ci95_upper", "max"),
+        ("calibration", "raw", "pooled_delta", "maximum_pooled_delta", "max"),
+        ("calibration", "raw", "bootstrap_ci95_upper", "maximum_bootstrap_ci95_upper", "max"),
+        ("calibration", "raw", "pseudo_ci95_upper", "maximum_pseudo_ci95_upper", "max"),
+    ]
+    shared = (
+        ("worst_case_score_contribution", "maximum_worst_case_score_contribution", "max"),
+        ("regression_cvar_5pct", "maximum_regression_cvar_5pct", "max"),
+        ("worst_sampled_pseudo_delta", "maximum_worst_sampled_pseudo_delta", "max"),
+    )
+    cases.extend(
+        (stage, panel, metric, key, direction)
+        for stage in ("development", "calibration")
+        for panel in MODULE.PANELS
+        for metric, key, direction in shared
+    )
+
+    for stage, panel, metric, threshold_key, direction in cases:
+        threshold = MODULE.THRESHOLDS[stage][panel][threshold_key]
+        boundary = _passing_gate_payload()
+        set_value(boundary, metric, threshold)
+        boundary_check = next(
+            row
+            for row in MODULE._panel_checks(boundary, panel, stage)
+            if row["name"] == metric
+        )
+        if direction == "exclusive_max":
+            assert boundary_check["passed"] is False
+            passing_value = math.nextafter(threshold, -math.inf)
+            failing_value = threshold
+        elif direction == "min":
+            assert boundary_check["passed"] is True
+            passing_value = threshold
+            failing_value = math.nextafter(threshold, -math.inf)
+        else:
+            assert boundary_check["passed"] is True
+            passing_value = threshold
+            failing_value = math.nextafter(threshold, math.inf)
+        for value, expected in ((passing_value, True), (failing_value, False)):
+            payload = _passing_gate_payload()
+            set_value(payload, metric, value)
+            check = next(
+                row
+                for row in MODULE._panel_checks(payload, panel, stage)
+                if row["name"] == metric
+            )
+            assert check["passed"] is expected, (stage, panel, metric, value)
+
+
+def test_comparison_replay_allows_only_last_bit_float_drift():
+    assert MODULE._first_difference(1.0, math.nextafter(1.0, math.inf)) is None
+    assert MODULE._first_difference(1.0, 1.0 + 1e-12) is not None
+
+
+def test_tracked_tournament_ledgers_are_repository_portable():
+    root = ROOT / "results" / "research" / "policy_tournament_v1"
+    for name in ("development_selector.json", "final_selector.json"):
+        raw = (root / name).read_text(encoding="utf-8")
+        assert "/tmp/" not in raw
+        assert "/home/" not in raw
 
 
 def test_output_writer_is_atomic_and_refuses_replacement(tmp_path):

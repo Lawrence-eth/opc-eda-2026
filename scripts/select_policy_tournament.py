@@ -21,6 +21,7 @@ import json
 import math
 import os
 from pathlib import Path
+import platform
 import statistics
 import subprocess
 import sys
@@ -40,7 +41,7 @@ from solver_components import (  # noqa: E402
 )
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MODES = ("off", "replacement", "additive", "additive_first_pass")
 CHALLENGERS = MODES[1:]
 PANELS = ("clean", "raw")
@@ -52,6 +53,9 @@ EXPECTED_PER_SIZE = 5
 BOOTSTRAP_SAMPLES = 30_000
 BOOTSTRAP_SEED = 20260710
 PSEUDO_SEED = BOOTSTRAP_SEED + 1
+FLOAT_REPLAY_ABS_TOLERANCE = 1e-15
+MODEL_ARTIFACT_PATH = "results/models/order_ridge_v5b_clean_raw.json"
+SEALED_MANIFEST_PATH = "results/folds/heavy_sealed_v2.json"
 COMPLEXITY_ORDER = {
     "replacement": 0,
     "additive_first_pass": 1,
@@ -373,6 +377,237 @@ def _source_tree_sha256_at_commit(commit: str) -> str:
     return digest.hexdigest()
 
 
+def _manifest_source_assignment(
+    payload: dict[str, Any], context: str
+) -> tuple[dict[str, int], dict[str, Any]]:
+    """Validate one complete source-file partition and return its assignment."""
+
+    if _require_int(payload.get("schema_version"), f"{context}.schema_version") != 3:
+        raise ValueError(f"{context}.schema_version must be 3")
+    if payload.get("split_unit") != "source_file":
+        raise ValueError(f"{context}.split_unit must be source_file")
+    generation = _require_mapping(payload.get("generation"), f"{context}.generation")
+    num_folds = _require_int(generation.get("num_folds"), f"{context}.num_folds", minimum=1)
+    folds = _require_list(payload.get("manifests"), f"{context}.manifests")
+    if len(folds) != num_folds:
+        raise ValueError(f"{context} has {len(folds)} folds; expected {num_folds}")
+
+    assignment: dict[str, int] = {}
+    fold_summaries: list[dict[str, Any]] = []
+    observed_folds: set[int] = set()
+    total_cases = 0
+    for index, raw_fold in enumerate(folds):
+        fold_row = _require_mapping(raw_fold, f"{context}.manifests[{index}]")
+        fold = _require_int(fold_row.get("fold"), f"{context}.manifests[{index}].fold")
+        if fold in observed_folds:
+            raise ValueError(f"{context} repeats fold {fold}")
+        observed_folds.add(fold)
+        cases = _require_list(
+            fold_row.get("cases"), f"{context}.manifests[{index}].cases"
+        )
+        declared_cases = _require_int(
+            fold_row.get("case_count"), f"{context}.manifests[{index}].case_count"
+        )
+        if declared_cases != len(cases):
+            raise ValueError(f"{context} fold {fold} case_count is inconsistent")
+        fold_sources: set[str] = set()
+        for case_index, raw_case in enumerate(cases):
+            case = _require_mapping(
+                raw_case, f"{context}.manifests[{index}].cases[{case_index}]"
+            )
+            source = _require_string(
+                case.get("source_file"),
+                f"{context}.manifests[{index}].cases[{case_index}].source_file",
+            )
+            previous = assignment.get(source)
+            if previous is not None and previous != fold:
+                raise ValueError(
+                    f"{context} source {source!r} crosses folds {previous} and {fold}"
+                )
+            assignment[source] = fold
+            fold_sources.add(source)
+        declared_sources = _require_int(
+            fold_row.get("source_file_count"),
+            f"{context}.manifests[{index}].source_file_count",
+        )
+        if declared_sources != len(fold_sources):
+            raise ValueError(f"{context} fold {fold} source_file_count is inconsistent")
+        total_cases += len(cases)
+        fold_summaries.append(
+            {"fold": fold, "cases": len(cases), "unique_sources": len(fold_sources)}
+        )
+    if observed_folds != set(range(num_folds)):
+        raise ValueError(
+            f"{context} folds are {sorted(observed_folds)}; expected {list(range(num_folds))}"
+        )
+
+    digest = hashlib.sha256()
+    for source, fold in sorted(assignment.items()):
+        digest.update(source.encode("utf-8") + b"\0" + str(fold).encode("ascii") + b"\n")
+    return assignment, {
+        "folds": sorted(fold_summaries, key=lambda row: row["fold"]),
+        "cases": total_cases,
+        "unique_sources": len(assignment),
+        "source_fold_assignment_sha256": digest.hexdigest(),
+    }
+
+
+def _partition_audit(manifests: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    assignments: dict[str, dict[str, int]] = {}
+    panels: dict[str, dict[str, Any]] = {}
+    for panel in PANELS:
+        assignments[panel], panels[panel] = _manifest_source_assignment(
+            manifests[panel]["payload"], f"frozen {panel} manifest"
+        )
+    overlap = sorted(set(assignments["clean"]) & set(assignments["raw"]))
+    mismatched = [
+        source
+        for source in overlap
+        if assignments["clean"][source] != assignments["raw"][source]
+    ]
+    if mismatched:
+        raise ValueError(
+            "clean/raw manifests assign overlapping sources to different folds: "
+            + ", ".join(mismatched[:3])
+        )
+    digest = hashlib.sha256()
+    for source in overlap:
+        digest.update(
+            source.encode("utf-8")
+            + b"\0"
+            + str(assignments["clean"][source]).encode("ascii")
+            + b"\n"
+        )
+    return {
+        "split_unit": "source_file",
+        "panels": panels,
+        "overlapping_sources": len(overlap),
+        "overlap_fold_alignment": "exact",
+        "overlap_assignment_sha256": digest.hexdigest(),
+    }
+
+
+def _model_exclusion_audit(
+    expected_commit: str,
+    manifests: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Bind the deployed model to the complete frozen holdout-source union."""
+
+    sealed_raw = _git_bytes(expected_commit, SEALED_MANIFEST_PATH)
+    sealed_payload = _decode_json(sealed_raw, "frozen sealed holdout manifest")
+    sealed_payload = _require_mapping(sealed_payload, "frozen sealed holdout manifest")
+    manifest_rows = [
+        (manifests["clean"]["relative_path"], manifests["clean"]["raw"], manifests["clean"]["payload"]),
+        (manifests["raw"]["relative_path"], manifests["raw"]["raw"], manifests["raw"]["payload"]),
+        (SEALED_MANIFEST_PATH, sealed_raw, sealed_payload),
+    ]
+    excluded_sources: set[str] = set()
+    for relative, _raw, payload in manifest_rows:
+        assignment, _summary = _manifest_source_assignment(payload, f"model holdout {relative}")
+        excluded_sources.update(assignment)
+
+    model_raw = _git_bytes(expected_commit, MODEL_ARTIFACT_PATH)
+    model = _decode_json(model_raw, "frozen deployed model artifact")
+    model = _require_mapping(model, "frozen deployed model artifact")
+    declared_payload_sha = _require_sha256(
+        model.get("payload_sha256"), "model.payload_sha256"
+    )
+    unsigned = copy.deepcopy(model)
+    del unsigned["payload_sha256"]
+    canonical = json.dumps(
+        unsigned, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    if _sha256_bytes(canonical) != declared_payload_sha:
+        raise ValueError("deployed model payload digest is inconsistent")
+    provenance = _require_mapping(model.get("provenance"), "model.provenance")
+    expected_paths = [relative for relative, _raw, _payload in manifest_rows]
+    expected_hashes = [_sha256_bytes(raw) for _relative, raw, _payload in manifest_rows]
+    if provenance.get("holdout_manifests") != expected_paths:
+        raise ValueError("deployed model does not name the complete canonical holdout union")
+    if provenance.get("holdout_manifest_sha256s") != expected_hashes:
+        raise ValueError("deployed model holdout digests do not match canonical bytes")
+    if provenance.get("holdout_manifest_schema_versions") != [3, 3, 3]:
+        raise ValueError("deployed model holdout schema contract is inconsistent")
+    if provenance.get("holdout_split_unit") != "source_file":
+        raise ValueError("deployed model was not trained with source-file exclusions")
+    if _require_int(
+        provenance.get("source_files_excluded"), "model.provenance.source_files_excluded"
+    ) != len(excluded_sources):
+        raise ValueError("deployed model excluded-source count does not match the manifest union")
+    generated_module = _git_bytes(expected_commit, "contest_solution/order_model_v5b.py")
+    marker = f"Payload SHA-256: {declared_payload_sha}".encode("ascii")
+    if marker not in generated_module:
+        raise ValueError("generated deployed model module does not bind the model payload")
+    return {
+        "model_artifact": {
+            "path": MODEL_ARTIFACT_PATH,
+            "sha256": _sha256_bytes(model_raw),
+            "size_bytes": len(model_raw),
+            "payload_sha256": declared_payload_sha,
+        },
+        "holdout_manifests": [
+            {"path": relative, "sha256": digest}
+            for relative, digest in zip(expected_paths, expected_hashes)
+        ],
+        "excluded_source_union_count": len(excluded_sources),
+        "split_unit": "source_file",
+        "training_exclusion_contract": "hash_bound_trainer_manifest_union",
+    }
+
+
+def _selector_provenance(*, require_clean: bool) -> dict[str, Any]:
+    def git_output(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", "-C", str(ROOT), *args],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise ValueError(f"cannot inspect selector Git provenance: {completed.stderr.strip()}")
+        return completed.stdout.strip()
+
+    head = _require_commit(git_output("rev-parse", "HEAD"), "selector Git commit")
+    tree = git_output("rev-parse", "HEAD^{tree}")
+    if len(tree) != 40 or any(character not in "0123456789abcdef" for character in tree):
+        raise ValueError("selector Git tree must be a full lowercase object ID")
+    selector_path = Path(__file__).resolve()
+    selector_raw = selector_path.read_bytes()
+    committed_match = selector_raw == _git_bytes(head, "scripts/select_policy_tournament.py")
+    status_lines = git_output("status", "--porcelain=v1", "--untracked-files=all").splitlines()
+    has_untracked = any(line.startswith("??") for line in status_lines)
+    tracked_dirty = any(not line.startswith("??") for line in status_lines)
+    clean = not status_lines
+    if require_clean and (not clean or not committed_match):
+        raise ValueError(
+            "selector CLI requires a clean Git tree with its exact script bytes committed"
+        )
+    return {
+        "path": "scripts/select_policy_tournament.py",
+        "sha256": _sha256_bytes(selector_raw),
+        "git": {
+            "commit": head,
+            "tree": tree,
+            "clean": clean,
+            "tracked_dirty": tracked_dirty,
+            "has_untracked": has_untracked,
+            "committed_bytes_match": committed_match,
+        },
+        "replay_environment": {
+            "python_implementation": platform.python_implementation(),
+            "python_version": platform.python_version(),
+            "platform_system": platform.system(),
+            "platform_release": platform.release(),
+            "machine": platform.machine(),
+            "float_comparison": {
+                "relative_tolerance": 0.0,
+                "absolute_tolerance": FLOAT_REPLAY_ABS_TOLERANCE,
+            },
+        },
+    }
+
+
 def _campaign_contract(expected_commit: str) -> dict[str, Any]:
     expected_commit = _require_commit(expected_commit, "expected solver commit")
     # Resolve to a commit object, rejecting an arbitrary 40-hex object ID.
@@ -434,6 +669,9 @@ def _campaign_contract(expected_commit: str) -> dict[str, Any]:
             "payload": payload,
         }
 
+    partition_audit = _partition_audit(manifests)
+    model_exclusion_audit = _model_exclusion_audit(expected_commit, manifests)
+
     return {
         "expected_commit": expected_commit,
         "official_sources": {
@@ -452,6 +690,8 @@ def _campaign_contract(expected_commit: str) -> dict[str, Any]:
         "solver_source_sha256": _source_tree_sha256_at_commit(expected_commit),
         "solver_component_sha256": component_sha256,
         "manifests": manifests,
+        "partition_audit": partition_audit,
+        "model_exclusion_audit": model_exclusion_audit,
     }
 
 
@@ -797,9 +1037,6 @@ def _validate_holdout(
         counts[block_count] += 1
     if any(count != EXPECTED_PER_SIZE for count in counts.values()):
         raise ValueError(f"{path} does not have five cases for every heavy size")
-    if not all(row["is_feasible"] for row in validated):
-        raise ValueError(f"{path} is not fully feasible")
-
     _validate_summary(payload["solver_all"], _summary(validated), f"{path}.solver_all")
     clean_rows = [row for row in validated if row["golden_mib_violations"] == 0]
     _validate_summary(
@@ -869,7 +1106,16 @@ def _first_difference(left: Any, right: Any, path: str = "$" ) -> str | None:
                 return difference
         return None
     if isinstance(left, float):
-        if math.isnan(left) or math.isnan(right) or left != right:
+        if (
+            math.isnan(left)
+            or math.isnan(right)
+            or not math.isclose(
+                left,
+                right,
+                rel_tol=0.0,
+                abs_tol=FLOAT_REPLAY_ABS_TOLERANCE,
+            )
+        ):
             return f"{path}: {left!r} != {right!r}"
         return None
     if left != right:
@@ -888,9 +1134,13 @@ def _validate_comparison_shape(
     cases = EXPECTED_CASES_PER_FOLD * len(folds)
     if _require_int(payload.get("cases"), f"{context}.cases") != cases:
         raise ValueError(f"{context}.cases must be {cases}")
-    for field in ("baseline_feasible", "candidate_feasible"):
-        if _require_int(payload.get(field), f"{context}.{field}") != cases:
-            raise ValueError(f"{context}.{field} must be {cases}")
+    if _require_int(payload.get("baseline_feasible"), f"{context}.baseline_feasible") != cases:
+        raise ValueError(f"{context}.baseline_feasible must be {cases}")
+    candidate_feasible = _require_int(
+        payload.get("candidate_feasible"), f"{context}.candidate_feasible", minimum=0
+    )
+    if candidate_feasible > cases:
+        raise ValueError(f"{context}.candidate_feasible exceeds {cases}")
     bootstrap = _require_mapping(payload.get("bootstrap"), f"{context}.bootstrap")
     pseudo = _require_mapping(
         payload.get("pseudo_test_one_per_block_count"), f"{context}.pseudo_test"
@@ -1286,7 +1536,9 @@ def select_policy_tournament(
     expected_commit: str,
     artifact_root: Path,
     calibration_paths: dict[str, Path] | None = None,
+    require_clean_selector_git: bool = False,
 ) -> dict[str, Any]:
+    selector_provenance = _selector_provenance(require_clean=require_clean_selector_git)
     campaign = _campaign_contract(expected_commit)
     holdout_cache: dict[Path, dict[str, Any]] = {}
     comparisons: dict[str, dict[str, dict[str, Any]]] = {
@@ -1345,10 +1597,7 @@ def select_policy_tournament(
 
     ledger: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
-        "selector": {
-            "path": "scripts/select_policy_tournament.py",
-            "sha256": _sha256_file(Path(__file__)),
-        },
+        "selector": selector_provenance,
         "comparison_harness": {
             "path": "scripts/compare_fold_results.py",
             "sha256": campaign["comparison_harness_sha256"],
@@ -1374,6 +1623,8 @@ def select_policy_tournament(
             }
             for panel in PANELS
         },
+        "partition_audit": campaign["partition_audit"],
+        "model_training_exclusion_audit": campaign["model_exclusion_audit"],
         "development": {
             "folds": list(DEV_FOLDS),
             "comparison_artifacts": {
@@ -1528,6 +1779,7 @@ def main() -> None:
                 if args.fold3_clean is not None
                 else None
             ),
+            require_clean_selector_git=True,
         )
         _write_json_exclusive(args.output, ledger)
     except Exception as exc:
