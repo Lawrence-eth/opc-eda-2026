@@ -400,6 +400,15 @@ def test_additive_learning_is_withheld_until_final_v32_reference(monkeypatch):
     optimizer = MyOptimizer()
     optimizer._learned_order_mode = "additive"
     monkeypatch.setattr(optimizer, "_solve_one", lambda *args, **kwargs: standard)
+    repaired_inputs = []
+
+    def record_safe_mib(positions, *args, **kwargs):
+        repaired_inputs.append(positions)
+        return positions
+
+    monkeypatch.setattr(
+        optimizer, "_safe_mib_repair_candidate", record_safe_mib
+    )
     selector_pools = []
 
     def select_first(candidates, *args, **kwargs):
@@ -425,6 +434,7 @@ def test_additive_learning_is_withheld_until_final_v32_reference(monkeypatch):
     assert set((0.8, 0.9, 1.0, 1.1, 1.2)).issubset(standard_widths)
     assert all(not any(pool) for pool in selector_pools[:-1])
     assert selector_pools[-1] == (False, True)
+    assert repaired_inputs == [standard, learned]
     assert optimizer._debug_final_nonlearned_reference == standard
 
 

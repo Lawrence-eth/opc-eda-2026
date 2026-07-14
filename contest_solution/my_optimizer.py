@@ -828,74 +828,6 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 pass
 
-        # Keep learning out of every path-dependent v32 decision.  The final
-        # nonlearned layout below therefore includes anchored passes, local
-        # repairs, and the reused-final comparison exactly as they would run
-        # without learning.  Only then offer the already-computed learned
-        # layout as a challenger, so its guard has the true final nonlearned
-        # reference and costs no additional solve.
-        self._debug_final_nonlearned_reference = best_positions
-        if best_positions is not None and learned_candidate is not None:
-            learned_final_candidate = learned_candidate
-            if block_count >= 118:
-                try:
-                    reshaped = self._boundary_reshape_candidate(
-                        learned_final_candidate,
-                        constraints,
-                        area_targets,
-                        b2b_edges,
-                        p2b_edges,
-                        pins_l,
-                        target_positions,
-                    )
-                    if reshaped is not None:
-                        learned_final_candidate = reshaped
-                except Exception:
-                    pass
-            if block_count in (103, 119):
-                try:
-                    slid = self._boundary_edge_slide_candidate(
-                        learned_final_candidate,
-                        constraints,
-                        area_targets,
-                        b2b_edges,
-                        p2b_edges,
-                        pins_pos,
-                        target_positions,
-                    )
-                    if slid is not None:
-                        learned_final_candidate = slid
-                except Exception:
-                    pass
-            try:
-                challenger = self._select_candidate(
-                    [best_positions, learned_final_candidate],
-                    constraints,
-                    area_targets,
-                    b2b_edges,
-                    p2b_edges,
-                    pins_l,
-                    target_positions,
-                )
-            except Exception:
-                challenger = None
-            if (
-                challenger is learned_final_candidate
-                and self._accept_learned_trade(
-                    learned_final_candidate,
-                    best_positions,
-                    constraints,
-                    area_targets,
-                    b2b_edges,
-                    p2b_edges,
-                    pins_l,
-                    target_positions,
-                )
-            ):
-                best_positions = learned_final_candidate
-                self._learned_candidate_selected = True
-                self._learned_candidate_trade_accepted = True
-
         # Fixed-topology HPWL polish.  One weighted-median sweep preserves
         # dimensions, bbox, preplaced locations, satisfied boundaries,
         # non-overlap relations, and existing grouping connectivity.  The
@@ -940,37 +872,143 @@ class MyOptimizer(FloorplanOptimizer):
             except Exception:
                 pass
 
-        # Last-mile, topology-preserving MIB repair.  This must remain after
-        # every selector and polisher: an accepted move has already proved
-        # hard feasibility, non-increasing HPWL/bbox/soft categories, and a
-        # strict MIB-violation reduction.  The narrow input/output-visible
-        # pattern gate returns the incumbent almost immediately otherwise.
+        # Repair both sides before the learned decision.  That makes the
+        # challenger gate the true last selector: candidate zero is the exact
+        # final nonlearned return, and an accepted learned candidate is also
+        # compared after the same narrow, topology-preserving MIB transform.
         if best_positions is not None:
-            try:
-                from golden_plus_repair import RepairConfig, repair_fixed_topology
+            best_positions = self._safe_mib_repair_candidate(
+                best_positions,
+                block_count,
+                area_targets,
+                b2b_edges,
+                p2b_edges,
+                pins_l,
+                constraints,
+                target_positions,
+            )
 
-                repaired = repair_fixed_topology(
-                    best_positions,
+        # Learning stays out of every path-dependent legacy decision.  The
+        # incumbent now includes anchored passes, local repairs, reused-first-
+        # pass selection, topology polish, and safe MIB repair.  Only then is
+        # the independently computed learned layout offered as the final
+        # challenger, so audit candidate zero and solve()'s return agree.
+        self._debug_final_nonlearned_reference = best_positions
+        if best_positions is not None and learned_candidate is not None:
+            learned_final_candidate = learned_candidate
+            if block_count >= 118:
+                try:
+                    reshaped = self._boundary_reshape_candidate(
+                        learned_final_candidate,
+                        constraints,
+                        area_targets,
+                        b2b_edges,
+                        p2b_edges,
+                        pins_l,
+                        target_positions,
+                    )
+                    if reshaped is not None:
+                        learned_final_candidate = reshaped
+                except Exception:
+                    pass
+            if block_count in (103, 119):
+                try:
+                    slid = self._boundary_edge_slide_candidate(
+                        learned_final_candidate,
+                        constraints,
+                        area_targets,
+                        b2b_edges,
+                        p2b_edges,
+                        pins_pos,
+                        target_positions,
+                    )
+                    if slid is not None:
+                        learned_final_candidate = slid
+                except Exception:
+                    pass
+            learned_final_candidate = self._safe_mib_repair_candidate(
+                learned_final_candidate,
+                block_count,
+                area_targets,
+                b2b_edges,
+                p2b_edges,
+                pins_l,
+                constraints,
+                target_positions,
+            )
+            try:
+                challenger = self._select_candidate(
+                    [best_positions, learned_final_candidate],
+                    constraints,
                     area_targets,
                     b2b_edges,
                     p2b_edges,
                     pins_l,
-                    constraints,
                     target_positions,
-                    config=RepairConfig(
-                        enable_boundary=False,
-                        enable_mib=True,
-                        enable_grouping=False,
-                        require_safe_mib_pattern=True,
-                    ),
                 )
-                if repaired is not None and len(repaired) == block_count:
-                    best_positions = repaired
-            except Exception as exc:
-                if getattr(self, "verbose", False):
-                    print(f"[WARN] safe MIB repair failed: {exc}", file=sys.stderr)
+            except Exception:
+                challenger = None
+            if (
+                challenger is learned_final_candidate
+                and self._accept_learned_trade(
+                    learned_final_candidate,
+                    best_positions,
+                    constraints,
+                    area_targets,
+                    b2b_edges,
+                    p2b_edges,
+                    pins_l,
+                    target_positions,
+                )
+            ):
+                best_positions = learned_final_candidate
+                self._learned_candidate_selected = True
+                self._learned_candidate_trade_accepted = True
 
         return best_positions if best_positions is not None else []
+
+    def _safe_mib_repair_candidate(
+        self,
+        positions,
+        block_count,
+        area_targets,
+        b2b_edges,
+        p2b_edges,
+        pins_pos,
+        constraints,
+        target_positions,
+    ):
+        """Apply the narrow production MIB repair, preserving the incumbent."""
+        try:
+            from golden_plus_repair import RepairConfig, repair_fixed_topology
+
+            repaired = repair_fixed_topology(
+                positions,
+                area_targets,
+                b2b_edges,
+                p2b_edges,
+                pins_pos,
+                constraints,
+                target_positions,
+                config=RepairConfig(
+                    enable_boundary=False,
+                    enable_mib=True,
+                    enable_grouping=False,
+                    require_safe_mib_pattern=True,
+                ),
+            )
+            if (
+                repaired is not None
+                and len(repaired) == block_count
+                and self._is_feasible(
+                    repaired, constraints, area_targets, target_positions
+                )
+            ):
+                return repaired
+        except Exception as exc:
+            if getattr(self, "verbose", False):
+                print(f"[WARN] safe MIB repair failed: {exc}", file=sys.stderr)
+        return positions
 
     def _select_candidate(self, candidates, constraints, area_targets, b2b,
                           p2b, pins_pos, target_positions):

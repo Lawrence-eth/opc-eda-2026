@@ -68,7 +68,9 @@ def calculate_hpwl_p2b(positions, connectivity, pins):
     assert result["status"] == "PASS"
     assert result["v5b"]["payload_sha256"] == EXPECTED_V5B_PAYLOAD_SHA256
     assert result["replacement_policy"]["mode"] == "replacement"
-    assert result["replacement_policy"]["abstain_sizes"] == [101, 109, 112]
+    assert result["replacement_policy"]["abstain_sizes"] == [
+        101, 105, 109, 112, 113, 118, 119, 120
+    ]
     assert result["safe_mib_repair"] == {
         "accepted_groups": 1,
         "changed": True,

@@ -106,6 +106,23 @@ def test_production_repair_exception_preserves_solver_output(monkeypatch):
     assert MyOptimizer().solve(*inputs) == baseline
 
 
+def test_production_repair_rejects_malformed_output(monkeypatch):
+    inputs = _single_block_inputs()
+    monkeypatch.setattr(
+        golden_plus_module,
+        "repair_fixed_topology",
+        lambda positions, *args, **kwargs: positions,
+    )
+    baseline = MyOptimizer().solve(*inputs)
+    monkeypatch.setattr(
+        golden_plus_module,
+        "repair_fixed_topology",
+        lambda *args, **kwargs: [(0.0, 0.0, math.nan, 1.0)],
+    )
+
+    assert MyOptimizer().solve(*inputs) == baseline
+
+
 def test_list_hpwl_matches_official_arithmetic_for_lists_and_tensors():
     positions = [
         (0.0, 1.0, 2.0, 4.0),

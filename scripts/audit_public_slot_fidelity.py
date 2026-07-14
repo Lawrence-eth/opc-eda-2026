@@ -38,9 +38,6 @@ from evaluate_training_holdout import (  # noqa: E402
     _portable_path,
     _solver_component_hashes,
 )
-from iccad2026_evaluate import ContestEvaluator  # noqa: E402
-
-
 SLOTS = (0.8, 0.9, 1.0, 1.1, 1.2)
 
 
@@ -90,6 +87,10 @@ def _optimizer_targets(constraints, golden_positions, n):
 
 
 def main():
+    # Parser and contract tests do not require an installed official checkout.
+    # The actual audit imports the evaluator only when executing its CLI.
+    from iccad2026_evaluate import ContestEvaluator
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-root", type=Path, default=OFFICIAL_ROOT)
     parser.add_argument("--solver-dir", type=Path, default=SOLUTION_DIR)

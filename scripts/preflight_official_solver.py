@@ -25,7 +25,7 @@ EXPECTED_V5B_PAYLOAD_SHA256 = (
 )
 DEFAULT_POLICY_MIN_BLOCKS = 100
 DEFAULT_POLICY_MAX_BLOCKS = 120
-DEFAULT_ABSTAIN_SIZES = (101, 109, 112)
+DEFAULT_ABSTAIN_SIZES = (101, 105, 109, 112, 113, 118, 119, 120)
 STANDARD_REPLACEMENT_WIDTHS = frozenset((0.8, 0.9, 1.0, 1.1, 1.2))
 
 
@@ -340,7 +340,10 @@ def main(argv=None):
         "--expected-abstain-size",
         action="append",
         type=int,
-        help="Expected abstention; repeat as needed (default: 101,109,112).",
+        help=(
+            "Expected abstention; repeat as needed "
+            "(default: 101,105,109,112,113,118,119,120)."
+        ),
     )
     args = parser.parse_args(argv)
     abstentions = (
