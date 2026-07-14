@@ -78,12 +78,12 @@ import learned_order as learned_order_module
 import my_optimizer as optimizer_module
 
 
-def test_learned_replacement_slots_match_frozen_audit_artifact():
+def test_learned_replacement_slots_match_final_audit_artifact():
     path = (
         Path(__file__).resolve().parents[1]
         / "results"
         / "models"
-        / "order_v5b_final_fidelity_provisional_v2.json"
+        / "order_v5b_final_fidelity_v2.json"
     )
     artifact = json.loads(path.read_bytes())
     assert artifact["schema_version"] == 2

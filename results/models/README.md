@@ -2,10 +2,13 @@
 
 ## Final-fidelity policy promotion
 
-`order_v5b_final_fidelity_provisional_v2.json` is intentionally provisional.
-It records the current live replacement map, but it predates the complete
-schema-2 derivation provenance and must not be supplied to the finalizer or
-silently relabeled as final evidence.
+`order_v5b_final_fidelity_v2.json` is the promoted, provenance-complete policy.
+It binds the raw evidence under
+`results/research/order_v5b_final_fidelity_v2/`, the reducer and audit
+harnesses, and the rejection-only public confirmation. The older
+`order_v5b_final_fidelity_provisional_v2.json` is retained only as a historical
+preregistration; it must not be supplied to the finalizer or relabeled as
+complete evidence.
 
 A promotable policy is produced in three separate, non-live steps:
 
@@ -19,8 +22,10 @@ A promotable policy is produced in three separate, non-live steps:
    computing public golden cost. Its `config.slot_map_sha256` is the byte-level
    link to the derivation artifact.
 3. `scripts/finalize_learned_policy.py` verifies both complete schemas,
-   current harness bytes, matching clean commit/component bindings, mapped
-   sizes, width factors, cases, counts, and recomputed preservation verdicts.
+   current harness bytes, clean solver snapshots with identical live component
+   bindings, mapped sizes, width factors, cases, counts, and recomputed
+   preservation verdicts. Non-live audit commits may differ and are recorded
+   explicitly; the six deployable module hashes may not differ.
    It emits `final_rejection_only_public_audit_complete` only after constructing
    the final map by set subtraction. Public evidence can add abstentions; it
    cannot add a size or retune a width factor.
@@ -31,6 +36,8 @@ heavy-size complement in `abstain_sizes`. The generator refuses to overwrite
 an existing output unless `--overwrite` is explicit. Generate into
 `results/work/<campaign>/` first; replacing the tracked policy and changing
 live solver bytes are separate promotion actions after review and evaluation.
+The v2 policy was promoted without changing live solver bytes because its final
+map exactly matched the preregistered inline map.
 
 ## Full-heavy v5 ablations
 
