@@ -1,5 +1,37 @@
 # Learned model artifacts
 
+## Final-fidelity policy promotion
+
+`order_v5b_final_fidelity_provisional_v2.json` is intentionally provisional.
+It records the current live replacement map, but it predates the complete
+schema-2 derivation provenance and must not be supplied to the finalizer or
+silently relabeled as final evidence.
+
+A promotable policy is produced in three separate, non-live steps:
+
+1. `scripts/derive_redundant_slot_map.py` consumes exactly the frozen clean/raw
+   fold 0–2 development matrix plus both fold-3 confirmation panels. Its
+   schema-2 artifact binds the clean solver commit, all live component hashes,
+   exact frozen case identities, and both audit harnesses. Confirmation is
+   rejection-only.
+2. `scripts/audit_public_slot_fidelity.py` consumes those exact artifact bytes
+   and audits exactly one public case for every confirmed mapping without
+   computing public golden cost. Its `config.slot_map_sha256` is the byte-level
+   link to the derivation artifact.
+3. `scripts/finalize_learned_policy.py` verifies both complete schemas,
+   current harness bytes, matching clean commit/component bindings, mapped
+   sizes, width factors, cases, counts, and recomputed preservation verdicts.
+   It emits `final_rejection_only_public_audit_complete` only after constructing
+   the final map by set subtraction. Public evidence can add abstentions; it
+   cannot add a size or retune a width factor.
+
+The final artifact records the SHA-256 of both input files and the finalizer,
+plus `public_rejected_sizes`, the final `replacement_wf_by_size`, and the full
+heavy-size complement in `abstain_sizes`. The generator refuses to overwrite
+an existing output unless `--overwrite` is explicit. Generate into
+`results/work/<campaign>/` first; replacing the tracked policy and changing
+live solver bytes are separate promotion actions after review and evaluation.
+
 ## Full-heavy v5 ablations
 
 `order_ridge_v5_heavy.json` and `order_ridge_v5b_clean_raw.json` fix the v4

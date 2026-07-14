@@ -84,6 +84,9 @@ and write the candidate result to a new path.
 | Tool | Category | Role |
 |---|---|---|
 | [`evaluate_public_mode.py`](evaluate_public_mode.py) | Public ablation | Run one explicit learned-policy mode through the pinned official public evaluator without changing live solver bytes. It verifies official-source provenance, checks solver hashes before/after, records the applied in-memory configuration, and refuses to overwrite output by default; repeat `--test-id` for bounded panels. |
+| [`derive_redundant_slot_map.py`](derive_redundant_slot_map.py) | Learned-policy derivation | Derive candidate paid-slot replacements from the frozen clean/raw fold 0–2 matrix, then use both fold-3 panels only to reject mappings. The schema-2 output binds exact case identities, harnesses, solver components, and the clean solver commit. |
+| [`audit_public_slot_fidelity.py`](audit_public_slot_fidelity.py) | Public structural audit | Rerun every still-mapped public heavy case with its preregistered paid slot removed. It computes no public golden cost and can report only preservation or rejection; its output hashes the exact schema-2 slot-map bytes. |
+| [`finalize_learned_policy.py`](finalize_learned_policy.py) | Learned-policy promotion | Fail-closed composition gate for a schema-2 derivation and its exact public audit. It verifies harness and solver bindings, one matching case per mapped size, recomputes every verdict, and can only subtract rejected sizes. It writes a provenance-bound final artifact atomically and refuses overwrite by default. |
 | [`build_holdout_folds.py`](build_holdout_folds.py) | Fold construction | Build deterministic, source-file-disjoint heavy-layout manifests with input-visible MIB compatibility or label-blind hash selection. Manifest generation is an intentional campaign-level action, not routine evaluation. |
 | [`evaluate_training_holdout.py`](evaluate_training_holdout.py) | Fold evaluation | Score the submitted solver on a manifest fold with the pinned official evaluator, pristine inputs, strict output validation, and complete provenance. RF=1 is deliberately neutral; measured wall time is recorded separately. |
 | [`compare_fold_results.py`](compare_fold_results.py) | Promotion statistics | Compare matched fold artifacts fail-closed and estimate paired uncertainty by source-cluster bootstrap. Use development folds first, calibration once, and the sealed fold only at the documented freeze. |
@@ -105,6 +108,21 @@ outputs:
 .venv/bin/python scripts/evaluate_public_mode.py \
   --learned-mode replacement --test-id 99 \
   --output results/work/<campaign>/public-replacement-case99.json
+
+# Finalize only after deriving a full schema-2 artifact and auditing those
+# exact bytes. These placeholders denote the frozen six-plus-two audit panel.
+.venv/bin/python scripts/derive_redundant_slot_map.py \
+  <clean-fold0> <clean-fold1> <clean-fold2> \
+  <raw-fold0> <raw-fold1> <raw-fold2> \
+  --confirmation-audits <clean-fold3> <raw-fold3> \
+  --output results/work/<campaign>/derived-slot-map.json
+.venv/bin/python scripts/audit_public_slot_fidelity.py \
+  --slot-map results/work/<campaign>/derived-slot-map.json \
+  --output results/work/<campaign>/public-slot-audit.json
+.venv/bin/python scripts/finalize_learned_policy.py \
+  --slot-map results/work/<campaign>/derived-slot-map.json \
+  --public-audit results/work/<campaign>/public-slot-audit.json \
+  --output results/work/<campaign>/final-policy.json
 
 # One bounded selector-audit smoke on the existing clean panel.
 .venv/bin/python scripts/audit_candidate_selector.py \
