@@ -83,6 +83,7 @@ and write the candidate result to a new path.
 
 | Tool | Category | Role |
 |---|---|---|
+| [`evaluate_public_mode.py`](evaluate_public_mode.py) | Public ablation | Run one explicit learned-policy mode through the pinned official public evaluator without changing live solver bytes. It verifies official-source provenance, checks solver hashes before/after, records the applied in-memory configuration, and refuses to overwrite output by default; repeat `--test-id` for bounded panels. |
 | [`build_holdout_folds.py`](build_holdout_folds.py) | Fold construction | Build deterministic, source-file-disjoint heavy-layout manifests with input-visible MIB compatibility or label-blind hash selection. Manifest generation is an intentional campaign-level action, not routine evaluation. |
 | [`evaluate_training_holdout.py`](evaluate_training_holdout.py) | Fold evaluation | Score the submitted solver on a manifest fold with the pinned official evaluator, pristine inputs, strict output validation, and complete provenance. RF=1 is deliberately neutral; measured wall time is recorded separately. |
 | [`compare_fold_results.py`](compare_fold_results.py) | Promotion statistics | Compare matched fold artifacts fail-closed and estimate paired uncertainty by source-cluster bootstrap. Use development folds first, calibration once, and the sealed fold only at the documented freeze. |
@@ -99,6 +100,11 @@ outputs:
 ```bash
 # Engine-only public smoke; prints metrics and writes nothing.
 .venv/bin/python scripts/dissect_eval.py --cases 95,97,99
+
+# Bounded official public ablation; writes a new provenance-bound artifact.
+.venv/bin/python scripts/evaluate_public_mode.py \
+  --learned-mode replacement --test-id 99 \
+  --output results/work/<campaign>/public-replacement-case99.json
 
 # One bounded selector-audit smoke on the existing clean panel.
 .venv/bin/python scripts/audit_candidate_selector.py \
