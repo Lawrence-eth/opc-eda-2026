@@ -1,0 +1,140 @@
+name: native-package-tournament
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-package-tournament
+  cancel-in-progress: false
+
+jobs:
+  full-public-tournament:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      FLOORSET_COMMIT: aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa
+      FLOORSET_TREE: 37e9b61f11e056b5a6ee92dcf38d12a1ad3f493c
+      FLOORSET_DATA_TREE: f3638a985c3f15ca2fc483fad7cf8ded41a0157c
+
+    steps:
+      - name: Check out complete source history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Set up host Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Assert native x64 runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_ARCH" = X64
+          test "$(uname -m)" = x86_64
+          test "$(docker info --format '{{.Architecture}}')" = x86_64
+          if grep -Eqi 'ARMv|AArch64|Neoverse|CPU implementer.*0x41' /proc/cpuinfo; then
+            echo "ARM host evidence contradicts the x64 runner contract" >&2
+            exit 1
+          fi
+
+      - name: Install pinned evaluator dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip==26.1.2
+          python -m pip install --requirement requirements-dev.txt
+          python -m pip install torch==2.12.1 \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Restore exact FloorSet checkout and public data
+        run: |
+          set -euo pipefail
+          mkdir -p external
+          git clone --filter=blob:none --no-checkout \
+            https://github.com/IntelLabs/FloorSet.git external/FloorSet
+          git -C external/FloorSet checkout --detach "$FLOORSET_COMMIT"
+          test "$(git -C external/FloorSet rev-parse HEAD^{tree})" = "$FLOORSET_TREE"
+          test "$(git -C external/FloorSet rev-parse HEAD:LiteTensorDataTest)" = \
+            "$FLOORSET_DATA_TREE"
+          python scripts/check_official_sources.py \
+            --floorset external/FloorSet \
+            --require-floorset
+
+      - name: Pull digest-pinned build image
+        run: >-
+          docker pull --platform linux/amd64
+          python:3.13.14-trixie@sha256:3c6de64d284d7cd73f91d8a959061da67030b0fbd8b964f8dad96fd73c2110c4
+
+      - name: Record benchmark environment
+        run: |
+          set -euo pipefail
+          {
+            echo "github_repository=$GITHUB_REPOSITORY"
+            echo "github_sha=$GITHUB_SHA"
+            echo "github_run_id=$GITHUB_RUN_ID"
+            echo "github_run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "image_os=${ImageOS:-unknown}"
+            echo "image_version=${ImageVersion:-unknown}"
+            uname -a
+            lscpu
+            cat /proc/cpuinfo
+            docker version
+            python --version
+            python -m pip freeze --all
+          } > "$RUNNER_TEMP/native-environment.txt"
+
+      - name: Build four isolated packages
+        run: |
+          set -euo pipefail
+          python scripts/package_mode_tournament.py build \
+            --repository "$GITHUB_WORKSPACE" \
+            --commit "$GITHUB_SHA" \
+            --workspace-root "$RUNNER_TEMP/opc-four-mode-work" \
+            --output-dir "$RUNNER_TEMP/opc-four-mode-build"
+
+      - name: Run complete public Williams tournament
+        run: |
+          set -euo pipefail
+          case_args=()
+          for case_id in $(seq 0 99); do
+            case_args+=(--case-id "$case_id")
+          done
+          python scripts/package_mode_tournament.py time \
+            --build-manifest \
+              "$RUNNER_TEMP/opc-four-mode-build/build_manifest.json" \
+            --official-root "$GITHUB_WORKSPACE/external/FloorSet" \
+            --data-root "$GITHUB_WORKSPACE/external/FloorSet" \
+            --official-sources "$GITHUB_WORKSPACE/docs/official_sources.json" \
+            "${case_args[@]}" \
+            --cycles 1 \
+            --output-dir "$RUNNER_TEMP/opc-four-mode-timing"
+
+      - name: Hash complete evidence bundle
+        if: always()
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          find opc-four-mode-build opc-four-mode-timing \
+            native-environment.txt -type f -print0 2>/dev/null \
+            | LC_ALL=C sort -z \
+            | xargs -0 --no-run-if-empty sha256sum \
+            > native-evidence.sha256
+
+      - name: Preserve packages, raw runs, logs, and manifests
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-package-tournament-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/opc-four-mode-build
+            ${{ runner.temp }}/opc-four-mode-timing
+            ${{ runner.temp }}/native-environment.txt
+            ${{ runner.temp }}/native-evidence.sha256
+          if-no-files-found: warn
+          retention-days: 60
+          compression-level: 0
