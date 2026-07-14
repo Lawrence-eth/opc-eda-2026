@@ -22,6 +22,8 @@ separately and cannot silently change this policy.
 - Selector hardening commit `a176b59` added partition, training-exclusion,
   portability, infeasible-candidate, and replay-provenance checks without
   changing any threshold or the selected mode.
+- Sealed-protocol commit `df61ab2` froze the fold-4 gates and one-finalist-only
+  composition path before any fold-4 result was evaluated.
 
 The chronology does **not** prove a repository preregistration before the
 development results existed. The `0.002` worst-suite rule is therefore a
@@ -93,8 +95,10 @@ pseudo-suite comparison, then applies the frozen gates. Schema v2 additionally:
 The final selector hashes are inserted only after replay from the clean,
 committed evidence base:
 
-- `development_selector.json`: `PENDING_CLEAN_REPLAY`
-- `final_selector.json`: `PENDING_CLEAN_REPLAY`
+- `development_selector.json`:
+  `1f53d0ae17c55efdb6ddb9fee8310411a1dfc76707a5c3d5fc8eaefe754dc290`
+- `final_selector.json`:
+  `6f4dd39cf16448e712ca1335f1ad4e02f33b8d68bd60a156fb8b756a0e509259`
 
 ## Directory layout
 
