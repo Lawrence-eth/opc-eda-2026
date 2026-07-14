@@ -16,6 +16,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
+ROOT = Path(__file__).resolve().parents[1]
 SLOTS = (0.8, 0.9, 1.0, 1.1, 1.2)
 DERIVATION_FOLDS = (0, 1, 2)
 CONFIRMATION_FOLD = 3
@@ -23,10 +24,14 @@ EXPECTED_MANIFESTS = {
     "mib_input_compatible": {
         "require_mib_input_compatible": True,
         "sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+        "path": "results/folds/heavy_clean_v1.json",
+        "source_file_counts": {0: 105, 1: 103, 2: 104, 3: 105, 4: 105},
     },
     "raw_hash": {
         "require_mib_input_compatible": False,
         "sha256": "9b4ff6a36e1945718411a83045f598228c2b301fdfa22340e33c297da9ac41ec",
+        "path": "results/folds/heavy_raw_hash_v1.json",
+        "source_file_counts": {0: 105, 1: 105, 2: 105, 3: 105, 4: 105},
     },
 }
 EXPECTED_GENERATION = {
@@ -35,6 +40,16 @@ EXPECTED_GENERATION = {
     "num_folds": 5,
     "per_size": 5,
     "seed": 20260710,
+}
+EXPECTED_DATASET = {
+    "name": "FloorSet-Lite",
+    "official_floorset_commit": "aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa",
+    "loader": "lite_dataset.FloorplanDatasetLite",
+    "layouts_per_file": 112,
+    "source_file_count": 9000,
+    "source_inventory_sha256": (
+        "c1984cc01d159dbd1a88a90f12340c0a3cc26998c2c498e2854092d3ad53d725"
+    ),
 }
 
 
@@ -115,6 +130,45 @@ def _domain_from_manifest(manifest, path):
     return domain
 
 
+def _canonical_manifest_panel(domain, fold, audit_path):
+    expected = EXPECTED_MANIFESTS[domain]
+    manifest_path = ROOT / expected["path"]
+    try:
+        raw = manifest_path.read_bytes()
+        payload = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(
+            f"cannot load frozen {domain} manifest for {audit_path}: {error}"
+        ) from error
+    if hashlib.sha256(raw).hexdigest() != expected["sha256"]:
+        raise ValueError(f"frozen {domain} manifest hash changed")
+    if payload.get("schema_version") != 3:
+        raise ValueError(f"frozen {domain} manifest is not schema 3")
+    if payload.get("split_unit") != "source_file":
+        raise ValueError(f"frozen {domain} manifest is not source-file split")
+    if payload.get("dataset") != EXPECTED_DATASET:
+        raise ValueError(f"frozen {domain} manifest dataset contract changed")
+    generation = payload.get("generation")
+    if not isinstance(generation, dict) or any(
+        generation.get(field) != value
+        for field, value in EXPECTED_GENERATION.items()
+    ):
+        raise ValueError(f"frozen {domain} manifest generation contract changed")
+    manifests = payload.get("manifests")
+    if not isinstance(manifests, list):
+        raise ValueError(f"frozen {domain} manifest has no fold list")
+    matches = [
+        manifest
+        for manifest in manifests
+        if isinstance(manifest, dict) and manifest.get("fold") == fold
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"frozen {domain} manifest has {len(matches)} entries for fold {fold}"
+        )
+    return payload, matches[0]
+
+
 def _solver_binding(payload, path, expected_components):
     provenance = payload.get("provenance")
     if not isinstance(provenance, dict):
@@ -166,17 +220,37 @@ def _validate_panel(path, allowed_folds, expected_components):
     if not isinstance(manifest, dict) or manifest.get("schema_version") != 3:
         raise ValueError(f"{path} missing schema-3 manifest provenance")
     domain = _domain_from_manifest(manifest, path)
+    expected_manifest = EXPECTED_MANIFESTS[domain]
+    if config.get("fold_manifest") != expected_manifest["path"]:
+        raise ValueError(f"{path} does not name the frozen {domain} manifest")
+    canonical, canonical_fold = _canonical_manifest_panel(domain, fold, path)
     metadata = manifest["fold_metadata"]
     if manifest.get("fold") != fold or metadata.get("fold") != fold:
         raise ValueError(f"{path} fold metadata mismatch")
-    if metadata.get("case_count") != 105 or metadata.get("source_file_count") != 105:
-        raise ValueError(f"{path} has unexpected panel size metadata")
+    expected_metadata = {
+        key: value for key, value in canonical_fold.items() if key != "cases"
+    }
+    if metadata != expected_metadata:
+        raise ValueError(f"{path} fold metadata does not match the frozen manifest")
+    if metadata.get("case_count") != 105:
+        raise ValueError(f"{path} has unexpected case-count metadata")
+    expected_source_count = expected_manifest["source_file_counts"].get(fold)
+    if metadata.get("source_file_count") != expected_source_count:
+        raise ValueError(f"{path} has unexpected source-file count for its role")
     generation = manifest.get("generation")
-    if not isinstance(generation, dict) or any(
-        generation.get(field) != value
-        for field, value in EXPECTED_GENERATION.items()
+    if generation != canonical.get("generation"):
+        raise ValueError(f"{path} generation metadata does not match the frozen manifest")
+    dataset = manifest.get("dataset")
+    if dataset != EXPECTED_DATASET or dataset != canonical.get("dataset"):
+        raise ValueError(f"{path} dataset metadata does not match the frozen manifest")
+    if manifest.get("resolved_inventory_sha256") != (
+        EXPECTED_DATASET["source_inventory_sha256"]
     ):
-        raise ValueError(f"{path} has unexpected generation metadata")
+        raise ValueError(f"{path} did not resolve the frozen source inventory")
+    if manifest.get("resolved_official_floorset_commit") != (
+        EXPECTED_DATASET["official_floorset_commit"]
+    ):
+        raise ValueError(f"{path} did not resolve the frozen FloorSet commit")
 
     rows = payload.get("cases")
     if not isinstance(rows, list) or len(rows) != 105:
@@ -184,6 +258,7 @@ def _validate_panel(path, allowed_folds, expected_components):
     counts = Counter()
     seen = set()
     sources = set()
+    identities = []
     for position, row in enumerate(rows):
         if not isinstance(row, dict):
             raise ValueError(f"{path} case {position} is not an object")
@@ -198,6 +273,14 @@ def _validate_panel(path, allowed_folds, expected_components):
         if "#" not in case_id:
             raise ValueError(f"{path} case {position} has malformed case identity")
         sources.add(case_id.rsplit("#", 1)[0])
+        sample_index = row.get("sample_index")
+        if (
+            isinstance(sample_index, bool)
+            or not isinstance(sample_index, int)
+            or sample_index < 0
+        ):
+            raise ValueError(f"{path} case {position} has invalid sample_index")
+        identities.append((case_id, sample_index, n))
         baseline_sha256 = _require_sha256(
             row.get("baseline_final_positions_sha256"),
             f"{path} case {position} baseline positions",
@@ -237,6 +320,21 @@ def _validate_panel(path, allowed_folds, expected_components):
                 raise ValueError(f"{path} case {position} final verdict mismatch")
     if any(counts[n] != 5 for n in range(100, 121)):
         raise ValueError(f"{path} does not have five cases per block count")
+    if len(sources) != expected_source_count:
+        raise ValueError(
+            f"{path} has {len(sources)} distinct case sources; "
+            f"frozen metadata requires {expected_source_count}"
+        )
+    canonical_identities = [
+        (
+            case.get("case_id"),
+            case.get("sample_index"),
+            case.get("block_count"),
+        )
+        for case in canonical_fold.get("cases", [])
+    ]
+    if identities != canonical_identities:
+        raise ValueError(f"{path} case identity/order does not match the frozen manifest")
 
     descriptor = {
         "path": path.name,
@@ -245,6 +343,7 @@ def _validate_panel(path, allowed_folds, expected_components):
         "domain": domain,
         "manifest_sha256": manifest["sha256"],
         "case_count": len(rows),
+        "source_file_count": len(sources),
     }
     return {
         "payload": payload,
@@ -389,6 +488,12 @@ def derive_map(audit_paths, confirmation_paths, expected_components=None):
     return {
         "schema_version": 2,
         "mode": "legacy_v32_final_output_preserving_slot_calibration",
+        "provenance": {
+            "derivation_harness": {
+                "path": "scripts/derive_redundant_slot_map.py",
+                "sha256": _sha256(Path(__file__).resolve()),
+            },
+        },
         "contract": {
             "derivation_folds": list(DERIVATION_FOLDS),
             "derivation_domains": list(EXPECTED_MANIFESTS),

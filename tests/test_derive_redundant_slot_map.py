@@ -42,39 +42,46 @@ def _metrics(hpwl=100.0):
     }
 
 
+def _canonical_manifest(domain, fold):
+    expected = DERIVE.EXPECTED_MANIFESTS[domain]
+    path = ROOT / expected["path"]
+    payload = json.loads(path.read_text())
+    manifest = next(row for row in payload["manifests"] if row["fold"] == fold)
+    return payload, manifest
+
+
 def _panel(domain, fold):
-    compatible = domain == "mib_input_compatible"
+    canonical, canonical_fold = _canonical_manifest(domain, fold)
     rows = []
-    phase = "dev" if fold < 3 else "confirm"
-    for n in range(100, 121):
-        for index in range(5):
-            # Clean/raw panels intentionally share source groups; folds do not.
-            source = f"{phase}_fold{fold}_n{n}_source{index}.th"
-            baseline_sha = _digest(f"{domain}-{fold}-{n}-{index}-baseline")
-            removals = {}
-            for slot in DERIVE.SLOTS:
-                removals[str(slot)] = {
-                    "execution": "full_solver_rerun_with_slot_removed",
-                    "final_positions_sha256": baseline_sha,
-                    "final_positions_equal": True,
-                    "visible_metrics": _metrics(),
-                    "visible_metrics_equal": True,
-                    "final_preserved": True,
-                }
-            rows.append({
-                "case_id": f"{source}#0",
-                "block_count": n,
-                "selected_standard_wf": None,
-                "baseline_final_positions_sha256": baseline_sha,
-                "baseline_visible_metrics": _metrics(),
-                "removals": removals,
-            })
+    for index, case in enumerate(canonical_fold["cases"]):
+        n = case["block_count"]
+        baseline_sha = _digest(f"{domain}-{fold}-{n}-{index}-baseline")
+        removals = {}
+        for slot in DERIVE.SLOTS:
+            removals[str(slot)] = {
+                "execution": "full_solver_rerun_with_slot_removed",
+                "final_positions_sha256": baseline_sha,
+                "final_positions_equal": True,
+                "visible_metrics": _metrics(),
+                "visible_metrics_equal": True,
+                "final_preserved": True,
+            }
+        rows.append({
+            "case_id": case["case_id"],
+            "sample_index": case["sample_index"],
+            "block_count": n,
+            "selected_standard_wf": None,
+            "baseline_final_positions_sha256": baseline_sha,
+            "baseline_visible_metrics": _metrics(),
+            "removals": removals,
+        })
     manifest_sha = DERIVE.EXPECTED_MANIFESTS[domain]["sha256"]
     return {
         "schema_version": 2,
         "mode": "legacy_v32_final_output_slot_removal_fidelity",
         "config": {
             "fold": fold,
+            "fold_manifest": DERIVE.EXPECTED_MANIFESTS[domain]["path"],
             "learned_enabled": False,
             "golden_cost_computed": False,
             "comparison_stage": "complete_deployed_solver_output",
@@ -84,12 +91,18 @@ def _panel(domain, fold):
                 "sha256": manifest_sha,
                 "fold": fold,
                 "fold_metadata": {
-                    "fold": fold,
-                    "require_mib_input_compatible": compatible,
-                    "case_count": 105,
-                    "source_file_count": 105,
+                    key: value
+                    for key, value in canonical_fold.items()
+                    if key != "cases"
                 },
-                "generation": dict(DERIVE.EXPECTED_GENERATION),
+                "generation": canonical["generation"],
+                "dataset": canonical["dataset"],
+                "resolved_inventory_sha256": canonical["dataset"][
+                    "source_inventory_sha256"
+                ],
+                "resolved_official_floorset_commit": canonical["dataset"][
+                    "official_floorset_commit"
+                ],
             },
         },
         "provenance": {
@@ -136,10 +149,36 @@ def test_derivation_accepts_only_complete_clean_bound_matrix(tmp_path):
     )
     assert result["schema_version"] == 2
     assert result["solver_binding"]["commit"] == COMMIT
+    assert result["provenance"]["derivation_harness"] == {
+        "path": "scripts/derive_redundant_slot_map.py",
+        "sha256": hashlib.sha256(
+            (ROOT / "scripts" / "derive_redundant_slot_map.py").read_bytes()
+        ).hexdigest(),
+    }
     assert set(result["derivation_case_counts_by_size"].values()) == {30}
-    assert set(result["derivation_unique_source_counts_by_size"].values()) == {15}
+    assert set(result["derivation_unique_source_counts_by_size"].values()) == {
+        15,
+        16,
+    }
     assert result["development_abstain_sizes"] == []
     assert result["confirmation_rejected_sizes"] == []
+
+
+def test_derivation_accepts_frozen_clean_103_and_104_source_counts(tmp_path):
+    development, confirmation = _matrix(tmp_path)
+    result = DERIVE.derive_map(
+        development, confirmation, expected_components=COMPONENTS
+    )
+    descriptors = {
+        (row["domain"], row["fold"]): row["source_file_count"]
+        for row in result["development_artifacts"]
+    }
+    assert descriptors[("mib_input_compatible", 0)] == 105
+    assert descriptors[("mib_input_compatible", 1)] == 103
+    assert descriptors[("mib_input_compatible", 2)] == 104
+    assert descriptors[("raw_hash", 0)] == 105
+    assert descriptors[("raw_hash", 1)] == 105
+    assert descriptors[("raw_hash", 2)] == 105
 
 
 def test_derivation_rejects_missing_or_duplicate_matrix_roles(tmp_path):
@@ -208,7 +247,7 @@ def test_derivation_recomputes_evidence_and_binding(
         )
 
 
-def test_derivation_rejects_source_overlap(tmp_path):
+def test_derivation_rejects_noncanonical_case_identity(tmp_path):
     development, confirmation = _matrix(tmp_path)
     first_source = json.loads(development[0].read_text())["cases"][0][
         "case_id"
@@ -219,7 +258,35 @@ def test_derivation_rejects_source_overlap(tmp_path):
             "case_id", first_source
         ),
     )
-    with pytest.raises(ValueError, match="not source-disjoint"):
+    with pytest.raises(ValueError, match="case identity/order"):
+        DERIVE.derive_map(
+            development, confirmation, expected_components=COMPONENTS
+        )
+
+
+def test_derivation_rejects_stale_frozen_source_count_metadata(tmp_path):
+    development, confirmation = _matrix(tmp_path)
+    _rewrite(
+        development[1],
+        lambda payload: payload["config"]["manifest"]["fold_metadata"].__setitem__(
+            "source_file_count", 105
+        ),
+    )
+    with pytest.raises(ValueError, match="frozen manifest"):
+        DERIVE.derive_map(
+            development, confirmation, expected_components=COMPONENTS
+        )
+
+
+def test_derivation_rejects_distinct_source_count_mismatch(tmp_path):
+    development, confirmation = _matrix(tmp_path)
+
+    def collapse_one_source(payload):
+        first_source = payload["cases"][0]["case_id"].rsplit("#", 1)[0]
+        payload["cases"][1]["case_id"] = f"{first_source}#999"
+
+    _rewrite(development[0], collapse_one_source)
+    with pytest.raises(ValueError, match="distinct case sources"):
         DERIVE.derive_map(
             development, confirmation, expected_components=COMPONENTS
         )
