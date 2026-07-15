@@ -83,8 +83,12 @@ Schema 2 makes the beta policy choice and its evidence machine-readable. The
 required `decision_evidence` object binds:
 
 - the canonical GitHub Actions native-tournament run ID, URL, and head SHA;
+- its successful run attempt plus exact artifact ID, name, size, and ZIP digest;
 - SHA-256 digests for its build manifest, timing manifest, and preserved
   `native-evidence.sha256` bundle ledger;
+- the selected mode and package digest, which must match the solver and release
+  archive, plus an assertion that the selected variant did not patch the
+  committed solver source;
 - the canonical tracked sealed-selector path, bytes, and recorded status; and
 - a substantive rationale plus `sealed_policy_overridden`, which must be true
   exactly when the selected mode differs from the sealed selector's actual

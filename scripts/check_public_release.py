@@ -231,11 +231,20 @@ def _validate_decision_evidence(
         decision.get("native_tournament"),
         {
             "run_id",
+            "run_attempt",
             "run_url",
             "head_sha",
+            "conclusion",
+            "artifact_id",
+            "artifact_name",
+            "artifact_size_bytes",
+            "artifact_zip_sha256",
             "build_manifest_sha256",
             "timing_manifest_sha256",
             "evidence_bundle_sha256",
+            "selected_mode",
+            "selected_package_sha256",
+            "selected_source_patch_changed",
         },
         "decision_evidence.native_tournament",
         errors,
@@ -262,6 +271,18 @@ def _validate_decision_evidence(
                 errors.append(
                     "decision_evidence native tournament run URL and run ID disagree"
                 )
+
+        for field in ("run_attempt", "artifact_id", "artifact_size_bytes"):
+            value = native.get(field)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                errors.append(
+                    f"decision_evidence.native_tournament.{field} must be a "
+                    "positive integer"
+                )
+        if native.get("conclusion") != "success":
+            errors.append(
+                "decision_evidence.native_tournament.conclusion must be 'success'"
+            )
 
         head_sha = native.get("head_sha")
         head_valid = (
@@ -295,7 +316,27 @@ def _validate_decision_evidence(
                     f"{head_sha}"
                 )
 
+        artifact_name = native.get("artifact_name")
+        run_attempt = native.get("run_attempt")
+        if head_valid and isinstance(run_attempt, int) and not isinstance(
+            run_attempt, bool
+        ):
+            expected_artifact_name = (
+                f"native-package-tournament-{head_sha}-{run_attempt}"
+            )
+            if artifact_name != expected_artifact_name:
+                errors.append(
+                    "decision_evidence.native_tournament.artifact_name must be "
+                    f"{expected_artifact_name!r}"
+                )
+        elif not isinstance(artifact_name, str) or not artifact_name:
+            errors.append(
+                "decision_evidence.native_tournament.artifact_name must be a "
+                "non-empty string"
+            )
+
         for field in (
+            "artifact_zip_sha256",
             "build_manifest_sha256",
             "timing_manifest_sha256",
             "evidence_bundle_sha256",
@@ -308,6 +349,38 @@ def _validate_decision_evidence(
                     f"decision_evidence.native_tournament.{field} must be a "
                     "lowercase SHA-256 digest"
                 )
+
+        native_mode = native.get("selected_mode")
+        if native_mode != selected_mode:
+            errors.append(
+                "decision_evidence.native_tournament.selected_mode must equal "
+                "solver.learned_order_mode"
+            )
+        selected_package_sha = native.get("selected_package_sha256")
+        submission_package = manifest.get("submission_package")
+        release_package_sha = (
+            submission_package.get("sha256")
+            if isinstance(submission_package, dict)
+            else None
+        )
+        if selected_package_sha != release_package_sha:
+            errors.append(
+                "decision_evidence native selected package must equal "
+                "submission_package.sha256"
+            )
+        if (
+            not isinstance(selected_package_sha, str)
+            or SHA256_RE.fullmatch(selected_package_sha) is None
+        ):
+            errors.append(
+                "decision_evidence.native_tournament.selected_package_sha256 "
+                "must be a lowercase SHA-256 digest"
+            )
+        if native.get("selected_source_patch_changed") is not False:
+            errors.append(
+                "decision_evidence.native_tournament."
+                "selected_source_patch_changed must be false"
+            )
 
     sealed = _require_exact_keys(
         decision.get("sealed_selector"),
