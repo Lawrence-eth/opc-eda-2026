@@ -1,10 +1,12 @@
 # Learned-policy tournament v1
 
 This directory is the portable evidence bundle for choosing the submitted
-learned-order policy. The frozen outcome is **`replacement`**; the other three
-modes remain report-only benchmark treatments. All selection scores use the
-official cost at neutral runtime factor `RF=1`. Packaged runtime is evaluated
-separately and cannot silently change this policy.
+learned-order policy. Development and fold-3 confirmation selected
+**`replacement`**. The deliberately conservative sealed-fold safety compositor
+falls back to **`off`**; the expected-score release choice remains explicit and
+pending native packaged-runtime evidence. The other two learned modes remain
+report-only benchmark treatments. All selection scores use the official cost
+at neutral runtime factor `RF=1`.
 
 ## Evidence status and chronology
 
@@ -32,8 +34,10 @@ confirmation, not a statistically preregistered cutoff. In addition, the
 replacement slot map was derived on folds 0--2 and had already received a
 label-blind structural rejection audit on fold 3. Fold 3 is confirmation on a
 structurally exposed panel, not wholly unseen validation. No policy or gate may
-change after this record. Fold 4 remains sealed for one final, genuinely
-untouched `off` versus `replacement` check.
+change after this record. Clean selector ledgers were committed at `4b2da0c`;
+only then was fold 4 opened once on 2026-07-15 for the frozen `off` versus
+`replacement` comparison. The interrupted midnight process produced no retained
+evidence; all recorded fold-4 artifacts come from a clean persistent rerun.
 
 ## Decision
 
@@ -62,6 +66,23 @@ Fold-3 confirmation evaluated only the development finalist:
 The one clean regression stayed within every frozen tail gate: worst weighted
 contribution `0.000055638`, regression CVaR5 `0.000009273`, and worst sampled
 21-size-suite delta `0.000278191`.
+
+The one-shot sealed fold improved on average in both panels:
+
+| Panel | Evaluations feasible | Off score | Replacement score | Delta | Wins/losses |
+|---|---:|---:|---:|---:|---:|
+| Clean | 210 / 210 | 1.786460072 | 1.781799772 | -0.004660300 | 10 / 3 |
+| Raw | 210 / 210 | 1.870017471 | 1.859162987 | -0.010854484 | 12 / 1 |
+
+It nevertheless fails the previously committed conservative safety policy.
+Clean pseudo-suite CI95 upper is `+0.000276714` against a `0` cap. Raw worst
+sampled pseudo-suite delta is `+0.002118227` against `+0.002`, and its worst
+weighted case contribution is `+0.000423645` against `+0.000250`. The selector
+therefore records `sealed_confirmation_failed_fallback_off`; this result is not
+suppressed or retroactively re-gated. Because the contest ranks expected
+runtime-adjusted aggregate score rather than worst-suite safety, the final
+release decision must present both this fallback and the native package
+scenario frontier explicitly.
 
 The report-only 100-case public source panel was also 100/100 feasible for all
 four modes:
@@ -99,6 +120,7 @@ committed evidence base:
   `1f53d0ae17c55efdb6ddb9fee8310411a1dfc76707a5c3d5fc8eaefe754dc290`
 - `final_selector.json`:
   `6f4dd39cf16448e712ca1335f1ad4e02f33b8d68bd60a156fb8b756a0e509259`
+- `sealed_selector.json`: `PENDING_CLEAN_REPLAY`
 
 ## Directory layout
 
@@ -106,9 +128,12 @@ committed evidence base:
 - `development/comparisons/`: six repository-relative comparisons.
 - `calibration/holdouts/`: fold-3 `off` and `replacement` artifacts.
 - `calibration/comparisons/`: two fold-3 comparisons.
+- `sealed/holdouts/`: fold-4 `off` and `replacement` artifacts.
+- `sealed/comparisons/`: two repository-relative fold-4 comparisons.
 - `public/source/`: four raw, report-only full public source evaluations.
 - `development_selector.json`: pre-confirmation selector ledger.
 - `final_selector.json`: fold-3 composition ledger and frozen policy.
+- `sealed_selector.json`: one-shot fold-4 safety composition ledger.
 
 The raw evaluator timings are diagnostic only. Authoritative runtime evidence
 must come from audited packaged binaries on native AMD64 through the organizer's

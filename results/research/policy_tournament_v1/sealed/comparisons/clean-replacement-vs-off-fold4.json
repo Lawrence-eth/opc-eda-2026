@@ -1,0 +1,125 @@
+{
+  "schema_version": 2,
+  "evaluation_contract": {
+    "manifest_sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+    "manifest_schema_version": 3,
+    "manifest_generation": {
+      "min_blocks": 100,
+      "max_blocks": 120,
+      "num_folds": 5,
+      "per_size": 5,
+      "seed": 20260710,
+      "case_selection": "sequential",
+      "offset_seed": null,
+      "max_files": null,
+      "mib_policy": "input_area_interval_and_hard_target_compatible"
+    },
+    "dataset": {
+      "name": "FloorSet-Lite",
+      "official_floorset_commit": "aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa",
+      "loader": "lite_dataset.FloorplanDatasetLite",
+      "layouts_per_file": 112,
+      "source_file_count": 9000,
+      "source_inventory_sha256": "c1984cc01d159dbd1a88a90f12340c0a3cc26998c2c498e2854092d3ad53d725"
+    },
+    "resolved_inventory_sha256": "c1984cc01d159dbd1a88a90f12340c0a3cc26998c2c498e2854092d3ad53d725",
+    "runtime_factor_mode": "neutral_rf_1",
+    "oracle_baseline_selector": false,
+    "require_golden_mib_clean": null,
+    "evaluator_sha256": "64db37865b42baf11add62bdbf035690dca086cd4be7b5b4e58db756f20d8498",
+    "evaluation_harness_sha256": "999af97f9761c2770a7a216ba0774dd13859b1725c10c67873ad4b38708fbe68",
+    "official_floorset_commit": "aadddcc2238695eb21e6542b8a6cd9e9fe6b80fa",
+    "official_floorset_tracked_dirty": false
+  },
+  "input_result_artifacts": {
+    "baseline": [
+      {
+        "path": "results/research/policy_tournament_v1/sealed/holdouts/clean-off-f4.json",
+        "sha256": "2ba3685b143cdf181c3a249a81c11f844c98986bc4d3f3d51090551c653e6ac5",
+        "size_bytes": 113057
+      }
+    ],
+    "candidate": [
+      {
+        "path": "results/research/policy_tournament_v1/sealed/holdouts/clean-replacement-f4.json",
+        "sha256": "ae56a524285b1855b28aba1d5100ca588ee0c504cd3e3b8ae2931630f591adf5",
+        "size_bytes": 113047
+      }
+    ]
+  },
+  "source_manifest_artifact": {
+    "path": "results/folds/heavy_clean_v1.json",
+    "sha256": "48ecda41bb642caa67d2e617ff9e467816a0392d6a68a0a91c38cf2e5f847895",
+    "size_bytes": 415883
+  },
+  "cases": 105,
+  "source_clusters": 105,
+  "baseline_score": 1.7864600719504362,
+  "candidate_score": 1.7817997719170053,
+  "delta_candidate_minus_baseline": -0.004660300033430875,
+  "wins": 10,
+  "losses": 3,
+  "ties": 92,
+  "baseline_feasible": 105,
+  "candidate_feasible": 105,
+  "bootstrap": {
+    "samples": 30000,
+    "seed": 20260710,
+    "cluster_unit": "source_file",
+    "delta_ci95": [
+      -0.008897993942092846,
+      -0.001284382034924193
+    ],
+    "probability_candidate_improves": 0.9998333333333334
+  },
+  "pseudo_test_one_per_block_count": {
+    "samples": 30000,
+    "seed": 20260711,
+    "block_counts": [
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115,
+      116,
+      117,
+      118,
+      119,
+      120
+    ],
+    "delta_ci95": [
+      -0.01362763270684298,
+      0.0002767140235249155
+    ],
+    "probability_candidate_improves": 0.8999,
+    "worst_sampled_delta": 0.000526561490473032
+  },
+  "tail_risk": {
+    "worst_case_score_contribution": 5.5342804705015384e-05,
+    "regression_cvar_5pct_score_contribution": 2.5735676692386614e-05
+  },
+  "folds": [
+    {
+      "fold": 4,
+      "cases": 105,
+      "baseline_score": 1.7864600719504362,
+      "candidate_score": 1.7817997719170053,
+      "delta_candidate_minus_baseline": -0.004660300033430875,
+      "wins": 10,
+      "losses": 3,
+      "baseline_feasible": 105,
+      "candidate_feasible": 105
+    }
+  ]
+}
