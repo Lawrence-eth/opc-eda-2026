@@ -13,6 +13,8 @@ layout that cannot be extracted and decoded exactly aborts the complete build.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import hashlib
 import io
 import json
@@ -42,6 +44,7 @@ from dual_parent_decoder import (  # noqa: E402
     DualParentError,
     compare_geometry,
     decode_dual_parent,
+    enumerate_oriented_factor_shapes,
     extract_oracle_labels,
     hard_targets_from_golden,
     training_rectangles,
@@ -51,6 +54,7 @@ from learned_order import (  # noqa: E402
     FEATURE_VERSION,
     apply_mib_feature_policy,
     extract_order_features,
+    mib_is_input_compatible,
 )
 from lite_dataset import FloorplanDatasetLite  # noqa: E402
 from scripts.train_order_model import (  # noqa: E402
@@ -62,8 +66,8 @@ from scripts.train_order_model import (  # noqa: E402
 )
 
 
-CACHE_SCHEMA_VERSION = 1
-BUILDER_VERSION = 1
+CACHE_SCHEMA_VERSION = 2
+BUILDER_VERSION = 2
 MANIFEST_NAME = "manifest.json"
 DEFAULT_HOLDOUTS = (
     ROOT / "results" / "folds" / "heavy_clean_v1.json",
@@ -211,6 +215,86 @@ RECORD_KEYS = frozenset(
         "local_layout",
     }
 )
+CONFIGURATION_KEYS = frozenset(
+    {
+        "seed",
+        "block_count_range",
+        "layouts_per_source",
+        "max_sources",
+        "max_layouts_per_source",
+        "shard_layouts",
+        "message_steps",
+        "mib_feature_policy",
+        "layout_selection",
+        "oracle_tolerance",
+        "oracle_mib_policy",
+    }
+)
+PROVENANCE_KEYS = frozenset({"repository", "floorset", "code_sha256", "runtime"})
+REPOSITORY_PROVENANCE_KEYS = frozenset(
+    {"commit", "tree", "dirty", "dirty_status_sha256"}
+)
+FLOORSET_PROVENANCE_KEYS = frozenset(
+    {
+        "repository",
+        "commit",
+        "tree",
+        "data_root_mode",
+        "loader_relative_path",
+        "loader_sha256",
+        "official_sources_sha256",
+    }
+)
+CODE_HASH_KEYS = frozenset(
+    {
+        "builder",
+        "dual_parent_decoder",
+        "learned_order_features",
+        "source_partition_implementation",
+        "floorset_lite_loader",
+        "official_sources",
+        "holdout_manifest_union",
+    }
+)
+RUNTIME_PROVENANCE_KEYS = frozenset({"python", "numpy", "platform"})
+SOURCE_PARTITION_KEYS = frozenset(
+    {
+        "algorithm",
+        "partition_sha256",
+        "partition_source_counts",
+        "partition_block_counts",
+        "selection",
+        "source_index",
+        "holdout",
+        "partial_partitions_allowed",
+    }
+)
+SELECTION_KEYS = frozenset(
+    {
+        "source_files_discovered",
+        "source_files_excluded",
+        "source_files_outside_block_range",
+        "eligible_before_limit",
+        "selected_after_limit",
+        "eligible_by_block_count",
+    }
+)
+SOURCE_INDEX_KEYS = frozenset(
+    {"schema_version", "source_inventory_sha256", "payload_sha256"}
+)
+HOLDOUT_KEYS = frozenset(
+    {
+        "split_unit",
+        "excluded_source_count",
+        "manifest_union_sha256",
+        "manifest_sha256s",
+        "manifest_schema_versions",
+    }
+)
+REJECTION_TAXONOMY_KEYS = frozenset(
+    {"policy", "successful_build_counts", "known_masked_condition"}
+)
+EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 
 class CacheError(ValueError):
@@ -276,6 +360,22 @@ def _is_sha256(value: Any) -> bool:
     )
 
 
+def _is_git_oid(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) in (40, 64)
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _is_plain_int(value: Any, *, minimum: int | None = None) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, int)
+        and (minimum is None or value >= minimum)
+    )
+
+
 def _canonical_path(value: str) -> str:
     text = str(value).replace("\\", "/")
     while text.startswith("./"):
@@ -308,6 +408,13 @@ def _load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise CacheError("manifest_not_object")
     return value
+
+
+def _load_holdouts_strict(paths: Iterable[Path]):
+    normalized = [Path(path) for path in paths]
+    for path in normalized:
+        _load_json(path)
+    return load_holdout_sources(normalized)
 
 
 def _hash_tensor(namespace: str, value: Any) -> str:
@@ -359,13 +466,58 @@ def _git_output(arguments: list[str], cwd: Path) -> str:
     return result.stdout.strip()
 
 
-def _code_hashes(holdout_paths: Iterable[Path]) -> dict[str, str]:
+def _repository_status(*, ignored_roots: Iterable[Path] = ()) -> str:
+    ignored = [Path(path).resolve() for path in ignored_roots]
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+            cwd=ROOT,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise CacheError("git_provenance_failed", f"repository status: {exc}") from exc
+    kept: list[bytes] = []
+    entries = result.stdout.split(b"\0")
+    index = 0
+    while index < len(entries):
+        entry = entries[index]
+        index += 1
+        if not entry:
+            continue
+        if len(entry) < 4:
+            raise CacheError("malformed_git_status")
+        status = entry[:2]
+        raw_path = entry[3:]
+        candidate = (ROOT / os.fsdecode(raw_path)).resolve()
+        excluded = any(root == candidate or root in candidate.parents for root in ignored)
+        if not excluded:
+            kept.append(entry)
+        if status[:1] in (b"R", b"C") or status[1:2] in (b"R", b"C"):
+            if index >= len(entries) or not entries[index]:
+                raise CacheError("malformed_git_status_rename")
+            old_entry = entries[index]
+            index += 1
+            old_candidate = (ROOT / os.fsdecode(old_entry)).resolve()
+            old_excluded = any(
+                root == old_candidate or root in old_candidate.parents
+                for root in ignored
+            )
+            if not excluded or not old_excluded:
+                kept.append(old_entry)
+    return b"\0".join(kept).decode("utf-8", errors="surrogateescape")
+
+
+def _code_hashes(
+    data_root: Path, holdout_paths: Iterable[Path]
+) -> dict[str, str]:
     paths = {
         "builder": Path(__file__),
         "dual_parent_decoder": SOLUTION_DIR / "dual_parent_decoder.py",
         "learned_order_features": SOLUTION_DIR / "learned_order.py",
         "source_partition_implementation": ROOT / "scripts" / "train_order_model.py",
-        "floorset_lite_loader": FLOORSET / "lite_dataset.py",
+        "floorset_lite_loader": data_root / "lite_dataset.py",
         "official_sources": ROOT / "docs" / "official_sources.json",
     }
     hashes = {name: _file_sha256(path) for name, path in paths.items()}
@@ -376,16 +528,27 @@ def _code_hashes(holdout_paths: Iterable[Path]) -> dict[str, str]:
 
 
 def _provenance_context(
-    holdout_paths: list[Path], *, allow_dirty: bool
+    data_root: Path,
+    holdout_paths: list[Path],
+    *,
+    allow_dirty: bool,
+    ignored_roots: Iterable[Path] = (),
 ) -> dict[str, Any]:
-    repository_status = _git_output(
-        ["status", "--porcelain=v1", "--untracked-files=all"], ROOT
-    )
+    data_root = data_root.resolve()
+    repository_status = _repository_status(ignored_roots=ignored_roots)
     if repository_status and not allow_dirty:
         preview = repository_status.splitlines()[0]
         raise CacheError("dirty_repository", preview)
-    floorset_commit = _git_output(["rev-parse", "HEAD"], FLOORSET)
-    floorset_tree = _git_output(["rev-parse", "HEAD^{tree}"], FLOORSET)
+    actual_toplevel = Path(
+        _git_output(["rev-parse", "--show-toplevel"], data_root)
+    ).resolve()
+    if actual_toplevel != data_root:
+        raise CacheError(
+            "data_root_not_floorset_checkout",
+            f"expected git top-level {data_root}, observed {actual_toplevel}",
+        )
+    floorset_commit = _git_output(["rev-parse", "HEAD"], data_root)
+    floorset_tree = _git_output(["rev-parse", "HEAD^{tree}"], data_root)
     official = _load_json(ROOT / "docs" / "official_sources.json")
     pinned = official.get("floorset", {})
     if floorset_commit != pinned.get("commit") or floorset_tree != pinned.get("tree"):
@@ -393,23 +556,35 @@ def _provenance_context(
             "floorset_revision_mismatch",
             f"observed {floorset_commit}/{floorset_tree}",
         )
+    loader_path = data_root / "lite_dataset.py"
+    if not loader_path.is_file() or loader_path.is_symlink():
+        raise CacheError("floorset_loader_missing", str(loader_path))
+    if _git_output(["hash-object", str(loader_path)], data_root) != _git_output(
+        ["rev-parse", "HEAD:lite_dataset.py"], data_root
+    ):
+        raise CacheError("floorset_loader_worktree_mismatch", str(loader_path))
+    loader_sha256 = _file_sha256(loader_path)
     return {
         "repository": {
             "commit": _git_output(["rev-parse", "HEAD"], ROOT),
             "tree": _git_output(["rev-parse", "HEAD^{tree}"], ROOT),
             "dirty": bool(repository_status),
             "dirty_status_sha256": hashlib.sha256(
-                repository_status.encode("utf-8")
+                repository_status.encode("utf-8", errors="surrogateescape")
             ).hexdigest(),
         },
         "floorset": {
+            "repository": pinned.get("repository"),
             "commit": floorset_commit,
             "tree": floorset_tree,
+            "data_root_mode": "pinned_git_checkout_root",
+            "loader_relative_path": "lite_dataset.py",
+            "loader_sha256": loader_sha256,
             "official_sources_sha256": _file_sha256(
                 ROOT / "docs" / "official_sources.json"
             ),
         },
-        "code_sha256": _code_hashes(holdout_paths),
+        "code_sha256": _code_hashes(data_root, holdout_paths),
         "runtime": {
             "python": platform.python_version(),
             "numpy": np.__version__,
@@ -460,7 +635,7 @@ def _partition_sources(
     progress_every_sources: int,
     allow_partial_partitions: bool,
 ) -> tuple[dict[str, list[SourceFile]], dict[str, Any]]:
-    holdout = load_holdout_sources(holdout_paths)
+    holdout = _load_holdouts_strict(holdout_paths)
     train, reserve, selection, source_index = partition_source_files(
         dataset,
         data_root=data_root,
@@ -576,15 +751,22 @@ def _constraint_state(
         row = rows[block] if rows else []
         fixed.append(int(len(row) > 0 and row[0] != 0.0))
         preplaced.append(int(len(row) > 1 and row[1] != 0.0))
-        mib_id = int(row[2]) if len(row) > 2 else 0
-        cluster_id = int(row[3]) if len(row) > 3 else 0
+        mib_number = row[2] if len(row) > 2 else 0.0
+        cluster_number = row[3] if len(row) > 3 else 0.0
+        mib_id = int(mib_number)
+        cluster_id = int(cluster_number)
+        if mib_number != mib_id or cluster_number != cluster_id:
+            raise CacheError("noninteger_constraint_group", str(block))
         if mib_id < 0 or cluster_id < 0:
             raise CacheError("negative_constraint_group", str(block))
         if mib_id:
             mib.setdefault(mib_id, []).append(block)
         if cluster_id:
             cluster.setdefault(cluster_id, []).append(block)
-        boundary_code = int(row[4]) if len(row) > 4 else 0
+        boundary_number = row[4] if len(row) > 4 else 0.0
+        boundary_code = int(boundary_number)
+        if boundary_number != boundary_code:
+            raise CacheError("noninteger_boundary_mask", str(block))
         if boundary_code < 0 or boundary_code > 15:
             raise CacheError("invalid_boundary_mask", str(block))
         boundary.append([(boundary_code >> bit) & 1 for bit in range(4)])
@@ -864,6 +1046,72 @@ def _write_deterministic_npz(path: Path, arrays: dict[str, np.ndarray]) -> None:
             temporary.unlink()
 
 
+def _validate_npz_container(path: Path) -> None:
+    try:
+        with zipfile.ZipFile(path, "r") as archive:
+            infos = archive.infolist()
+            names = [info.filename for info in infos]
+            expected = {f"{name}.npy" for name in ALL_ARRAYS}
+            if len(names) != len(set(names)):
+                raise CacheError("duplicate_npz_member", str(path))
+            if set(names) != expected:
+                raise CacheError("npz_member_names", str(path))
+            if archive.comment:
+                raise CacheError("npz_archive_comment", str(path))
+            for info in infos:
+                if (
+                    info.is_dir()
+                    or info.flag_bits & 1
+                    or info.date_time != (1980, 1, 1, 0, 0, 0)
+                    or info.compress_type != zipfile.ZIP_DEFLATED
+                ):
+                    raise CacheError("nondeterministic_npz_member", info.filename)
+    except CacheError:
+        raise
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise CacheError("invalid_npz_container", f"{path}: {exc}") from exc
+
+
+def _atomic_publish_noreplace(staging: Path, output_dir: Path) -> None:
+    """Atomically publish a directory while refusing every existing target.
+
+    Linux ``renameat2(RENAME_NOREPLACE)`` is required.  Falling back to
+    ``os.replace`` or a check-then-rename sequence would reintroduce a target
+    clobber race, so unsupported hosts fail closed.
+    """
+    if not sys.platform.startswith("linux"):
+        raise CacheError("atomic_noreplace_unavailable", sys.platform)
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise CacheError("atomic_noreplace_unavailable", "renameat2")
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    at_fdcwd = -100
+    rename_noreplace = 1
+    result = renameat2(
+        at_fdcwd,
+        os.fsencode(staging),
+        at_fdcwd,
+        os.fsencode(output_dir),
+        rename_noreplace,
+    )
+    if result == 0:
+        return
+    error = ctypes.get_errno()
+    if error in (errno.EEXIST, errno.ENOTEMPTY):
+        raise CacheError("output_exists", str(output_dir))
+    if error in (errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP):
+        raise CacheError("atomic_noreplace_unavailable", os.strerror(error))
+    raise CacheError("atomic_publish_failed", os.strerror(error))
+
+
 def _array_contract() -> dict[str, Any]:
     return {
         "model_input_arrays": list(MODEL_INPUT_ARRAYS),
@@ -900,6 +1148,53 @@ def _require_binary(name: str, value: np.ndarray) -> None:
         raise CacheError("nonbinary_mask", name)
 
 
+def _validated_clique_components(
+    sources: np.ndarray,
+    destinations: np.ndarray,
+    block_count: int,
+    *,
+    name: str,
+) -> list[list[int]]:
+    sources = sources.astype(np.int64)
+    destinations = destinations.astype(np.int64)
+    pairs = set(zip(sources.tolist(), destinations.tolist()))
+    if (
+        np.any(sources < 0)
+        or np.any(sources >= block_count)
+        or np.any(destinations < 0)
+        or np.any(destinations >= block_count)
+        or np.any(sources >= destinations)
+        or len(pairs) != len(sources)
+    ):
+        raise CacheError(f"invalid_{name}_pair")
+    parents = list(range(block_count))
+
+    def find(block: int) -> int:
+        while parents[block] != block:
+            parents[block] = parents[parents[block]]
+            block = parents[block]
+        return block
+
+    for left, right in pairs:
+        left_root, right_root = find(left), find(right)
+        if left_root != right_root:
+            parents[right_root] = left_root
+    grouped: dict[int, list[int]] = {}
+    for block in set(sources.tolist()) | set(destinations.tolist()):
+        grouped.setdefault(find(block), []).append(block)
+    components = [sorted(members) for members in grouped.values()]
+    components.sort(key=lambda members: members[0])
+    expected_pairs = {
+        (left, right)
+        for members in components
+        for left_index, left in enumerate(members)
+        for right in members[left_index + 1 :]
+    }
+    if pairs != expected_pairs:
+        raise CacheError(f"incomplete_{name}_clique")
+    return components
+
+
 def _validate_layout_semantics(
     arrays: dict[str, np.ndarray], layout_index: int, shard_name: str
 ) -> dict[str, Any]:
@@ -931,6 +1226,9 @@ def _validate_layout_semantics(
 
     dimensions = arrays["dimensions"][node]
     golden = arrays["golden_rectangles"][node]
+    fixed = arrays["fixed_mask"][node].astype(bool)
+    preplaced = arrays["preplaced_mask"][node].astype(bool)
+    hard_blocks = fixed | preplaced
     if np.any(dimensions <= 0.0) or np.any(arrays["area_targets"][node] <= 0.0):
         raise CacheError("nonpositive_geometry", f"{shard_name}#{layout_index}")
     if not np.allclose(golden[:, 2:4], dimensions, rtol=0.0, atol=1e-6):
@@ -941,16 +1239,33 @@ def _validate_layout_semantics(
         selected = int(arrays["selected_shape"][global_block])
         if not 0 <= selected < option_end - option_start:
             raise CacheError("selected_shape_out_of_range", str(global_block))
-        selected_dimensions = arrays["shape_options"][option_start + selected]
+        options = arrays["shape_options"][option_start:option_end]
+        if np.any(options <= 0.0) or len({tuple(row) for row in options.tolist()}) != len(
+            options
+        ):
+            raise CacheError("invalid_shape_options", str(global_block))
+        if hard_blocks[local_block]:
+            expected_options = np.asarray(
+                [dimensions[local_block]], dtype=np.float32
+            )
+        else:
+            expected_options = np.asarray(
+                enumerate_oriented_factor_shapes(
+                    arrays["area_targets"][global_block]
+                ),
+                dtype=np.float32,
+            ).reshape(-1, 2)
+        if options.shape != expected_options.shape or not np.array_equal(
+            options, expected_options
+        ):
+            raise CacheError("shape_option_set_mismatch", str(global_block))
+        selected_dimensions = options[selected]
         if not np.allclose(
             selected_dimensions, dimensions[local_block], rtol=0.0, atol=1e-6
         ):
             raise CacheError("selected_shape_dimension_mismatch", str(global_block))
 
-    fixed = arrays["fixed_mask"][node].astype(bool)
-    preplaced = arrays["preplaced_mask"][node].astype(bool)
     hard = arrays["hard_targets"][node]
-    hard_blocks = fixed | preplaced
     if np.any(hard_blocks) and not np.allclose(
         hard[hard_blocks, 2:4], dimensions[hard_blocks], rtol=0.0, atol=1e-6
     ):
@@ -1059,34 +1374,12 @@ def _validate_layout_semantics(
     mib_end = int(arrays["mib_pair_ptr"][layout_index + 1])
     mib_src = arrays["mib_pair_src"][mib_start:mib_end].astype(np.int64)
     mib_dst = arrays["mib_pair_dst"][mib_start:mib_end].astype(np.int64)
-    if (
-        np.any(mib_src < 0)
-        or np.any(mib_src >= block_count)
-        or np.any(mib_dst < 0)
-        or np.any(mib_dst >= block_count)
-        or np.any(mib_src >= mib_dst)
-        or len(set(zip(mib_src.tolist(), mib_dst.tolist()))) != len(mib_src)
-    ):
-        raise CacheError("invalid_mib_pair", f"{shard_name}#{layout_index}")
-    parent = list(range(block_count))
-
-    def find(block: int) -> int:
-        while parent[block] != block:
-            parent[block] = parent[parent[block]]
-            block = parent[block]
-        return block
-
-    for left, right in zip(mib_src.tolist(), mib_dst.tolist()):
-        left_root, right_root = find(left), find(right)
-        if left_root != right_root:
-            parent[right_root] = left_root
-    components: dict[int, list[int]] = {}
-    paired_members = set(mib_src.tolist()) | set(mib_dst.tolist())
-    for block in paired_members:
-        components.setdefault(find(block), []).append(block)
+    mib_components = _validated_clique_components(
+        mib_src, mib_dst, block_count, name="mib"
+    )
     inconsistent_members: set[int] = set()
     inconsistent_group_count = 0
-    for members in components.values():
+    for members in mib_components:
         first_dimensions = dimensions[members[0]]
         if any(
             not np.allclose(dimensions[block], first_dimensions, rtol=0.0, atol=1e-6)
@@ -1108,19 +1401,29 @@ def _validate_layout_semantics(
     if int(arrays["strict_mib_decodable"][layout_index]) != strict_expected:
         raise CacheError("strict_mib_flag_mismatch", f"{shard_name}#{layout_index}")
 
+    reconstructed_constraints = [
+        [float(fixed[block]), float(preplaced[block]), 0.0, 0.0, 0.0]
+        for block in range(block_count)
+    ]
+    for group_identifier, members in enumerate(mib_components, 1):
+        for block in members:
+            reconstructed_constraints[block][2] = float(group_identifier)
+    recomputed_compatible = mib_is_input_compatible(
+        block_count,
+        arrays["area_targets"][node].tolist(),
+        reconstructed_constraints,
+        hard.tolist(),
+    )
+    if bool(arrays["mib_input_compatible"][layout_index]) != recomputed_compatible:
+        raise CacheError("mib_input_compatible_mismatch", f"{shard_name}#{layout_index}")
+
     cluster_start = int(arrays["cluster_pair_ptr"][layout_index])
     cluster_end = int(arrays["cluster_pair_ptr"][layout_index + 1])
     cluster_src = arrays["cluster_pair_src"][cluster_start:cluster_end]
     cluster_dst = arrays["cluster_pair_dst"][cluster_start:cluster_end]
-    if (
-        np.any(cluster_src < 0)
-        or np.any(cluster_src >= block_count)
-        or np.any(cluster_dst < 0)
-        or np.any(cluster_dst >= block_count)
-        or np.any(cluster_src >= cluster_dst)
-        or len(set(zip(cluster_src.tolist(), cluster_dst.tolist()))) != len(cluster_src)
-    ):
-        raise CacheError("invalid_cluster_pair", f"{shard_name}#{layout_index}")
+    _validated_clique_components(
+        cluster_src, cluster_dst, block_count, name="cluster"
+    )
     return {
         "block_count": block_count,
         "b2b_edge_count": edge_end - edge_start,
@@ -1252,6 +1555,312 @@ def _validate_shard_arrays(
     return summaries
 
 
+def _validate_configuration(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != CONFIGURATION_KEYS:
+        raise CacheError("invalid_configuration_schema")
+    if not _is_plain_int(value["seed"]):
+        raise CacheError("invalid_configuration_seed")
+    block_range = value["block_count_range"]
+    if (
+        not isinstance(block_range, list)
+        or len(block_range) != 2
+        or any(not _is_plain_int(item, minimum=1) for item in block_range)
+        or block_range[0] > block_range[1]
+        or block_range[1] > 120
+    ):
+        raise CacheError("invalid_configuration_block_range")
+    layouts_per_source = value["layouts_per_source"]
+    if not _is_plain_int(layouts_per_source, minimum=1):
+        raise CacheError("invalid_layouts_per_source")
+    max_sources = value["max_sources"]
+    if max_sources is not None and not _is_plain_int(max_sources, minimum=2):
+        raise CacheError("invalid_configuration_max_sources")
+    max_layouts = value["max_layouts_per_source"]
+    if max_layouts is not None and (
+        not _is_plain_int(max_layouts, minimum=1)
+        or max_layouts > layouts_per_source
+    ):
+        raise CacheError("invalid_configuration_max_layouts")
+    if not _is_plain_int(value["shard_layouts"], minimum=1):
+        raise CacheError("invalid_configuration_shard_layouts")
+    if (
+        not _is_plain_int(value["message_steps"], minimum=0)
+        or value["message_steps"] > 16
+    ):
+        raise CacheError("invalid_configuration_message_steps")
+    if value["mib_feature_policy"] not in {
+        "unmasked",
+        "mask_incompatible",
+        "mask_all",
+    }:
+        raise CacheError("invalid_mib_feature_policy")
+    if value["layout_selection"] not in {"hash_raw", "clean_plus_hash_raw"}:
+        raise CacheError("invalid_layout_selection")
+    tolerance = value["oracle_tolerance"]
+    if (
+        isinstance(tolerance, bool)
+        or not isinstance(tolerance, (int, float))
+        or tolerance != 1e-6
+    ):
+        raise CacheError("invalid_oracle_tolerance")
+    if (
+        value["oracle_mib_policy"]
+        != "strict_then_mask_inconsistent_shape_supervision"
+    ):
+        raise CacheError("invalid_oracle_mib_policy")
+    return value
+
+
+def _validate_provenance_schema(
+    value: Any, holdout_metadata: dict[str, Any]
+) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != PROVENANCE_KEYS:
+        raise CacheError("invalid_provenance_schema")
+    repository = value["repository"]
+    if (
+        not isinstance(repository, dict)
+        or set(repository) != REPOSITORY_PROVENANCE_KEYS
+        or not _is_git_oid(repository["commit"])
+        or not _is_git_oid(repository["tree"])
+        or not isinstance(repository["dirty"], bool)
+        or not _is_sha256(repository["dirty_status_sha256"])
+        or (
+            not repository["dirty"]
+            and repository["dirty_status_sha256"] != EMPTY_SHA256
+        )
+    ):
+        raise CacheError("invalid_repository_provenance")
+    floorset = value["floorset"]
+    if (
+        not isinstance(floorset, dict)
+        or set(floorset) != FLOORSET_PROVENANCE_KEYS
+        or not isinstance(floorset["repository"], str)
+        or not floorset["repository"]
+        or not _is_git_oid(floorset["commit"])
+        or not _is_git_oid(floorset["tree"])
+        or floorset["data_root_mode"] != "pinned_git_checkout_root"
+        or floorset["loader_relative_path"] != "lite_dataset.py"
+        or not _is_sha256(floorset["loader_sha256"])
+        or not _is_sha256(floorset["official_sources_sha256"])
+    ):
+        raise CacheError("invalid_floorset_provenance")
+    code_hashes = value["code_sha256"]
+    if (
+        not isinstance(code_hashes, dict)
+        or set(code_hashes) != CODE_HASH_KEYS
+        or any(not _is_sha256(digest) for digest in code_hashes.values())
+        or code_hashes["floorset_lite_loader"] != floorset["loader_sha256"]
+        or code_hashes["official_sources"]
+        != floorset["official_sources_sha256"]
+        or code_hashes["holdout_manifest_union"]
+        != _canonical_json_sha256(holdout_metadata["manifest_sha256s"])
+    ):
+        raise CacheError("invalid_code_provenance")
+    runtime = value["runtime"]
+    if (
+        not isinstance(runtime, dict)
+        or set(runtime) != RUNTIME_PROVENANCE_KEYS
+        or any(not isinstance(item, str) or not item for item in runtime.values())
+    ):
+        raise CacheError("invalid_runtime_provenance")
+    return value
+
+
+def _validate_rejection_taxonomy(value: Any) -> None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != REJECTION_TAXONOMY_KEYS
+        or value["policy"] != "abort_on_first_selected_layout_error"
+        or value["successful_build_counts"] != {}
+        or value["known_masked_condition"]
+        != "golden_mib_dimension_inconsistency"
+    ):
+        raise CacheError("invalid_rejection_taxonomy")
+
+
+def _validate_source_partition_schema(
+    value: Any, configuration: dict[str, Any]
+) -> dict[str, Any]:
+    if not isinstance(value, dict) or set(value) != SOURCE_PARTITION_KEYS:
+        raise CacheError("invalid_source_partition_schema")
+    if value["algorithm"] != "source_file_disjoint_block_stratified_train_dev_cal_v1":
+        raise CacheError("invalid_source_partition_algorithm")
+    if not _is_sha256(value["partition_sha256"]):
+        raise CacheError("invalid_source_partition_sha256")
+    if not isinstance(value["partial_partitions_allowed"], bool):
+        raise CacheError("invalid_partial_partition_flag")
+    counts = value["partition_source_counts"]
+    if (
+        not isinstance(counts, dict)
+        or set(counts) != set(PARTITION_NAMES)
+        or any(not _is_plain_int(item, minimum=0) for item in counts.values())
+    ):
+        raise CacheError("invalid_partition_source_counts")
+    block_counts = value["partition_block_counts"]
+    if not isinstance(block_counts, dict) or set(block_counts) != set(PARTITION_NAMES):
+        raise CacheError("invalid_partition_block_counts")
+    minimum, maximum = configuration["block_count_range"]
+    for partition, bucket in block_counts.items():
+        if not isinstance(bucket, dict):
+            raise CacheError("invalid_partition_block_counts", partition)
+        total = 0
+        for key, count in bucket.items():
+            try:
+                block_count = int(key)
+            except (TypeError, ValueError) as exc:
+                raise CacheError("invalid_partition_block_key", repr(key)) from exc
+            if str(block_count) != key or not minimum <= block_count <= maximum:
+                raise CacheError("invalid_partition_block_key", repr(key))
+            if not _is_plain_int(count, minimum=0):
+                raise CacheError("invalid_partition_block_value", repr(count))
+            total += count
+        if total != counts[partition]:
+            raise CacheError("partition_block_total", partition)
+    selection = value["selection"]
+    if not isinstance(selection, dict) or set(selection) != SELECTION_KEYS:
+        raise CacheError("invalid_source_selection_schema")
+    for key in SELECTION_KEYS - {"eligible_by_block_count"}:
+        if not _is_plain_int(selection[key], minimum=0):
+            raise CacheError("invalid_source_selection_count", key)
+    eligible_buckets = selection["eligible_by_block_count"]
+    if not isinstance(eligible_buckets, dict):
+        raise CacheError("invalid_eligible_block_counts")
+    eligible_total = 0
+    for key, count in eligible_buckets.items():
+        try:
+            block_count = int(key)
+        except (TypeError, ValueError) as exc:
+            raise CacheError("invalid_eligible_block_key", repr(key)) from exc
+        if str(block_count) != key or not minimum <= block_count <= maximum:
+            raise CacheError("invalid_eligible_block_key", repr(key))
+        if not _is_plain_int(count, minimum=0):
+            raise CacheError("invalid_eligible_block_value", repr(count))
+        eligible_total += count
+    if eligible_total != selection["eligible_before_limit"]:
+        raise CacheError("eligible_source_total")
+    if selection["selected_after_limit"] != sum(counts.values()):
+        raise CacheError("selected_partition_total")
+    max_sources = configuration["max_sources"]
+    expected_selected = (
+        selection["eligible_before_limit"]
+        if max_sources is None
+        else min(max_sources, selection["eligible_before_limit"])
+    )
+    if selection["selected_after_limit"] != expected_selected:
+        raise CacheError("max_source_selection_mismatch")
+    source_index = value["source_index"]
+    if (
+        not isinstance(source_index, dict)
+        or set(source_index) != SOURCE_INDEX_KEYS
+        or source_index["schema_version"] != 1
+        or not _is_sha256(source_index["source_inventory_sha256"])
+        or not _is_sha256(source_index["payload_sha256"])
+    ):
+        raise CacheError("invalid_source_index_provenance")
+    holdout = value["holdout"]
+    if not isinstance(holdout, dict) or set(holdout) != HOLDOUT_KEYS:
+        raise CacheError("invalid_holdout_schema")
+    hashes = holdout["manifest_sha256s"]
+    versions = holdout["manifest_schema_versions"]
+    if (
+        holdout["split_unit"] != "source_file"
+        or not _is_plain_int(holdout["excluded_source_count"], minimum=1)
+        or not _is_sha256(holdout["manifest_union_sha256"])
+        or not isinstance(hashes, list)
+        or not hashes
+        or any(not _is_sha256(digest) for digest in hashes)
+        or not isinstance(versions, list)
+        or len(versions) != len(hashes)
+        or any(not _is_plain_int(version, minimum=1) for version in versions)
+        or selection["source_files_excluded"] != holdout["excluded_source_count"]
+    ):
+        raise CacheError("invalid_holdout_metadata")
+    return value
+
+
+def _verify_data_root_provenance(
+    provenance: dict[str, Any], data_root: Path
+) -> None:
+    data_root = data_root.resolve()
+    try:
+        top_level = Path(
+            _git_output(["rev-parse", "--show-toplevel"], data_root)
+        ).resolve()
+    except CacheError as exc:
+        raise CacheError("data_root_not_verified_git_checkout", str(exc)) from exc
+    if top_level != data_root:
+        raise CacheError("data_root_not_floorset_checkout", str(top_level))
+    floorset = provenance["floorset"]
+    if (
+        _git_output(["rev-parse", "HEAD"], data_root) != floorset["commit"]
+        or _git_output(["rev-parse", "HEAD^{tree}"], data_root) != floorset["tree"]
+    ):
+        raise CacheError("data_root_revision_mismatch")
+    loader_path = data_root / floorset["loader_relative_path"]
+    if (
+        not loader_path.is_file()
+        or loader_path.is_symlink()
+        or _file_sha256(loader_path) != floorset["loader_sha256"]
+        or _git_output(["hash-object", str(loader_path)], data_root)
+        != _git_output(
+            ["rev-parse", f"HEAD:{floorset['loader_relative_path']}"], data_root
+        )
+    ):
+        raise CacheError("data_root_loader_mismatch")
+    official = _load_json(ROOT / "docs" / "official_sources.json")
+    pinned = official.get("floorset", {})
+    if (
+        _file_sha256(ROOT / "docs" / "official_sources.json")
+        != floorset["official_sources_sha256"]
+        or pinned.get("repository") != floorset["repository"]
+        or pinned.get("commit") != floorset["commit"]
+        or pinned.get("tree") != floorset["tree"]
+    ):
+        raise CacheError("official_floorset_provenance_mismatch")
+
+
+def _verify_local_provenance(
+    provenance: dict[str, Any],
+    *,
+    cache_dir: Path,
+    data_root: Path | None,
+    holdout_paths: Iterable[Path] | None,
+) -> None:
+    repository = provenance["repository"]
+    status = _repository_status(ignored_roots=(cache_dir,))
+    if (
+        _git_output(["rev-parse", "HEAD"], ROOT) != repository["commit"]
+        or _git_output(["rev-parse", "HEAD^{tree}"], ROOT) != repository["tree"]
+        or bool(status) != repository["dirty"]
+        or hashlib.sha256(
+            status.encode("utf-8", errors="surrogateescape")
+        ).hexdigest()
+        != repository["dirty_status_sha256"]
+    ):
+        raise CacheError("repository_provenance_mismatch")
+    local_code_paths = {
+        "builder": Path(__file__),
+        "dual_parent_decoder": SOLUTION_DIR / "dual_parent_decoder.py",
+        "learned_order_features": SOLUTION_DIR / "learned_order.py",
+        "source_partition_implementation": ROOT / "scripts" / "train_order_model.py",
+        "official_sources": ROOT / "docs" / "official_sources.json",
+    }
+    for name, path in local_code_paths.items():
+        if _file_sha256(path) != provenance["code_sha256"][name]:
+            raise CacheError("code_provenance_mismatch", name)
+    if data_root is None:
+        return
+    _verify_data_root_provenance(provenance, data_root)
+    paths = [] if holdout_paths is None else [Path(path) for path in holdout_paths]
+    expected = _code_hashes(data_root.resolve(), paths)
+    if holdout_paths is None:
+        expected["holdout_manifest_union"] = provenance["code_sha256"][
+            "holdout_manifest_union"
+        ]
+    if expected != provenance["code_sha256"]:
+        raise CacheError("code_provenance_mismatch")
+
+
 def validate_cache(
     cache_dir: Path,
     *,
@@ -1284,19 +1893,22 @@ def validate_cache(
         raise CacheError("cache_mode")
     if manifest.get("array_contract") != _array_contract():
         raise CacheError("array_contract_mismatch")
-    configuration = manifest.get("configuration")
-    if not isinstance(configuration, dict):
-        raise CacheError("invalid_configuration")
+    configuration = _validate_configuration(manifest.get("configuration"))
+    partition_metadata = _validate_source_partition_schema(
+        manifest.get("source_partition"), configuration
+    )
+    provenance = _validate_provenance_schema(
+        manifest.get("provenance"), partition_metadata["holdout"]
+    )
+    _validate_rejection_taxonomy(manifest.get("rejection_taxonomy"))
+    _verify_local_provenance(
+        provenance,
+        cache_dir=cache_dir,
+        data_root=data_root,
+        holdout_paths=holdout_paths,
+    )
     layouts_per_source = configuration.get("layouts_per_source")
-    if (
-        isinstance(layouts_per_source, bool)
-        or not isinstance(layouts_per_source, int)
-        or layouts_per_source < 1
-    ):
-        raise CacheError("invalid_layouts_per_source")
     mib_policy = configuration.get("mib_feature_policy")
-    if mib_policy not in {"unmasked", "mask_incompatible", "mask_all"}:
-        raise CacheError("invalid_mib_feature_policy")
 
     shards = manifest.get("shards")
     records = manifest.get("records")
@@ -1337,6 +1949,8 @@ def validate_cache(
                 raise CacheError("invalid_shard_descriptor_count", f"{relative}: {name}")
         if descriptor["layout_count"] < 1 or descriptor["node_count"] < 1:
             raise CacheError("empty_shard_descriptor", relative)
+        if descriptor["layout_count"] > configuration["shard_layouts"]:
+            raise CacheError("shard_layout_limit", relative)
         shard_path = cache_dir / relative
         try:
             if shard_path.is_symlink():
@@ -1345,6 +1959,7 @@ def validate_cache(
                 raise CacheError("shard_size_mismatch", relative)
             if _file_sha256(shard_path) != descriptor["sha256"]:
                 raise CacheError("shard_sha256_mismatch", relative)
+            _validate_npz_container(shard_path)
             with np.load(shard_path, allow_pickle=False) as archive:
                 arrays = {name: archive[name] for name in archive.files}
         except CacheError:
@@ -1380,6 +1995,7 @@ def validate_cache(
     source_hashes: dict[str, tuple[str, int]] = {}
     source_block_counts: dict[str, int] = {}
     clean_offsets: Counter[str] = Counter()
+    source_layout_counts: Counter[str] = Counter()
     aggregate_records = Counter()
     hash_fields = (
         "source_sha256",
@@ -1421,6 +2037,7 @@ def validate_cache(
             raise CacheError("duplicate_source_offset", repr(identity))
         seen_source_offsets.add(identity)
         partition_sources[partition].add(source)
+        source_layout_counts[source] += 1
         if not isinstance(record.get("clean_offset_selected"), bool):
             raise CacheError("clean_offset_type", str(expected_index))
         clean_offsets[source] += int(record["clean_offset_selected"])
@@ -1477,6 +2094,9 @@ def validate_cache(
         if previous != source_fingerprint:
             raise CacheError("inconsistent_source_fingerprint", source)
         block_count = record["block_count"]
+        minimum_blocks, maximum_blocks = configuration["block_count_range"]
+        if not minimum_blocks <= block_count <= maximum_blocks:
+            raise CacheError("record_block_count_range", str(expected_index))
         previous_count = source_block_counts.setdefault(source, block_count)
         if previous_count != block_count:
             raise CacheError("inconsistent_source_block_count", source)
@@ -1508,6 +2128,19 @@ def validate_cache(
         if record["mib_features_masked"] != expected_masked:
             raise CacheError("mib_feature_policy_mismatch", str(expected_index))
 
+    configured_layout_limit = configuration["max_layouts_per_source"]
+    effective_layout_limit = (
+        layouts_per_source
+        if configured_layout_limit is None
+        else configured_layout_limit
+    )
+    if any(count > effective_layout_limit for count in source_layout_counts.values()):
+        raise CacheError("source_layout_limit")
+    if configuration["layout_selection"] == "hash_raw" and any(
+        clean_offsets.values()
+    ):
+        raise CacheError("clean_offset_in_hash_raw_cache")
+
     if len(seen_layouts) != sum(shard_layout_counts.values()):
         raise CacheError("unreferenced_shard_layout")
     for index, first in enumerate(PARTITION_NAMES):
@@ -1524,9 +2157,6 @@ def validate_cache(
             if _file_sha256(path) != expected_sha:
                 raise CacheError("source_sha256_mismatch", source)
 
-    partition_metadata = manifest.get("source_partition")
-    if not isinstance(partition_metadata, dict):
-        raise CacheError("invalid_source_partition_metadata")
     reconstructed_rows = {
         partition: [
             {"source_file": source, "block_count": source_block_counts[source]}
@@ -1580,7 +2210,7 @@ def validate_cache(
     ):
         raise CacheError("invalid_holdout_hashes")
     if holdout_paths is not None:
-        verified_holdout = load_holdout_sources([Path(path) for path in holdout_paths])
+        verified_holdout = _load_holdouts_strict(holdout_paths)
         if list(verified_holdout.manifest_sha256s) != manifest_hashes:
             raise CacheError("holdout_manifest_sha256_mismatch")
         if verified_holdout.manifest_sha256 != holdout_metadata["manifest_union_sha256"]:
@@ -1660,7 +2290,6 @@ def build_cache(
     source_index_cache: Path | None = None,
     progress_every_sources: int = 0,
     allow_partial_partitions: bool = False,
-    provenance_context: dict[str, Any] | None = None,
     allow_dirty: bool = False,
 ) -> dict[str, Any]:
     data_root = data_root.resolve()
@@ -1668,18 +2297,35 @@ def build_cache(
     holdout_paths = [Path(path).resolve() for path in holdout_paths]
     if output_dir.exists():
         raise CacheError("output_exists", str(output_dir))
+    if source_index_cache is not None:
+        resolved_index = source_index_cache.resolve()
+        if resolved_index == output_dir or output_dir in resolved_index.parents:
+            raise CacheError("source_index_inside_output", str(resolved_index))
     if shard_layouts < 1:
         raise CacheError("invalid_shard_layout_count")
     if max_layouts_per_source is not None and max_layouts_per_source < 1:
         raise CacheError("invalid_max_layouts_per_source")
+    layouts_per_file = int(dataset.layouts_per_file)
+    configuration = _validate_configuration(
+        {
+            "seed": seed,
+            "block_count_range": [min_blocks, max_blocks],
+            "layouts_per_source": layouts_per_file,
+            "max_sources": max_sources,
+            "max_layouts_per_source": max_layouts_per_source,
+            "shard_layouts": shard_layouts,
+            "message_steps": message_steps,
+            "mib_feature_policy": mib_feature_policy,
+            "layout_selection": layout_selection,
+            "oracle_tolerance": 1e-6,
+            "oracle_mib_policy": "strict_then_mask_inconsistent_shape_supervision",
+        }
+    )
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
         tempfile.mkdtemp(prefix=f".{output_dir.name}.tmp-", dir=output_dir.parent)
     )
     try:
-        provenance = provenance_context or _provenance_context(
-            holdout_paths, allow_dirty=allow_dirty
-        )
         partitions, partition_provenance = _partition_sources(
             dataset,
             data_root=data_root,
@@ -1692,11 +2338,16 @@ def build_cache(
             progress_every_sources=progress_every_sources,
             allow_partial_partitions=allow_partial_partitions,
         )
+        provenance = _provenance_context(
+            data_root,
+            holdout_paths,
+            allow_dirty=allow_dirty,
+            ignored_roots=(staging,),
+        )
         source_fingerprints: dict[str, tuple[str, int]] = {}
         records: list[dict[str, Any]] = []
         shard_descriptors: list[dict[str, Any]] = []
         stats = Counter()
-        layouts_per_file = int(dataset.layouts_per_file)
         global_shard_index = 0
 
         for partition in PARTITION_NAMES:
@@ -1815,19 +2466,7 @@ def build_cache(
             "builder_version": BUILDER_VERSION,
             "mode": "dual_parent_supervision_cache",
             "array_contract": _array_contract(),
-            "configuration": {
-                "seed": seed,
-                "block_count_range": [min_blocks, max_blocks],
-                "layouts_per_source": layouts_per_file,
-                "max_sources": max_sources,
-                "max_layouts_per_source": max_layouts_per_source,
-                "shard_layouts": shard_layouts,
-                "message_steps": message_steps,
-                "mib_feature_policy": mib_feature_policy,
-                "layout_selection": layout_selection,
-                "oracle_tolerance": 1e-6,
-                "oracle_mib_policy": "strict_then_mask_inconsistent_shape_supervision",
-            },
+            "configuration": configuration,
             "provenance": provenance,
             "source_partition": partition_provenance,
             "rejection_taxonomy": {
@@ -1862,7 +2501,7 @@ def build_cache(
         validation = validate_cache(
             staging, data_root=data_root, holdout_paths=holdout_paths
         )
-        os.replace(staging, output_dir)
+        _atomic_publish_noreplace(staging, output_dir)
         validation["cache_dir"] = str(output_dir)
         return validation
     except Exception:

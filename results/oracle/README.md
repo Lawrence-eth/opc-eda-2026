@@ -32,12 +32,12 @@ clean committed tree:
 ```bash
 .venv/bin/python scripts/build_dual_parent_cache.py build \
   --data-root external/FloorSet \
-  --output /tmp/dual-parent-cache-v1 \
+  --output /tmp/dual-parent-cache-v2 \
   --source-index-cache /tmp/floorset-source-index-v1.json \
   --progress-every-sources 100
 
 .venv/bin/python scripts/build_dual_parent_cache.py validate \
-  --cache-dir /tmp/dual-parent-cache-v1 \
+  --cache-dir /tmp/dual-parent-cache-v2 \
   --data-root external/FloorSet \
   --holdout-manifest results/folds/heavy_clean_v1.json \
   --holdout-manifest results/folds/heavy_raw_hash_v1.json \
@@ -45,10 +45,13 @@ clean committed tree:
   --expected-manifest-sha256 <digest-reported-by-build>
 ```
 
-The output path must not already exist. The builder writes deterministic NPZ
-members into a sibling staging directory, validates every shard with
-`allow_pickle=False`, re-hashes every referenced source, and publishes with a
-single directory rename. Source paths and layout offsets occur only in
+The output path must not already exist. Schema v2 requires `--data-root` to be
+the root of the exact pinned FloorSet Git checkout and binds that checkout's
+commit, tree, loader bytes, and official-source manifest. The builder writes
+deterministic NPZ members into a sibling staging directory, validates every
+shard with `allow_pickle=False`, re-hashes every referenced source, and
+publishes with Linux `renameat2(RENAME_NOREPLACE)`, so a concurrently created
+target is never replaced. Source paths and layout offsets occur only in
 `manifest.json`; the manifest also binds source bytes, input/tree/golden
 payloads, code, the pinned FloorSet revision, holdout manifests, and shard
 descriptors. Raw layouts with internally inconsistent golden MIB dimensions

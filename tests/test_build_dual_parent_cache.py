@@ -1,5 +1,7 @@
 import json
 import shutil
+import warnings
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -8,12 +10,59 @@ import pytest
 from scripts import build_dual_parent_cache as cache
 
 
+REAL_VERIFY_DATA_ROOT_PROVENANCE = cache._verify_data_root_provenance
+
+
+def _synthetic_provenance(
+    data_root, holdout_paths, *, allow_dirty, ignored_roots=()
+):
+    del allow_dirty
+    status = cache._repository_status(ignored_roots=ignored_roots)
+    official_sha = cache._file_sha256(cache.ROOT / "docs" / "official_sources.json")
+    loader_sha = cache._file_sha256(data_root / "lite_dataset.py")
+    return {
+        "repository": {
+            "commit": cache._git_output(["rev-parse", "HEAD"], cache.ROOT),
+            "tree": cache._git_output(["rev-parse", "HEAD^{tree}"], cache.ROOT),
+            "dirty": bool(status),
+            "dirty_status_sha256": cache.hashlib.sha256(
+                status.encode("utf-8", errors="surrogateescape")
+            ).hexdigest(),
+        },
+        "floorset": {
+            "repository": "https://example.invalid/FloorSet.git",
+            "commit": "3" * 40,
+            "tree": "4" * 40,
+            "data_root_mode": "pinned_git_checkout_root",
+            "loader_relative_path": "lite_dataset.py",
+            "loader_sha256": loader_sha,
+            "official_sources_sha256": official_sha,
+        },
+        "code_sha256": cache._code_hashes(data_root, holdout_paths),
+        "runtime": {
+            "python": "test",
+            "numpy": np.__version__,
+            "platform": "test",
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_provenance_boundary(monkeypatch):
+    monkeypatch.setattr(cache, "_provenance_context", _synthetic_provenance)
+    monkeypatch.setattr(
+        cache, "_verify_data_root_provenance", lambda provenance, data_root: None
+    )
+
+
 def _sample(*, inconsistent_mib=False, broken_tree=False):
     areas = [4.0, 2.0, 1.0, 2.0]
     constraints = [[0.0] * 5 for _ in areas]
     if inconsistent_mib:
         constraints[1][2] = 1.0
         constraints[2][2] = 1.0
+    for block in (0, 1, 2):
+        constraints[block][3] = 1.0
     tree = [[0.0, 1.0, 0.0], [1.0, 2.0, 1.0], [2.0, 3.0, 1.0]]
     if broken_tree:
         tree[1] = [0.0, 2.0, 0.0]
@@ -66,6 +115,8 @@ def _holdout_manifest(path, source):
 
 def _fixture_inputs(tmp_path, *, broken_source=None):
     data_root = tmp_path / "data"
+    data_root.mkdir()
+    (data_root / "lite_dataset.py").write_text("# synthetic loader\n")
     source_dir = data_root / "floorset_lite" / "worker_0"
     source_dir.mkdir(parents=True)
     files = []
@@ -76,27 +127,12 @@ def _fixture_inputs(tmp_path, *, broken_source=None):
     holdout_source = str(files[-1].relative_to(data_root)).replace("\\", "/")
     holdout = _holdout_manifest(tmp_path / "holdout.json", holdout_source)
     dataset = _FakeDataset(files, broken_source=broken_source)
-    provenance = {
-        "repository": {
-            "commit": "1" * 40,
-            "tree": "2" * 40,
-            "dirty": False,
-            "dirty_status_sha256": "0" * 64,
-        },
-        "floorset": {
-            "commit": "3" * 40,
-            "tree": "4" * 40,
-            "official_sources_sha256": "5" * 64,
-        },
-        "code_sha256": {"synthetic": "6" * 64},
-        "runtime": {"python": "test", "numpy": np.__version__, "platform": "test"},
-    }
-    return data_root, files, dataset, holdout, provenance, holdout_source
+    return data_root, files, dataset, holdout, holdout_source
 
 
 def _build(tmp_path, output_name="cache", **overrides):
     inputs = _fixture_inputs(tmp_path, broken_source=overrides.pop("broken_source", None))
-    data_root, _files, dataset, holdout, provenance, _holdout_source = inputs
+    data_root, _files, dataset, holdout, _holdout_source = inputs
     options = {
         "data_root": data_root,
         "output_dir": tmp_path / output_name,
@@ -105,16 +141,40 @@ def _build(tmp_path, output_name="cache", **overrides):
         "max_blocks": 4,
         "max_layouts_per_source": 2,
         "shard_layouts": 3,
-        "provenance_context": provenance,
     }
     options.update(overrides)
     report = cache.build_cache(dataset, **options)
     return options["output_dir"], inputs, report
 
 
+def _copy_and_mutate_manifest(output, destination, mutate):
+    shutil.copytree(output, destination)
+    manifest_path = destination / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    mutate(manifest)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return destination
+
+
+def _copy_and_mutate_first_shard(output, destination, mutate):
+    shutil.copytree(output, destination)
+    manifest_path = destination / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    descriptor = manifest["shards"][0]
+    shard_path = destination / descriptor["path"]
+    with np.load(shard_path, allow_pickle=False) as shard:
+        arrays = {name: shard[name] for name in shard.files}
+    mutate(arrays)
+    cache._write_deterministic_npz(shard_path, arrays)
+    descriptor["size_bytes"] = shard_path.stat().st_size
+    descriptor["sha256"] = cache._file_sha256(shard_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return destination
+
+
 def test_deterministic_identity_free_shards_and_source_partition_contract(tmp_path):
     first, inputs, first_report = _build(tmp_path, "first")
-    data_root, _files, dataset, holdout, provenance, holdout_source = inputs
+    data_root, _files, dataset, holdout, holdout_source = inputs
     second = tmp_path / "second"
     second_report = cache.build_cache(
         dataset,
@@ -125,7 +185,6 @@ def test_deterministic_identity_free_shards_and_source_partition_contract(tmp_pa
         max_blocks=4,
         max_layouts_per_source=2,
         shard_layouts=3,
-        provenance_context=provenance,
     )
 
     assert (first / "manifest.json").read_bytes() == (second / "manifest.json").read_bytes()
@@ -247,7 +306,7 @@ def test_validator_replays_semantics_even_after_shard_descriptor_is_rehashed(tmp
 
 
 def test_failed_build_is_not_published_and_existing_output_is_never_replaced(tmp_path):
-    data_root, _files, dataset, holdout, provenance, _held_out = _fixture_inputs(
+    data_root, _files, dataset, holdout, _held_out = _fixture_inputs(
         tmp_path, broken_source="layouts_0.th"
     )
     output = tmp_path / "failed-cache"
@@ -261,7 +320,6 @@ def test_failed_build_is_not_published_and_existing_output_is_never_replaced(tmp
             max_blocks=4,
             max_layouts_per_source=2,
             shard_layouts=3,
-            provenance_context=provenance,
         )
     assert not output.exists()
     assert not list(tmp_path.glob(".failed-cache.tmp-*"))
@@ -277,7 +335,6 @@ def test_failed_build_is_not_published_and_existing_output_is_never_replaced(tmp
             holdout_paths=[holdout],
             min_blocks=4,
             max_blocks=4,
-            provenance_context=provenance,
         )
     assert sentinel.read_text() == "keep"
 
@@ -294,3 +351,229 @@ def test_max_sources_smoke_is_deterministic_and_explicitly_partial(tmp_path):
     assert report["layout_count"] == 2
     assert manifest["source_partition"]["partial_partitions_allowed"] is True
     assert manifest["source_partition"]["selection"]["selected_after_limit"] == 2
+
+
+def test_exact_manifest_schemas_and_cross_fields_are_fail_closed(tmp_path):
+    output, _inputs, _report = _build(tmp_path)
+
+    def empty_provenance(manifest):
+        manifest["provenance"] = {}
+
+    def invalid_seed(manifest):
+        manifest["configuration"]["seed"] = True
+
+    def invalid_tolerance(manifest):
+        manifest["configuration"]["oracle_tolerance"] = 1e-5
+
+    def invalid_rejection(manifest):
+        manifest["rejection_taxonomy"]["policy"] = "skip_bad_layouts"
+
+    def invalid_partition_algorithm(manifest):
+        manifest["source_partition"]["algorithm"] = "random_layout_split"
+
+    def invalid_code_hash(manifest):
+        manifest["provenance"]["code_sha256"]["builder"] = "0" * 64
+
+    def invalid_dirty_status(manifest):
+        manifest["provenance"]["repository"]["dirty"] = False
+        manifest["provenance"]["repository"]["dirty_status_sha256"] = "0" * 64
+
+    cases = (
+        ("provenance", empty_provenance, "invalid_provenance_schema"),
+        ("seed", invalid_seed, "invalid_configuration_seed"),
+        ("tolerance", invalid_tolerance, "invalid_oracle_tolerance"),
+        ("rejection", invalid_rejection, "invalid_rejection_taxonomy"),
+        (
+            "partition-algorithm",
+            invalid_partition_algorithm,
+            "invalid_source_partition_algorithm",
+        ),
+        ("code-hash", invalid_code_hash, "code_provenance_mismatch"),
+        (
+            "dirty-status",
+            invalid_dirty_status,
+            "invalid_repository_provenance",
+        ),
+    )
+    for name, mutate, expected in cases:
+        changed = _copy_and_mutate_manifest(output, tmp_path / name, mutate)
+        with pytest.raises(cache.CacheError, match=expected):
+            cache.validate_cache(changed)
+
+
+def test_source_holdout_partition_record_stats_and_manifest_tampering(tmp_path):
+    output, inputs, report = _build(tmp_path)
+    data_root, _files, _dataset, holdout, _held_out = inputs
+
+    with pytest.raises(cache.CacheError, match="manifest_sha256_mismatch"):
+        cache.validate_cache(output, expected_manifest_sha256="0" * 64)
+    assert report["manifest_sha256"] == cache._file_sha256(output / "manifest.json")
+
+    manifest = json.loads((output / "manifest.json").read_text())
+    referenced = data_root / manifest["records"][0]["source_file"]
+    original_source = referenced.read_bytes()
+    referenced.write_bytes(bytes([original_source[0] ^ 1]) + original_source[1:])
+    with pytest.raises(cache.CacheError, match="source_sha256_mismatch"):
+        cache.validate_cache(output, data_root=data_root, holdout_paths=[holdout])
+    referenced.write_bytes(original_source)
+
+    original_holdout = holdout.read_text()
+    holdout.write_text(original_holdout + "\n")
+    with pytest.raises(cache.CacheError, match="holdout_manifest_sha256_mismatch"):
+        cache.validate_cache(output, holdout_paths=[holdout])
+    holdout.write_text(original_holdout)
+
+    def partition_count(manifest_value):
+        manifest_value["source_partition"]["partition_source_counts"]["train"] += 1
+
+    changed = _copy_and_mutate_manifest(output, tmp_path / "partition-count", partition_count)
+    with pytest.raises(cache.CacheError, match="partition_block_total"):
+        cache.validate_cache(changed)
+
+    def record_count(manifest_value):
+        manifest_value["records"][0]["b2b_edge_count"] += 1
+        manifest_value["record_provenance_sha256"] = cache._canonical_json_sha256(
+            manifest_value["records"]
+        )
+
+    changed = _copy_and_mutate_manifest(output, tmp_path / "record-count", record_count)
+    with pytest.raises(cache.CacheError, match="record_shard_metadata_mismatch"):
+        cache.validate_cache(changed)
+
+    def stats_count(manifest_value):
+        manifest_value["stats"]["node_count"] += 1
+
+    changed = _copy_and_mutate_manifest(output, tmp_path / "stats-count", stats_count)
+    with pytest.raises(cache.CacheError, match="manifest_stats_mismatch"):
+        cache.validate_cache(changed)
+
+
+def test_symlinks_duplicate_zip_members_and_semantic_tensor_tampering(tmp_path):
+    output, _inputs, _report = _build(tmp_path)
+    symlinked = tmp_path / "symlinked"
+    shutil.copytree(output, symlinked)
+    (symlinked / "identity-link").symlink_to(output / "manifest.json")
+    with pytest.raises(cache.CacheError, match="cache_symlink_forbidden"):
+        cache.validate_cache(symlinked)
+
+    duplicate = tmp_path / "duplicate-member"
+    shutil.copytree(output, duplicate)
+    manifest_path = duplicate / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    descriptor = manifest["shards"][0]
+    shard_path = duplicate / descriptor["path"]
+    with zipfile.ZipFile(shard_path, "r") as archive:
+        member_name = archive.namelist()[0]
+        member_payload = archive.read(member_name)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(shard_path, "a") as archive:
+            archive.writestr(member_name, member_payload)
+    descriptor["size_bytes"] = shard_path.stat().st_size
+    descriptor["sha256"] = cache._file_sha256(shard_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(cache.CacheError, match="duplicate_npz_member"):
+        cache.validate_cache(duplicate)
+
+    def bad_unselected_shape(arrays):
+        block = 1
+        start = int(arrays["shape_ptr"][block])
+        end = int(arrays["shape_ptr"][block + 1])
+        selected = int(arrays["selected_shape"][block])
+        victim = next(index for index in range(end - start) if index != selected)
+        arrays["shape_options"][start + victim, 0] += 1.0
+
+    changed = _copy_and_mutate_first_shard(
+        output, tmp_path / "shape-option", bad_unselected_shape
+    )
+    with pytest.raises(cache.CacheError, match="shape_option_set_mismatch"):
+        cache.validate_cache(changed)
+
+    def incomplete_cluster(arrays):
+        arrays["cluster_pair_src"][2] = 2
+        arrays["cluster_pair_dst"][2] = 3
+
+    changed = _copy_and_mutate_first_shard(
+        output, tmp_path / "cluster-clique", incomplete_cluster
+    )
+    with pytest.raises(cache.CacheError, match="incomplete_cluster_clique"):
+        cache.validate_cache(changed)
+
+    def incompatible_flag(arrays):
+        arrays["mib_input_compatible"][0] ^= 1
+
+    changed = _copy_and_mutate_first_shard(
+        output, tmp_path / "mib-compatible", incompatible_flag
+    )
+    with pytest.raises(cache.CacheError, match="mib_input_compatible_mismatch"):
+        cache.validate_cache(changed)
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "expected"),
+    (
+        (2, 1.5, "noninteger_constraint_group"),
+        (3, 2.5, "noninteger_constraint_group"),
+        (4, 3.5, "noninteger_boundary_mask"),
+    ),
+)
+def test_fractional_constraint_identifiers_are_rejected(column, value, expected):
+    constraints = [[0.0] * 5 for _ in range(4)]
+    constraints[0][column] = value
+    with pytest.raises(cache.CacheError, match=expected):
+        cache._constraint_state(constraints, 4)
+
+
+@pytest.mark.parametrize("name", ("mib", "cluster"))
+def test_equality_pairs_must_encode_complete_cliques(name):
+    with pytest.raises(cache.CacheError, match=f"incomplete_{name}_clique"):
+        cache._validated_clique_components(
+            np.asarray([0, 0], dtype=np.int16),
+            np.asarray([1, 2], dtype=np.int16),
+            3,
+            name=name,
+        )
+
+
+def test_atomic_publication_refuses_a_target_created_during_build(tmp_path, monkeypatch):
+    data_root, _files, dataset, holdout, _held_out = _fixture_inputs(tmp_path)
+    output = tmp_path / "raced-output"
+    original_publish = cache._atomic_publish_noreplace
+
+    def racing_publish(staging, target):
+        target.mkdir()
+        (target / "racer-owned").write_text("preserve")
+        original_publish(staging, target)
+
+    monkeypatch.setattr(cache, "_atomic_publish_noreplace", racing_publish)
+    with pytest.raises(cache.CacheError, match="output_exists"):
+        cache.build_cache(
+            dataset,
+            data_root=data_root,
+            output_dir=output,
+            holdout_paths=[holdout],
+            min_blocks=4,
+            max_blocks=4,
+            max_sources=2,
+            max_layouts_per_source=1,
+            allow_partial_partitions=True,
+        )
+    assert (output / "racer-owned").read_text() == "preserve"
+    assert not list(tmp_path.glob(".raced-output.tmp-*"))
+
+
+def test_unverified_data_root_is_rejected_by_real_provenance_gate(tmp_path):
+    fake_root = tmp_path / "not-a-git-checkout"
+    fake_root.mkdir()
+    provenance = {
+        "floorset": {
+            "commit": "1" * 40,
+            "tree": "2" * 40,
+            "loader_relative_path": "lite_dataset.py",
+            "loader_sha256": "3" * 64,
+            "official_sources_sha256": "4" * 64,
+            "repository": "https://example.invalid/FloorSet.git",
+        }
+    }
+    with pytest.raises(cache.CacheError, match="data_root_not_verified_git_checkout"):
+        REAL_VERIFY_DATA_ROOT_PROVENANCE(provenance, fake_root)
