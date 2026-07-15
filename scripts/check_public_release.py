@@ -238,7 +238,10 @@ def _validate_decision_evidence(
             "artifact_id",
             "artifact_name",
             "artifact_size_bytes",
-            "artifact_zip_sha256",
+            "artifact_digest_sha256",
+            "preserved_asset_name",
+            "preserved_asset_size_bytes",
+            "preserved_asset_sha256",
             "build_manifest_sha256",
             "timing_manifest_sha256",
             "evidence_bundle_sha256",
@@ -272,7 +275,12 @@ def _validate_decision_evidence(
                     "decision_evidence native tournament run URL and run ID disagree"
                 )
 
-        for field in ("run_attempt", "artifact_id", "artifact_size_bytes"):
+        for field in (
+            "run_attempt",
+            "artifact_id",
+            "artifact_size_bytes",
+            "preserved_asset_size_bytes",
+        ):
             value = native.get(field)
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 errors.append(
@@ -329,6 +337,11 @@ def _validate_decision_evidence(
                     "decision_evidence.native_tournament.artifact_name must be "
                     f"{expected_artifact_name!r}"
                 )
+            if native.get("preserved_asset_name") != f"{expected_artifact_name}.zip":
+                errors.append(
+                    "decision_evidence.native_tournament.preserved_asset_name "
+                    f"must be {expected_artifact_name + '.zip'!r}"
+                )
         elif not isinstance(artifact_name, str) or not artifact_name:
             errors.append(
                 "decision_evidence.native_tournament.artifact_name must be a "
@@ -336,7 +349,8 @@ def _validate_decision_evidence(
             )
 
         for field in (
-            "artifact_zip_sha256",
+            "artifact_digest_sha256",
+            "preserved_asset_sha256",
             "build_manifest_sha256",
             "timing_manifest_sha256",
             "evidence_bundle_sha256",

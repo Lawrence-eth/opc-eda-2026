@@ -83,7 +83,10 @@ Schema 2 makes the beta policy choice and its evidence machine-readable. The
 required `decision_evidence` object binds:
 
 - the canonical GitHub Actions native-tournament run ID, URL, and head SHA;
-- its successful run attempt plus exact artifact ID, name, size, and ZIP digest;
+- its successful run attempt plus exact artifact ID, name, API-reported size
+  and digest, and the separately hashed downloaded ZIP preserved as a release
+  asset (GitHub's REST download wrapper is not assumed byte-identical to the
+  upload-artifact digest);
 - SHA-256 digests for its build manifest, timing manifest, and preserved
   `native-evidence.sha256` bundle ledger;
 - the selected mode and package digest, which must match the solver and release

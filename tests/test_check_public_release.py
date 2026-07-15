@@ -109,7 +109,12 @@ def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
                 "artifact_id": 987654321,
                 "artifact_name": f"native-package-tournament-{'1' * 40}-1",
                 "artifact_size_bytes": 123456,
-                "artifact_zip_sha256": "3" * 64,
+                "artifact_digest_sha256": "3" * 64,
+                "preserved_asset_name": (
+                    f"native-package-tournament-{'1' * 40}-1.zip"
+                ),
+                "preserved_asset_size_bytes": 120000,
+                "preserved_asset_sha256": "7" * 64,
                 "build_manifest_sha256": "4" * 64,
                 "timing_manifest_sha256": "5" * 64,
                 "evidence_bundle_sha256": "6" * 64,
@@ -256,6 +261,18 @@ def test_release_manifest_accepts_non_override_matching_sealed_policy(tmp_path):
                 "artifact_name", "unbound-artifact"
             ),
             "artifact_name",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "preserved_asset_name", "unbound.zip"
+            ),
+            "preserved_asset_name",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "preserved_asset_sha256", "not-a-digest"
+            ),
+            "preserved_asset_sha256",
         ),
         (
             lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
