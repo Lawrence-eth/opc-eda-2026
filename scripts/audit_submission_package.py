@@ -45,6 +45,7 @@ GLIBC_RE = re.compile(rb"GLIBC_(\d+)\.(\d+)")
 EXPECTED_LEARNED_MODEL_PAYLOAD_SHA256 = (
     "c94b4af92a7088f04206a5fa20dfbf807f945d9bdd80d9ffcbdc0b8b45f18beb"
 )
+LEARNED_ORDER_MODES = {"off", "replacement", "additive", "additive_first_pass"}
 
 LIVE_SOLVER_COMPONENTS = validate_live_solver_components(LIVE_SOLVER_COMPONENTS)
 LIVE_SOURCE_BINDINGS = {
@@ -282,7 +283,18 @@ def _positions_payload_ok(value: Any, expected_count: int | None = None) -> bool
     )
 
 
-def _smoke(extracted_root: Path) -> None:
+def _validate_default_mode_report(payload: Any, description: str) -> str:
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"schema_version", "learned_order_mode"}
+        or payload.get("schema_version") != 1
+        or payload.get("learned_order_mode") not in LEARNED_ORDER_MODES
+    ):
+        raise PackageAuditError(f"{description} has an invalid default-mode report")
+    return payload["learned_order_mode"]
+
+
+def _smoke(extracted_root: Path) -> str:
     if platform.machine().lower() not in {"x86_64", "amd64"}:
         raise PackageAuditError("--smoke requires an AMD64 host or configured emulator")
     binary = extracted_root / EXPECTED_ROOT / "dist" / "my_optimizer" / "my_optimizer"
@@ -326,6 +338,24 @@ def _smoke(extracted_root: Path) -> None:
         raise PackageAuditError(
             "source and binary live-module self-test payloads differ"
         )
+
+    source_mode, source_mode_stdout = _run_json_process(
+        [sys.executable, str(source_entrypoint), "--report-default-mode"],
+        description="source default-mode report",
+    )
+    binary_mode, binary_mode_stdout = _run_json_process(
+        [str(binary), "--report-default-mode"],
+        description="binary default-mode report",
+    )
+    source_default = _validate_default_mode_report(
+        source_mode, "source default-mode report"
+    )
+    binary_default = _validate_default_mode_report(
+        binary_mode, "binary default-mode report"
+    )
+    if source_mode_stdout != binary_mode_stdout or source_default != binary_default:
+        raise PackageAuditError("source and binary default-mode reports differ")
+    return source_default
 
 
 def audit_archive(
@@ -456,21 +486,25 @@ def audit_archive(
                 if not local_path.is_file() or _member_bytes(archive, member) != local_path.read_bytes():
                     raise PackageAuditError(f"archive notice differs from {local_path.relative_to(ROOT)}")
 
+        default_mode = None
         if smoke:
             with tempfile.TemporaryDirectory(prefix="opc-package-audit-") as temporary:
                 # Every member was already proven relative, unique, regular or
                 # a directory, and within the size/count limits above.
                 archive.extractall(temporary, filter="fully_trusted")
-                _smoke(Path(temporary))
+                default_mode = _smoke(Path(temporary))
 
     glibc_text = f"{highest_glibc[0]}.{highest_glibc[1]}" if observed_glibc else "none"
-    return [
+    details = [
         f"archive_sha256={actual_archive_sha}",
         f"members={len(members)} expanded_bytes={expanded_bytes}",
         "elf_machine=AMD64",
         f"max_glibc={glibc_text}",
         f"smoke={'PASS' if smoke else 'SKIPPED'}",
     ]
+    if default_mode is not None:
+        details.append(f"default_mode={default_mode}")
+    return details
 
 
 def main() -> None:

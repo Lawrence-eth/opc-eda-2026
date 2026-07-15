@@ -95,16 +95,24 @@ not a routine test:
 ```
 
 Every archive is audited with notices and `--smoke`, including the packaged
-learned-model/replacement and safe-MIB module probes. The build manifest binds
-the source commit/tree, exact patch, every live and archived-source hash,
-binary and package hashes, audit logs, wrapper, build harness, and audit
-harness.
+learned-model/replacement and safe-MIB module probes. The source fallback and
+compiled executable also run the read-only `--report-default-mode` attestation;
+their byte-exact JSON reports must agree with the package treatment. The
+schema-2 build manifest binds the source commit/tree, exact patch, complete
+live-registry and package-support inventories, every archived-source hash,
+binary/package/wrapper descriptors, build and audit logs, and all harnesses.
+Legacy schema-1 tournament manifests are deliberately rejected because they
+do not contain those bindings.
 
 Timing requires explicit public case IDs so a full campaign cannot start by
-accident. One cycle is the complete four-row Williams design—16 wrapper/binary
-executions per case. Each run invokes the pinned official evaluator on the
-package's verbatim organizer `op_wrapper.py`; `MY_OPT_BIN` is removed. The
-timing gate rehashes and re-audits all packages first, rejects infeasibility or
+accident. Each case first receives one balanced four-mode warmup pass whose
+measurements are retained but discarded. One measured cycle is the complete
+four-row Williams design—16 wrapper/binary executions per case—and the first
+row rotates by case and cycle. Each run invokes the pinned official evaluator
+on the package's verbatim organizer `op_wrapper.py` in an allowlisted,
+thread-pinned environment; `MY_OPT_BIN`, `PYTHONPATH`, solver debug variables,
+and emulator variables are absent. The timing gate rehashes and re-audits all
+packages first, rejects infeasibility, wrong dataset block counts, or
 nondeterministic repeated positions, and writes raw official result files plus
 a hash-bound summary atomically:
 
@@ -116,8 +124,24 @@ a hash-bound summary atomically:
 ```
 
 Run timing only on the native AMD64 machine whose measurements are intended as
-evidence. The four modes remain report-only benchmark treatments; policy
-promotion is governed by the holdout selector and its closed calibration gate.
+evidence. The attestation requires agreeing Python-platform and `uname`
+architecture, recognized x86 CPU vendor/flags, and no ARM/QEMU contradiction;
+ordinary native GitHub AMD64 virtualization is allowed. CPU identity, process
+affinity, frequency governors, load averages, and pre/post drift are recorded.
+After the final run, the tool rehashes every selected input and label, the
+evaluator, organizer wrappers, packages, binaries, official-source checker,
+source manifest, and build manifest, then reruns official-source integrity.
+
+The schema-2 report recomputes the exact feasible contest formula from each
+mode/case's median wrapper runtime for hypothetical field medians of 0.25,
+0.5, 1, 2, and 3 seconds, including the 9.999999 cap and `exp(n/12)` case
+weights. It reports deltas against both `off` and `replacement`, per-scenario
+winners, nondominated modes, and the all-scenario winner intersection. A
+subset is explicitly named
+`partial_panel_exp_n_over_12_weighted_cost_not_official_total_score`; only the
+exact 100-case 21..120 panel is labeled an official total-score scenario. The
+four modes remain report-only benchmark treatments; policy promotion is
+governed by the holdout selector and its closed calibration gate.
 
 ## Supported fold, model, and research tools
 

@@ -28,6 +28,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -41,7 +42,26 @@ ASSIGNMENT_RE = re.compile(
 )
 BUILD_MODE = "four_mode_submission_package_build"
 TIMING_MODE = "organizer_wrapper_williams_timing"
+BUILD_SCHEMA_VERSION = 2
+TIMING_SCHEMA_VERSION = 2
 ARCHIVE_ROOT = "iccad2026_submission"
+INTERNAL_BINARY_PATH = f"{ARCHIVE_ROOT}/dist/my_optimizer/my_optimizer"
+INTERNAL_WRAPPER_PATH = f"{ARCHIVE_ROOT}/op_wrapper.py"
+RUNTIME_SCENARIO_MEDIANS = (0.25, 0.5, 1.0, 2.0, 3.0)
+QUALITY_ALPHA = 0.5
+VIOLATION_BETA = 2.0
+RUNTIME_GAMMA = 0.3
+FEASIBLE_COST_CAP = 10.0 - 1e-6
+NATIVE_AMD64_NAMES = {"x86_64", "amd64"}
+EMULATION_ENV_NAMES = (
+    "QEMU_CPU",
+    "QEMU_LD_PREFIX",
+    "QEMU_SET_ENV",
+    "QEMU_UNSET_ENV",
+    "BOX64_LD_LIBRARY_PATH",
+    "BOX64_PATH",
+    "FEX_ROOTFS",
+)
 MAX_SNAPSHOT_MEMBERS = 100_000
 MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024 * 1024
 
@@ -401,7 +421,11 @@ def _component_names(snapshot: Path) -> tuple[str, ...]:
     return names
 
 
-def _audit_details(stdout: str, expected_package_sha256: str) -> dict[str, str]:
+def _audit_details(
+    stdout: str,
+    expected_package_sha256: str,
+    expected_mode: str | None = None,
+) -> dict[str, str]:
     lines = [line.strip() for line in stdout.splitlines() if line.strip()]
     if not lines or lines[0] != "Submission package audit: PASS":
         raise ValueError("package audit did not report PASS")
@@ -416,7 +440,49 @@ def _audit_details(stdout: str, expected_package_sha256: str) -> dict[str, str]:
         raise ValueError("package audit did not run the live-module smoke test")
     if details.get("elf_machine") != "AMD64":
         raise ValueError("package audit did not verify an AMD64 executable")
+    if expected_mode is not None and details.get("default_mode") != expected_mode:
+        raise ValueError(
+            "package audit binary default-mode attestation differs from variant mode"
+        )
     return details
+
+
+def _source_hash_contract(
+    snapshot: Path, component_names: tuple[str, ...]
+) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Hash every registry and package-support source and its archive binding."""
+
+    solver_sources = {
+        f"contest_solution/{name}": _sha256_file(snapshot / "contest_solution" / name)
+        for name in component_names
+    }
+    support_bindings = {
+        "packaging/torch_stub.py": "source_fallback/torch.py",
+        "packaging/eval_stub.py": "source_fallback/iccad2026_evaluate.py",
+        "packaging/solver_main.py": "source_fallback/solver_main.py",
+    }
+    support_sources = {
+        name: _sha256_file(snapshot / name) for name in support_bindings
+    }
+    archived = {
+        **{
+            f"source_fallback/{Path(name).name}": digest
+            for name, digest in solver_sources.items()
+        },
+        **{
+            archive_name: support_sources[source_name]
+            for source_name, archive_name in support_bindings.items()
+        },
+    }
+    return solver_sources, support_sources, archived
+
+
+def _file_descriptor(path: str, actual: Path) -> dict[str, Any]:
+    return {
+        "path": path,
+        "sha256": _sha256_file(actual),
+        "size_bytes": actual.stat().st_size,
+    }
 
 
 def _write_log(path: Path, completed: subprocess.CompletedProcess[str]) -> str:
@@ -456,12 +522,9 @@ def _build_one_variant(
     _verify_only_mode_change(baseline_hashes, variant_root, mode)
     _verify_mode_independent_self_test(variant_root / "packaging/solver_main.py")
     component_names = _component_names(variant_root)
-    components = {
-        f"contest_solution/{name}": _sha256_file(
-            variant_root / "contest_solution" / name
-        )
-        for name in component_names
-    }
+    solver_sources, support_sources, expected_archived_sources = (
+        _source_hash_contract(variant_root, component_names)
+    )
 
     build = _run_checked(
         ["bash", "packaging/build_submission.sh"],
@@ -495,7 +558,7 @@ def _build_one_variant(
         timeout=180,
         env=_clean_build_environment(),
     )
-    details = _audit_details(audit.stdout, archive_sha256)
+    details = _audit_details(audit.stdout, archive_sha256, mode)
     audit_log = output_staging / "logs" / f"{mode}.audit.log"
     audit_log_sha256 = _write_log(audit_log, audit)
 
@@ -504,10 +567,10 @@ def _build_one_variant(
         for path in sorted(fallback.glob("*.py"))
         if path.is_file()
     }
-    if not archived_sources or "source_fallback/my_optimizer.py" not in archived_sources:
-        raise ValueError(f"{mode} package has no bound source fallback")
-    if archived_sources["source_fallback/my_optimizer.py"] != patch["sha256_after"]:
-        raise ValueError(f"{mode} archived optimizer differs from the generated source")
+    if archived_sources != expected_archived_sources:
+        raise ValueError(f"{mode} package archived-source inventory differs from contract")
+    if solver_sources[OPTIMIZER_RELATIVE_PATH.as_posix()] != patch["sha256_after"]:
+        raise ValueError(f"{mode} generated optimizer differs from its source contract")
 
     package_relative = Path("packages") / f"iccad2026_submission_{mode}.tar.gz"
     package_output = output_staging / package_relative
@@ -519,12 +582,14 @@ def _build_one_variant(
     return {
         "mode": mode,
         "source_patch": patch,
-        "solver_components": components,
+        "solver_components": solver_sources,
+        "package_support_sources": support_sources,
         "archived_source_sha256": archived_sources,
-        "binary": {
-            "sha256": _sha256_file(binary),
-            "size_bytes": binary.stat().st_size,
-        },
+        "binary": _file_descriptor(INTERNAL_BINARY_PATH, binary),
+        "wrapper": _file_descriptor(
+            INTERNAL_WRAPPER_PATH,
+            variant_root / f"submission/{ARCHIVE_ROOT}/op_wrapper.py",
+        ),
         "package": {
             "path": package_relative.as_posix(),
             "sha256": archive_sha256,
@@ -536,11 +601,13 @@ def _build_one_variant(
             "log": {
                 "path": f"logs/{mode}.audit.log",
                 "sha256": audit_log_sha256,
+                "size_bytes": audit_log.stat().st_size,
             },
         },
         "build_log": {
             "path": f"logs/{mode}.build.log",
             "sha256": build_log_sha256,
+            "size_bytes": build_log.stat().st_size,
         },
     }
 
@@ -608,7 +675,7 @@ def build_mode_packages(
                 raise AssertionError("immutable base snapshot changed during variant builds")
 
             manifest = {
-                "schema_version": 1,
+                "schema_version": BUILD_SCHEMA_VERSION,
                 "mode": BUILD_MODE,
                 "source": {
                     "commit": commit,
@@ -644,6 +711,12 @@ def build_mode_packages(
                     ),
                     "organizer_wrapper_sha256": _sha256_file(
                         base_snapshot / "packaging/op_wrapper.py"
+                    ),
+                    "solver_registry_sha256": _sha256_file(
+                        base_snapshot / "scripts/solver_components.py"
+                    ),
+                    "official_source_checker_sha256": _sha256_file(
+                        base_snapshot / "scripts/check_official_sources.py"
                     ),
                 },
                 "build_host": {
@@ -684,6 +757,30 @@ def _safe_manifest_path(base: Path, relative: Any, context: str) -> Path:
     return resolved
 
 
+def _require_string(value: Any, context: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{context} must be a nonempty string")
+    return value
+
+
+def _validate_file_descriptor(
+    value: Any,
+    context: str,
+    *,
+    expected_path: str | None = None,
+) -> dict[str, Any]:
+    descriptor = _require_exact_keys(
+        value, {"path", "sha256", "size_bytes"}, context
+    )
+    path = _require_string(descriptor["path"], f"{context} path")
+    _safe_manifest_path(Path("/manifest"), path, context)
+    if expected_path is not None and path != expected_path:
+        raise ValueError(f"{context} path must be {expected_path!r}")
+    _require_sha256(descriptor["sha256"], f"{context} hash")
+    _require_int(descriptor["size_bytes"], f"{context} size", minimum=1)
+    return descriptor
+
+
 def _validate_build_manifest(
     path: Path,
 ) -> tuple[bytes, dict[str, Any], dict[str, dict[str, Any]]]:
@@ -701,19 +798,36 @@ def _validate_build_manifest(
         },
         "four-mode build manifest",
     )
-    if manifest["schema_version"] != 1 or manifest["mode"] != BUILD_MODE:
-        raise ValueError("not a schema-1 four-mode package build manifest")
-    source = manifest["source"]
-    if not isinstance(source, dict):
-        raise ValueError("build manifest source must be an object")
-    _require_commit(source.get("commit"), "build source commit")
-    _require_commit(source.get("tree"), "build source tree")
+    if manifest["schema_version"] != BUILD_SCHEMA_VERSION or manifest["mode"] != BUILD_MODE:
+        raise ValueError(
+            f"not a schema-{BUILD_SCHEMA_VERSION} four-mode package build manifest; "
+            "schema-1 manifests are intentionally rejected"
+        )
+    source = _require_exact_keys(
+        manifest["source"],
+        {"commit", "tree", "git_archive_sha256", "base_optimizer_sha256"},
+        "build source",
+    )
+    _require_commit(source["commit"], "build source commit")
+    _require_commit(source["tree"], "build source tree")
     for field in ("git_archive_sha256", "base_optimizer_sha256"):
         _require_sha256(source.get(field), f"build source {field}")
-    contract = manifest["contract"]
-    if not isinstance(contract, dict) or contract.get("modes") != list(MODES):
+    contract = _require_exact_keys(
+        manifest["contract"],
+        {
+            "modes",
+            "source_mutation",
+            "build_environment",
+            "audit",
+            "timing_design",
+        },
+        "build contract",
+    )
+    if contract["modes"] != list(MODES):
         raise ValueError("build manifest does not contain the complete four-mode contract")
-    if contract.get("timing_design") != [list(row) for row in williams_sequences()]:
+    for field in ("source_mutation", "build_environment", "audit"):
+        _require_string(contract[field], f"build contract {field}")
+    if contract["timing_design"] != [list(row) for row in williams_sequences()]:
         raise ValueError("build manifest Williams design changed")
     tooling = manifest["tooling"]
     required_tooling = {
@@ -723,36 +837,161 @@ def _validate_build_manifest(
         "package_self_test_sha256",
         "official_sources_sha256",
         "organizer_wrapper_sha256",
+        "solver_registry_sha256",
+        "official_source_checker_sha256",
     }
     _require_exact_keys(tooling, required_tooling, "build tooling")
     for field in required_tooling:
         _require_sha256(tooling[field], f"build tooling {field}")
     if tooling["orchestrator_sha256"] != _sha256_file(Path(__file__).resolve()):
         raise ValueError("build manifest was produced by different orchestrator bytes")
+    build_host = _require_exact_keys(
+        manifest["build_host"], {"platform", "machine", "python"}, "build host"
+    )
+    for field in build_host:
+        _require_string(build_host[field], f"build host {field}")
+
+    component_names = _component_names(ROOT)
+    expected_solver_sources = {
+        f"contest_solution/{name}" for name in component_names
+    }
+    expected_support_sources = {
+        "packaging/torch_stub.py",
+        "packaging/eval_stub.py",
+        "packaging/solver_main.py",
+    }
+    expected_archived_sources = {
+        *(f"source_fallback/{name}" for name in component_names),
+        "source_fallback/torch.py",
+        "source_fallback/iccad2026_evaluate.py",
+        "source_fallback/solver_main.py",
+    }
     variants = manifest["variants"]
     if not isinstance(variants, list) or len(variants) != len(MODES):
         raise ValueError("build manifest must contain exactly four variants")
     by_mode = {}
     for index, variant in enumerate(variants):
-        if not isinstance(variant, dict):
-            raise ValueError(f"variant {index} is not an object")
-        mode = variant.get("mode")
+        variant = _require_exact_keys(
+            variant,
+            {
+                "mode",
+                "source_patch",
+                "solver_components",
+                "package_support_sources",
+                "archived_source_sha256",
+                "binary",
+                "wrapper",
+                "package",
+                "audit",
+                "build_log",
+            },
+            f"variant {index}",
+        )
+        mode = variant["mode"]
         if mode not in MODES or mode in by_mode:
             raise ValueError(f"variant {index} has unknown or duplicate mode")
-        package = variant.get("package")
-        if not isinstance(package, dict):
-            raise ValueError(f"variant {mode} has no package descriptor")
-        _require_sha256(package.get("sha256"), f"variant {mode} package")
-        _require_int(package.get("size_bytes"), f"variant {mode} package size", minimum=1)
-        sources = variant.get("archived_source_sha256")
-        if not isinstance(sources, dict) or "source_fallback/my_optimizer.py" not in sources:
-            raise ValueError(f"variant {mode} has incomplete archived source hashes")
-        for name, digest in sources.items():
-            _safe_manifest_path(Path("/manifest"), name, f"variant {mode} source")
-            _require_sha256(digest, f"variant {mode} source {name}")
-        audit = variant.get("audit")
-        if not isinstance(audit, dict) or audit.get("status") != "PASS":
+        patch = _require_exact_keys(
+            variant["source_patch"],
+            {
+                "path",
+                "assignment_before",
+                "assignment_after",
+                "sha256_before",
+                "sha256_after",
+                "changed",
+            },
+            f"variant {mode} source patch",
+        )
+        expected_assignment = f'self._learned_order_mode = "{mode}"'
+        if (
+            patch["path"] != OPTIMIZER_RELATIVE_PATH.as_posix()
+            or patch["assignment_before"] != DEFAULT_ASSIGNMENT.strip()
+            or patch["assignment_after"] != expected_assignment
+            or patch["changed"] is not (mode != "replacement")
+        ):
+            raise ValueError(f"variant {mode} source patch contract changed")
+        _require_sha256(patch["sha256_before"], f"variant {mode} patch before")
+        _require_sha256(patch["sha256_after"], f"variant {mode} patch after")
+        if patch["sha256_before"] != source["base_optimizer_sha256"]:
+            raise ValueError(f"variant {mode} patch is not based on frozen optimizer")
+        if (patch["sha256_after"] == patch["sha256_before"]) is not (
+            mode == "replacement"
+        ):
+            raise ValueError(f"variant {mode} patch changed-state hashes are inconsistent")
+
+        solver_sources = variant["solver_components"]
+        if not isinstance(solver_sources, dict) or set(solver_sources) != expected_solver_sources:
+            raise ValueError(f"variant {mode} solver registry source inventory changed")
+        support_sources = variant["package_support_sources"]
+        if not isinstance(support_sources, dict) or set(support_sources) != expected_support_sources:
+            raise ValueError(f"variant {mode} package-support source inventory changed")
+        for group_name, group in (
+            ("solver", solver_sources),
+            ("support", support_sources),
+        ):
+            for name, digest in group.items():
+                _safe_manifest_path(Path("/manifest"), name, f"variant {mode} {group_name} source")
+                _require_sha256(digest, f"variant {mode} {group_name} source {name}")
+        if solver_sources[OPTIMIZER_RELATIVE_PATH.as_posix()] != patch["sha256_after"]:
+            raise ValueError(f"variant {mode} patch hash differs from solver inventory")
+
+        sources = variant["archived_source_sha256"]
+        if not isinstance(sources, dict) or set(sources) != expected_archived_sources:
+            raise ValueError(f"variant {mode} archived source inventory changed")
+        expected_archive_hashes = {
+            **{
+                f"source_fallback/{Path(name).name}": digest
+                for name, digest in solver_sources.items()
+            },
+            "source_fallback/torch.py": support_sources["packaging/torch_stub.py"],
+            "source_fallback/iccad2026_evaluate.py": support_sources["packaging/eval_stub.py"],
+            "source_fallback/solver_main.py": support_sources["packaging/solver_main.py"],
+        }
+        if sources != expected_archive_hashes:
+            raise ValueError(f"variant {mode} archived source hashes do not bind source inventory")
+
+        binary = _validate_file_descriptor(
+            variant["binary"], f"variant {mode} binary", expected_path=INTERNAL_BINARY_PATH
+        )
+        wrapper = _validate_file_descriptor(
+            variant["wrapper"], f"variant {mode} wrapper", expected_path=INTERNAL_WRAPPER_PATH
+        )
+        if wrapper["sha256"] != tooling["organizer_wrapper_sha256"]:
+            raise ValueError(f"variant {mode} wrapper differs from organizer binding")
+        package = _validate_file_descriptor(
+            variant["package"], f"variant {mode} package"
+        )
+        expected_package_path = f"packages/iccad2026_submission_{mode}.tar.gz"
+        if package["path"] != expected_package_path:
+            raise ValueError(f"variant {mode} package path changed")
+
+        audit = _require_exact_keys(
+            variant["audit"], {"status", "details", "log"}, f"variant {mode} audit"
+        )
+        if audit["status"] != "PASS":
             raise ValueError(f"variant {mode} did not pass its build-time audit")
+        details = _require_exact_keys(
+            audit["details"],
+            {"archive_sha256", "members", "elf_machine", "max_glibc", "smoke", "default_mode"},
+            f"variant {mode} audit details",
+        )
+        if (
+            details["archive_sha256"] != package["sha256"]
+            or details["elf_machine"] != "AMD64"
+            or details["smoke"] != "PASS"
+            or details["default_mode"] != mode
+        ):
+            raise ValueError(f"variant {mode} audit attestation is inconsistent")
+        _require_string(details["members"], f"variant {mode} audit member summary")
+        _require_string(details["max_glibc"], f"variant {mode} audit glibc")
+        _validate_file_descriptor(
+            audit["log"], f"variant {mode} audit log",
+            expected_path=f"logs/{mode}.audit.log",
+        )
+        _validate_file_descriptor(
+            variant["build_log"], f"variant {mode} build log",
+            expected_path=f"logs/{mode}.build.log",
+        )
         by_mode[mode] = variant
     if tuple(variant["mode"] for variant in variants) != MODES:
         raise ValueError("build manifest variant order changed")
@@ -778,7 +1017,11 @@ def _canonical_positions_sha256(value: Any, expected_count: int) -> str:
     return _sha256_bytes(encoded)
 
 
-def _validate_official_result(path: Path, case_id: int) -> dict[str, Any]:
+def _validate_official_result(
+    path: Path,
+    case_id: int,
+    expected_block_count: int | None = None,
+) -> dict[str, Any]:
     _raw, payload = _load_object(path, "official wrapper result")
     rows = payload.get("test_results")
     if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
@@ -789,6 +1032,10 @@ def _validate_official_result(path: Path, case_id: int) -> dict[str, Any]:
     block_count = _require_int(row.get("block_count"), "official block count", minimum=1)
     if block_count > 120:
         raise ValueError("official result block count exceeds contest maximum")
+    if expected_block_count is not None and block_count != expected_block_count:
+        raise ValueError(
+            "official result block count differs from the selected dataset case"
+        )
     if row.get("is_feasible") is not True or row.get("error") is not None:
         raise ValueError("mode package produced an infeasible or errored result")
     runtime = _require_number(row.get("runtime_seconds"), "official runtime", minimum=0.0)
@@ -844,6 +1091,181 @@ def _timing_summary(runs: list[dict[str, Any]]) -> dict[str, Any]:
             "by_case": by_case,
         }
     return result
+
+
+def _official_scenario_cost(
+    quality: dict[str, Any], runtime_seconds: float, median_runtime_seconds: float
+) -> float:
+    """Recompute the organizer's feasible contest cost from raw metrics."""
+
+    if quality.get("is_feasible") is not True:
+        return 10.0
+    hpwl_gap = _require_number(quality.get("hpwl_gap"), "scenario HPWL gap")
+    area_gap = _require_number(quality.get("area_gap"), "scenario area gap")
+    violations = _require_number(
+        quality.get("violations_relative"), "scenario violation ratio", minimum=0.0
+    )
+    runtime = _require_number(runtime_seconds, "scenario runtime", minimum=0.0)
+    median = _require_number(
+        median_runtime_seconds, "scenario median runtime", minimum=0.0
+    )
+    if runtime <= 0.0 or median <= 0.0:
+        raise ValueError("scenario runtime and median must be positive")
+    quality_factor = 1.0 + QUALITY_ALPHA * (
+        max(0.0, hpwl_gap) + max(0.0, area_gap)
+    )
+    violation_factor = math.exp(VIOLATION_BETA * violations)
+    runtime_factor = max(0.7, max(0.01, runtime / max(median, 0.01)) ** RUNTIME_GAMMA)
+    return min(
+        quality_factor * violation_factor * runtime_factor,
+        FEASIBLE_COST_CAP,
+    )
+
+
+def _weighted_panel_cost(costs: list[float], block_counts: list[int]) -> float:
+    if not costs or len(costs) != len(block_counts):
+        raise ValueError("weighted panel requires matching nonempty cost/block arrays")
+    maximum = max(block_counts)
+    weights = [math.exp((count - maximum) / 12.0) for count in block_counts]
+    return sum(cost * weight for cost, weight in zip(costs, weights)) / sum(weights)
+
+
+def _scenario_key(value: float) -> str:
+    return f"{value:g}_seconds"
+
+
+def _runtime_scenario_frontier(
+    runs: list[dict[str, Any]],
+    case_artifacts: list[dict[str, Any]],
+    scenario_medians: tuple[float, ...] = RUNTIME_SCENARIO_MEDIANS,
+) -> dict[str, Any]:
+    """Build per-case median-runtime cost frontiers for unknown field medians."""
+
+    if not case_artifacts:
+        raise ValueError("runtime scenario frontier requires selected cases")
+    case_ids = [row["test_id"] for row in case_artifacts]
+    if case_ids != sorted(set(case_ids)):
+        raise ValueError("scenario case artifacts must be sorted and unique")
+    block_by_case = {row["test_id"]: row["block_count"] for row in case_artifacts}
+    full_panel = case_ids == list(range(100)) and [
+        block_by_case[index] for index in case_ids
+    ] == list(range(21, 121))
+    score_name = (
+        "official_100_case_total_score"
+        if full_panel
+        else "partial_panel_exp_n_over_12_weighted_cost_not_official_total_score"
+    )
+
+    per_mode_case: dict[str, dict[str, Any]] = {}
+    for mode in MODES:
+        mode_cases: dict[str, Any] = {}
+        for case_id in case_ids:
+            selected = [
+                row for row in runs
+                if row["mode"] == mode and row["case_id"] == case_id
+            ]
+            if not selected:
+                raise ValueError(f"scenario frontier lacks {mode} case {case_id}")
+            qualities = {json.dumps(row["quality"], sort_keys=True) for row in selected}
+            if len(qualities) != 1:
+                raise ValueError(f"scenario frontier found quality drift for {mode} case {case_id}")
+            quality = selected[0]["quality"]
+            if quality["block_count"] != block_by_case[case_id]:
+                raise ValueError(f"scenario block count mismatch for case {case_id}")
+            median_runtime = statistics.median(
+                row["runtime_seconds"] for row in selected
+            )
+            quality_factor = 1.0 + QUALITY_ALPHA * (
+                max(0.0, quality["hpwl_gap"]) + max(0.0, quality["area_gap"])
+            )
+            violation_factor = math.exp(
+                VIOLATION_BETA * quality["violations_relative"]
+            )
+            mode_cases[str(case_id)] = {
+                "block_count": quality["block_count"],
+                "median_runtime_seconds": median_runtime,
+                "quality_factor": quality_factor,
+                "violation_factor": violation_factor,
+                "cost_by_field_median": {
+                    _scenario_key(median): _official_scenario_cost(
+                        quality, median_runtime, median
+                    )
+                    for median in scenario_medians
+                },
+            }
+        per_mode_case[mode] = mode_cases
+
+    scenario_rows = []
+    score_vectors = {mode: [] for mode in MODES}
+    winner_sets = []
+    block_counts = [block_by_case[case_id] for case_id in case_ids]
+    for median in scenario_medians:
+        key = _scenario_key(median)
+        scores = {
+            mode: _weighted_panel_cost(
+                [per_mode_case[mode][str(case_id)]["cost_by_field_median"][key]
+                 for case_id in case_ids],
+                block_counts,
+            )
+            for mode in MODES
+        }
+        for mode, score in scores.items():
+            score_vectors[mode].append(score)
+        best = min(scores.values())
+        winners = [mode for mode in MODES if math.isclose(scores[mode], best, rel_tol=0.0, abs_tol=1e-15)]
+        winner_sets.append(set(winners))
+        scenario_rows.append({
+            "field_median_runtime_seconds": median,
+            score_name: scores,
+            "delta_vs_off": {mode: scores[mode] - scores["off"] for mode in MODES},
+            "delta_vs_replacement": {
+                mode: scores[mode] - scores["replacement"] for mode in MODES
+            },
+            "winners": winners,
+        })
+
+    nondominated = []
+    for candidate in MODES:
+        dominated = any(
+            other != candidate
+            and all(
+                left <= right
+                for left, right in zip(score_vectors[other], score_vectors[candidate])
+            )
+            and any(
+                left < right
+                for left, right in zip(score_vectors[other], score_vectors[candidate])
+            )
+            for other in MODES
+        )
+        if not dominated:
+            nondominated.append(candidate)
+    intersection = set(MODES)
+    for winners in winner_sets:
+        intersection &= winners
+    return {
+        "panel": {
+            "kind": "official_complete_100_case_panel" if full_panel else "partial_report_only_panel",
+            "case_count": len(case_ids),
+            "case_ids": case_ids,
+            "aggregate_name": score_name,
+        },
+        "formula": {
+            "quality_alpha": QUALITY_ALPHA,
+            "violation_beta": VIOLATION_BETA,
+            "runtime_gamma": RUNTIME_GAMMA,
+            "runtime_floor": 0.7,
+            "feasible_cost_cap": FEASIBLE_COST_CAP,
+            "case_weight": "exp(n/12), stabilized by subtracting max(n)",
+            "runtime_source": "per-mode/per-case median of measured organizer-wrapper runs",
+        },
+        "per_mode_case": per_mode_case,
+        "scenarios": scenario_rows,
+        "nondominated_modes": nondominated,
+        "all_scenario_winner_intersection": [
+            mode for mode in MODES if mode in intersection
+        ],
+    }
 
 
 def _verify_official_checkout(
@@ -908,6 +1330,279 @@ def _selected_public_case_artifacts(
     return artifacts
 
 
+def _read_optional_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _native_amd64_attestation(
+    probe: dict[str, str] | None = None,
+    environ: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Fail closed on architecture/emulation contradictions, not virtualization."""
+
+    if probe is None:
+        uname = os.uname()
+        probe = {
+            "platform_machine": platform.machine(),
+            "platform_platform": platform.platform(),
+            "uname_machine": uname.machine,
+            "uname_sysname": uname.sysname,
+            "uname_release": uname.release,
+            "cpuinfo": _read_optional_text(Path("/proc/cpuinfo")),
+        }
+    environment = os.environ if environ is None else environ
+    required_probe = {
+        "platform_machine",
+        "platform_platform",
+        "uname_machine",
+        "uname_sysname",
+        "uname_release",
+        "cpuinfo",
+    }
+    if set(probe) != required_probe or any(
+        not isinstance(probe[name], str) for name in required_probe
+    ):
+        raise ValueError("native-host probe has an invalid schema")
+    platform_machine = probe["platform_machine"].strip().lower()
+    uname_machine = probe["uname_machine"].strip().lower()
+    if platform_machine not in NATIVE_AMD64_NAMES or uname_machine not in NATIVE_AMD64_NAMES:
+        raise ValueError(
+            "timing requires agreeing AMD64 platform.machine and uname -m attestations"
+        )
+    contradiction_text = " ".join(
+        (probe["platform_platform"], probe["uname_machine"], probe["cpuinfo"])
+    ).lower()
+    if re.search(r"(?:aarch64|arm64|armv[5-9]|riscv|ppc64|s390x)", contradiction_text):
+        raise ValueError("native AMD64 timing probe contains a non-x86 architecture contradiction")
+    if re.search(r"(?:qemu|tcg acceleration|bochs)", contradiction_text):
+        raise ValueError("native AMD64 timing rejects QEMU/TCG/Bochs emulation evidence")
+    emulation_environment = sorted(
+        name for name in EMULATION_ENV_NAMES if environment.get(name)
+    )
+    if emulation_environment:
+        raise ValueError(
+            "native AMD64 timing rejects emulation environment markers: "
+            + ", ".join(emulation_environment)
+        )
+
+    cpuinfo = probe["cpuinfo"]
+    vendors = sorted(set(re.findall(r"^vendor_id\s*:\s*(\S+)", cpuinfo, re.MULTILINE)))
+    recognized_vendors = {
+        "GenuineIntel",
+        "AuthenticAMD",
+        "HygonGenuine",
+        "CentaurHauls",
+        "Shanghai",
+    }
+    if not vendors or not set(vendors).issubset(recognized_vendors):
+        raise ValueError("native AMD64 timing lacks a recognized x86 CPU vendor attestation")
+    flag_lines = re.findall(r"^(?:flags|Features)\s*:\s*(.*)$", cpuinfo, re.MULTILINE)
+    flags = sorted({flag for line in flag_lines for flag in line.split()})
+    if not {"lm", "sse2"}.issubset(flags):
+        raise ValueError("native AMD64 timing CPU flags do not attest 64-bit x86 execution")
+    models = sorted(set(re.findall(r"^model name\s*:\s*(.+)$", cpuinfo, re.MULTILINE)))
+    if not models:
+        raise ValueError("native AMD64 timing lacks CPU model evidence")
+    # The hypervisor CPU flag is intentionally allowed: native GitHub-hosted
+    # AMD64 runners are virtualized, but are not cross-architecture emulation.
+    return {
+        "status": "PASS",
+        "platform_machine": probe["platform_machine"],
+        "platform_platform": probe["platform_platform"],
+        "uname": {
+            "machine": probe["uname_machine"],
+            "sysname": probe["uname_sysname"],
+            "release": probe["uname_release"],
+        },
+        "cpu_vendors": vendors,
+        "cpu_models": models,
+        "cpu_flags": flags,
+        "hypervisor_flag": "hypervisor" in flags,
+        "cpuinfo_sha256": _sha256_bytes(cpuinfo.encode("utf-8")),
+        "emulation_environment_markers": [],
+    }
+
+
+def _cpu_governors() -> dict[str, str]:
+    result = {}
+    for path in sorted(Path("/sys/devices/system/cpu").glob("cpu[0-9]*/cpufreq/scaling_governor")):
+        value = _read_optional_text(path).strip()
+        if value:
+            result[path.as_posix()] = value
+    return result
+
+
+def _host_measurement_snapshot() -> dict[str, Any]:
+    affinity = (
+        sorted(os.sched_getaffinity(0))
+        if hasattr(os, "sched_getaffinity")
+        else list(range(os.cpu_count() or 0))
+    )
+    return {
+        "native_amd64": _native_amd64_attestation(),
+        "logical_cpu_count": os.cpu_count(),
+        "process_affinity": affinity,
+        "cpu_governors": _cpu_governors(),
+        "load_average_1_5_15": list(os.getloadavg()),
+        "monotonic_seconds": time.monotonic(),
+    }
+
+
+def _host_drift(pre: dict[str, Any], post: dict[str, Any]) -> dict[str, Any]:
+    immutable_paths = (
+        ("native_amd64.platform_machine", pre["native_amd64"]["platform_machine"], post["native_amd64"]["platform_machine"]),
+        ("native_amd64.uname.machine", pre["native_amd64"]["uname"]["machine"], post["native_amd64"]["uname"]["machine"]),
+        ("native_amd64.cpu_vendors", pre["native_amd64"]["cpu_vendors"], post["native_amd64"]["cpu_vendors"]),
+        ("native_amd64.cpu_models", pre["native_amd64"]["cpu_models"], post["native_amd64"]["cpu_models"]),
+        ("native_amd64.cpu_flags", pre["native_amd64"]["cpu_flags"], post["native_amd64"]["cpu_flags"]),
+        ("logical_cpu_count", pre["logical_cpu_count"], post["logical_cpu_count"]),
+        ("process_affinity", pre["process_affinity"], post["process_affinity"]),
+        ("cpu_governors", pre["cpu_governors"], post["cpu_governors"]),
+    )
+    changed = [name for name, before, after in immutable_paths if before != after]
+    if changed:
+        raise ValueError("timing host identity/configuration drifted: " + ", ".join(changed))
+    return {
+        "status": "PASS",
+        "immutable_fields_changed": [],
+        "elapsed_monotonic_seconds": post["monotonic_seconds"] - pre["monotonic_seconds"],
+        "load_average_delta": [
+            after - before
+            for before, after in zip(
+                pre["load_average_1_5_15"], post["load_average_1_5_15"]
+            )
+        ],
+    }
+
+
+def _sanitized_timing_environment(
+    source: dict[str, str] | None = None,
+) -> dict[str, str]:
+    original = os.environ if source is None else source
+    allowed = (
+        "PATH",
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        "TZ",
+        "TMPDIR",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+    )
+    environment = {
+        name: original[name]
+        for name in allowed
+        if isinstance(original.get(name), str) and original[name]
+    }
+    environment.update({
+        "PYTHONHASHSEED": "0",
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+    })
+    return environment
+
+
+def _rotated_sequence_indices(case_index: int, cycle: int) -> tuple[int, ...]:
+    count = len(williams_sequences())
+    start = (case_index + cycle) % count
+    return tuple((start + offset) % count for offset in range(count))
+
+
+def _discarded_warmup_schedule(case_index: int) -> tuple[tuple[int, int, str], ...]:
+    sequences = williams_sequences()
+    sequence_index = case_index % len(sequences)
+    return tuple(
+        (sequence_index, period, mode)
+        for period, mode in enumerate(sequences[sequence_index])
+    )
+
+
+def _official_evaluator_command(
+    evaluator: Path,
+    wrapper: Path,
+    data_root: Path,
+    case_id: int,
+    result_path: Path,
+) -> list[str]:
+    return [
+        sys.executable,
+        str(evaluator),
+        "--evaluate",
+        str(wrapper),
+        "--data-path",
+        str(data_root),
+        "--test-id",
+        str(case_id),
+        "--output",
+        str(result_path),
+    ]
+
+
+def _artifact_bindings(
+    *,
+    build_manifest: Path,
+    official_sources: Path,
+    evaluator: Path,
+    data_root: Path,
+    case_ids: list[int],
+    variants: dict[str, dict[str, Any]],
+    package_roots: dict[str, Path],
+) -> dict[str, Any]:
+    manifest_dir = build_manifest.resolve().parent
+    return {
+        "build_manifest": _file_descriptor(build_manifest.name, build_manifest),
+        "official_sources": _file_descriptor(official_sources.name, official_sources),
+        "official_evaluator": _file_descriptor(evaluator.name, evaluator),
+        "official_source_checker": _file_descriptor(
+            "scripts/check_official_sources.py",
+            ROOT / "scripts/check_official_sources.py",
+        ),
+        "selected_public_case_artifacts": _selected_public_case_artifacts(
+            data_root, case_ids
+        ),
+        "packages": {
+            mode: _file_descriptor(
+                variants[mode]["package"]["path"],
+                _safe_manifest_path(
+                    manifest_dir,
+                    variants[mode]["package"]["path"],
+                    f"{mode} package",
+                ),
+            )
+            for mode in MODES
+        },
+        "extracted_wrappers": {
+            mode: _file_descriptor(
+                INTERNAL_WRAPPER_PATH,
+                package_roots[mode] / "op_wrapper.py",
+            )
+            for mode in MODES
+        },
+        "extracted_binaries": {
+            mode: _file_descriptor(
+                INTERNAL_BINARY_PATH,
+                package_roots[mode] / "dist/my_optimizer/my_optimizer",
+            )
+            for mode in MODES
+        },
+    }
+
+
+def _require_unchanged_bindings(
+    before: dict[str, Any], after: dict[str, Any]
+) -> None:
+    if before != after:
+        raise ValueError(
+            "timing input/provenance artifacts changed between pre- and post-run rehash"
+        )
+
+
 def _audit_and_extract_variants(
     *,
     manifest_path: Path,
@@ -929,6 +1624,14 @@ def _audit_and_extract_variants(
         ROOT / "scripts/audit_submission_package.py"
     ):
         raise ValueError("current package audit differs from the build-time audit")
+    if tooling["solver_registry_sha256"] != _sha256_file(
+        ROOT / "scripts/solver_components.py"
+    ):
+        raise ValueError("current solver registry differs from the build-time registry")
+    if tooling["official_source_checker_sha256"] != _sha256_file(
+        ROOT / "scripts/check_official_sources.py"
+    ):
+        raise ValueError("current official-source checker differs from build time")
     wrapper_sha256 = official_wrapper_sha(official_sources)
     if wrapper_sha256 != tooling["organizer_wrapper_sha256"]:
         raise ValueError("organizer wrapper binding differs from package build")
@@ -937,6 +1640,19 @@ def _audit_and_extract_variants(
     manifest_dir = manifest_path.resolve().parent
     for mode in MODES:
         variant = variants[mode]
+        for field, context in (
+            (variant["build_log"], "build log"),
+            (variant["audit"]["log"], "audit log"),
+        ):
+            log_path = _safe_manifest_path(
+                manifest_dir, field["path"], f"{mode} {context}"
+            )
+            if (
+                not log_path.is_file()
+                or log_path.stat().st_size != field["size_bytes"]
+                or _sha256_file(log_path) != field["sha256"]
+            ):
+                raise ValueError(f"{mode} {context} changed after package build")
         descriptor = variant["package"]
         package = _safe_manifest_path(
             manifest_dir, descriptor["path"], f"{mode} package"
@@ -958,13 +1674,25 @@ def _audit_and_extract_variants(
         )
         if "smoke=PASS" not in messages:
             raise ValueError(f"{mode} package re-audit did not run its self-test")
+        if f"default_mode={mode}" not in messages:
+            raise ValueError(f"{mode} package binary reports the wrong default mode")
         mode_destination = destination / mode
         _safe_extract_tar(package, mode_destination, expected_prefix=ARCHIVE_ROOT)
         package_root = mode_destination / ARCHIVE_ROOT
         wrapper = package_root / "op_wrapper.py"
+        binary = package_root / "dist/my_optimizer/my_optimizer"
         optimizer = package_root / "source_fallback/my_optimizer.py"
-        if _sha256_file(wrapper) != wrapper_sha256:
+        if (
+            wrapper.stat().st_size != variant["wrapper"]["size_bytes"]
+            or _sha256_file(wrapper) != variant["wrapper"]["sha256"]
+            or _sha256_file(wrapper) != wrapper_sha256
+        ):
             raise ValueError(f"{mode} extracted wrapper hash changed")
+        if (
+            binary.stat().st_size != variant["binary"]["size_bytes"]
+            or _sha256_file(binary) != variant["binary"]["sha256"]
+        ):
+            raise ValueError(f"{mode} extracted binary hash changed")
         assignment = ASSIGNMENT_RE.findall(optimizer.read_text(encoding="utf-8"))
         expected = [f'        self._learned_order_mode = "{mode}"']
         if assignment != expected:
@@ -993,8 +1721,7 @@ def time_mode_packages(
     if case_ids != sorted(set(case_ids)):
         raise ValueError("case IDs must be sorted and unique")
     _require_int(cycles, "timing cycles", minimum=1)
-    if platform.machine().lower() not in {"x86_64", "amd64"}:
-        raise ValueError("organizer-wrapper timing requires a native AMD64 host")
+    _native_amd64_attestation()
     output_dir = _ensure_outside_repository(output_dir, ROOT, "timing output directory")
     if output_dir.exists():
         raise FileExistsError(f"output already exists: {output_dir}")
@@ -1016,6 +1743,9 @@ def time_mode_packages(
     if not evaluator.is_file() or _sha256_file(evaluator) != expected_evaluator_sha:
         raise ValueError("official evaluator bytes do not match the pinned manifest")
     selected_case_artifacts = _selected_public_case_artifacts(data_root, case_ids)
+    block_by_case = {
+        row["test_id"]: row["block_count"] for row in selected_case_artifacts
+    }
 
     staging = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.", dir=output_dir.parent))
     try:
@@ -1028,74 +1758,144 @@ def time_mode_packages(
             official_sources=official_sources,
             destination=packages_dir,
         )
+        pre_bindings = _artifact_bindings(
+            build_manifest=build_manifest,
+            official_sources=official_sources,
+            evaluator=evaluator,
+            data_root=data_root,
+            case_ids=case_ids,
+            variants=variants,
+            package_roots=package_roots,
+        )
+        binding_sha256 = _sha256_bytes(json.dumps(
+            pre_bindings, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8"))
+        host_pre = _host_measurement_snapshot()
         sequences = williams_sequences()
-        runs = []
+        runs: list[dict[str, Any]] = []
+        warmups: list[dict[str, Any]] = []
         quality_by_mode_case: dict[tuple[str, int], dict[str, Any]] = {}
-        environment = dict(os.environ)
-        environment.pop("MY_OPT_BIN", None)
-        environment["PYTHONHASHSEED"] = "0"
+        environment = _sanitized_timing_environment()
         ordinal = 0
-        for case_id in case_ids:
+
+        def execute(
+            *,
+            case_id: int,
+            case_index: int,
+            cycle: int,
+            sequence_index: int,
+            schedule_position: int,
+            period: int,
+            mode: str,
+            warmup: bool,
+        ) -> dict[str, Any]:
+            nonlocal ordinal
+            ordinal += 1
+            prefix = "warmup" if warmup else "run"
+            stem = (
+                f"{prefix}-{ordinal:05d}-case-{case_id:02d}-cycle-{cycle:02d}-"
+                f"schedule-{schedule_position}-sequence-{sequence_index}-"
+                f"period-{period}-{mode}"
+            )
+            directory = "warmups" if warmup else "runs"
+            result_path = staging / directory / f"{stem}.json"
+            log_path = staging / "logs" / f"{stem}.log"
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            wrapper = package_roots[mode] / "op_wrapper.py"
+            completed = _run_checked(
+                _official_evaluator_command(
+                    evaluator, wrapper, data_root, case_id, result_path
+                ),
+                cwd=evaluator.parent,
+                timeout=timeout,
+                env=environment,
+            )
+            _write_log(log_path, completed)
+            validated = _validate_official_result(
+                result_path, case_id, block_by_case[case_id]
+            )
+            key = (mode, case_id)
+            previous_quality = quality_by_mode_case.setdefault(
+                key, validated["quality"]
+            )
+            if validated["quality"] != previous_quality:
+                raise ValueError(
+                    f"{mode} case {case_id} output changed across warmup/timing repeats"
+                )
+            return {
+                "ordinal": ordinal,
+                "discarded_warmup": warmup,
+                "case_id": case_id,
+                "case_index": case_index,
+                "cycle": cycle,
+                "schedule_position": schedule_position,
+                "sequence": sequence_index,
+                "period": period,
+                "mode": mode,
+                "runtime_seconds": validated["runtime_seconds"],
+                "quality": validated["quality"],
+                "result": _file_descriptor(
+                    f"{directory}/{result_path.name}", result_path
+                ),
+                "log": _file_descriptor(f"logs/{log_path.name}", log_path),
+            }
+
+        for case_index, case_id in enumerate(case_ids):
+            # One complete, balanced treatment pass warms the evaluator,
+            # wrapper and binary paths. These four runs are retained but never
+            # enter medians or score scenarios.
+            for warmup_sequence_index, period, mode in _discarded_warmup_schedule(
+                case_index
+            ):
+                warmups.append(execute(
+                    case_id=case_id,
+                    case_index=case_index,
+                    cycle=-1,
+                    sequence_index=warmup_sequence_index,
+                    schedule_position=period,
+                    period=period,
+                    mode=mode,
+                    warmup=True,
+                ))
             for cycle in range(cycles):
-                for sequence_index, sequence in enumerate(sequences):
+                for schedule_position, sequence_index in enumerate(
+                    _rotated_sequence_indices(case_index, cycle)
+                ):
+                    sequence = sequences[sequence_index]
                     for period, mode in enumerate(sequence):
-                        ordinal += 1
-                        stem = (
-                            f"run-{ordinal:05d}-case-{case_id:02d}-cycle-{cycle:02d}-"
-                            f"sequence-{sequence_index}-period-{period}-{mode}"
-                        )
-                        result_path = staging / "runs" / f"{stem}.json"
-                        log_path = staging / "logs" / f"{stem}.log"
-                        result_path.parent.mkdir(parents=True, exist_ok=True)
-                        wrapper = package_roots[mode] / "op_wrapper.py"
-                        completed = _run_checked(
-                            [
-                                sys.executable,
-                                str(evaluator),
-                                "--evaluate",
-                                str(wrapper),
-                                "--data-path",
-                                str(data_root),
-                                "--test-id",
-                                str(case_id),
-                                "--output",
-                                str(result_path),
-                            ],
-                            cwd=evaluator.parent,
-                            timeout=timeout,
-                            env=environment,
-                        )
-                        log_sha256 = _write_log(log_path, completed)
-                        validated = _validate_official_result(result_path, case_id)
-                        key = (mode, case_id)
-                        previous_quality = quality_by_mode_case.setdefault(
-                            key, validated["quality"]
-                        )
-                        if validated["quality"] != previous_quality:
-                            raise ValueError(
-                                f"{mode} case {case_id} output changed across timing repeats"
-                            )
-                        runs.append({
-                            "ordinal": ordinal,
-                            "case_id": case_id,
-                            "cycle": cycle,
-                            "sequence": sequence_index,
-                            "period": period,
-                            "mode": mode,
-                            "runtime_seconds": validated["runtime_seconds"],
-                            "quality": validated["quality"],
-                            "result": {
-                                "path": f"runs/{result_path.name}",
-                                "sha256": _sha256_file(result_path),
-                            },
-                            "log": {
-                                "path": f"logs/{log_path.name}",
-                                "sha256": log_sha256,
-                            },
-                        })
+                        runs.append(execute(
+                            case_id=case_id,
+                            case_index=case_index,
+                            cycle=cycle,
+                            sequence_index=sequence_index,
+                            schedule_position=schedule_position,
+                            period=period,
+                            mode=mode,
+                            warmup=False,
+                        ))
+        post_bindings = _artifact_bindings(
+            build_manifest=build_manifest,
+            official_sources=official_sources,
+            evaluator=evaluator,
+            data_root=data_root,
+            case_ids=case_ids,
+            variants=variants,
+            package_roots=package_roots,
+        )
+        _require_unchanged_bindings(pre_bindings, post_bindings)
+        post_binding_sha256 = _sha256_bytes(json.dumps(
+            post_bindings, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8"))
+        post_official_check_sha256 = _verify_official_checkout(
+            official_root, official_sources, timeout
+        )
+        if post_official_check_sha256 != official_check_sha256:
+            raise ValueError("official-source checker output changed during timing")
+        host_post = _host_measurement_snapshot()
+        drift = _host_drift(host_pre, host_post)
         shutil.rmtree(packages_dir)
         result = {
-            "schema_version": 1,
+            "schema_version": TIMING_SCHEMA_VERSION,
             "mode": TIMING_MODE,
             "build_manifest": {
                 "path": build_manifest.resolve().name,
@@ -1108,6 +1908,9 @@ def time_mode_packages(
                 "williams_sequences": [list(row) for row in sequences],
                 "complete_sequences_per_case_cycle": len(sequences),
                 "no_my_opt_bin_override": True,
+                "discarded_balanced_warmup_per_case": list(MODES),
+                "sequence_row_start": "rotated by (case_index + cycle) modulo 4",
+                "environment": "allowlisted and thread-count pinned",
             },
             "official": {
                 "floorset_commit": official_payload["floorset"]["commit"],
@@ -1119,20 +1922,41 @@ def time_mode_packages(
                 "selected_public_case_artifacts": selected_case_artifacts,
             },
             "environment": {
-                "platform": platform.platform(),
-                "machine": platform.machine(),
+                "native_amd64_attestation": "PASS",
                 "python": platform.python_version(),
                 "python_executable": str(Path(sys.executable).resolve()),
                 "python_executable_sha256": _sha256_file(Path(sys.executable).resolve()),
-                "pythonhashseed": "0",
+                "sanitized_environment_keys": sorted(environment),
+                "fixed_environment": {
+                    name: environment[name]
+                    for name in (
+                        "PYTHONHASHSEED", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                        "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+                    )
+                },
+                "pre": host_pre,
+                "post": host_post,
+                "drift": drift,
             },
             "schedule": {
                 "case_ids": case_ids,
                 "cycles": cycles,
+                "discarded_warmup_runs": len(warmups),
                 "total_runs": len(runs),
+                "total_process_executions": len(warmups) + len(runs),
             },
+            "artifact_bindings": pre_bindings,
+            "post_timing_rehash": {
+                "status": "PASS",
+                "pre_sha256": binding_sha256,
+                "post_sha256": post_binding_sha256,
+            },
+            "warmups": warmups,
             "runs": runs,
             "summary": _timing_summary(runs),
+            "runtime_scenario_frontier": _runtime_scenario_frontier(
+                runs, selected_case_artifacts
+            ),
         }
         output_path = staging / "timing_manifest.json"
         output_path.write_text(

@@ -70,6 +70,33 @@ def test_source_fallback_live_module_selftest_exercises_learned_and_mib(tmp_path
     assert all(row[2:] == [4.0, 10.0] for row in safe_mib["positions"][:3])
 
 
+def test_source_fallback_default_mode_report_is_read_only_json(tmp_path):
+    for component in LIVE_SOLVER_COMPONENTS:
+        shutil.copy2(ROOT / "contest_solution" / component, tmp_path / component)
+    shutil.copy2(ROOT / "packaging" / "torch_stub.py", tmp_path / "torch.py")
+    shutil.copy2(
+        ROOT / "packaging" / "eval_stub.py",
+        tmp_path / "iccad2026_evaluate.py",
+    )
+    shutil.copy2(ROOT / "packaging" / "solver_main.py", tmp_path / "solver_main.py")
+
+    completed = subprocess.run(
+        [sys.executable, str(tmp_path / "solver_main.py"), "--report-default-mode"],
+        input="this is deliberately not a solve payload",
+        text=True,
+        capture_output=True,
+        timeout=10,
+        check=False,
+        env={**os.environ, "PYTHONHASHSEED": "0"},
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "schema_version": 1,
+        "learned_order_mode": "replacement",
+    }
+
+
 @pytest.mark.parametrize("default_mode", ["off", "additive", "additive_first_pass"])
 def test_live_module_selftest_is_independent_of_promoted_mode(
     tmp_path, default_mode

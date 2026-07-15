@@ -40,6 +40,12 @@ Exactly the `solve()` schema of `optimizer_template.py`, transported as JSON
 - stdout: `{"positions": [[x, y, w, h], ...]}` with exactly `block_count`
   entries
 
+For package auditing only, `--report-default-mode` emits a small JSON object
+identifying the compiled learned-order default and exits without reading a
+case or executing `solve()`. The package auditor requires this report to match
+the source fallback byte for byte; it is not part of the contest solve
+protocol.
+
 ## Properties
 
 - Single-threaded, CPU-only, deterministic (fixed seeds); no GPU, no network,

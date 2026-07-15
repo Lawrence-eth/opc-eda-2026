@@ -298,7 +298,23 @@ def _live_module_self_test():
     }
 
 
+def _default_mode_report():
+    """Report the compiled production default without executing a solve."""
+
+    mode = MyOptimizer(verbose=False)._learned_order_mode
+    if mode not in {"off", "replacement", "additive", "additive_first_pass"}:
+        raise RuntimeError("compiled learned-order default is unsupported")
+    return {
+        "schema_version": 1,
+        "learned_order_mode": mode,
+    }
+
+
 def main():
+    if sys.argv[1:] == ["--report-default-mode"]:
+        sys.stdout.write(json.dumps(_default_mode_report(), sort_keys=True))
+        sys.stdout.flush()
+        return
     if sys.argv[1:] == ["--self-test-live-modules"]:
         sys.stdout.write(json.dumps(_live_module_self_test()))
         sys.stdout.flush()

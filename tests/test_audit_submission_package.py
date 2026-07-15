@@ -237,6 +237,8 @@ def test_binary_smoke_requires_positions_object(tmp_path, monkeypatch):
             '{"positions": [[0, 0, 10, 10], [10, 0, 5, 5], [15, 0, 2, 2]]}',
             json.dumps(_live_self_test_payload()),
             json.dumps(_live_self_test_payload()),
+            '{"learned_order_mode":"replacement","schema_version":1}',
+            '{"learned_order_mode":"replacement","schema_version":1}',
         )
     )
     monkeypatch.setattr(
@@ -277,6 +279,27 @@ def test_binary_smoke_rejects_live_module_source_binary_drift(tmp_path, monkeypa
     )
 
     with pytest.raises(package_audit.PackageAuditError, match="payloads differ"):
+        package_audit._smoke(tmp_path)
+
+
+def test_binary_smoke_rejects_default_mode_source_binary_drift(tmp_path, monkeypatch):
+    monkeypatch.setattr(package_audit.platform, "machine", lambda: "x86_64")
+    responses = iter((
+        '{"positions": [[0, 0, 10, 10], [10, 0, 5, 5], [15, 0, 2, 2]]}',
+        json.dumps(_live_self_test_payload()),
+        json.dumps(_live_self_test_payload()),
+        '{"learned_order_mode":"replacement","schema_version":1}',
+        '{"learned_order_mode":"off","schema_version":1}',
+    ))
+    monkeypatch.setattr(
+        package_audit.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(
+            [], 0, stdout=next(responses), stderr=""
+        ),
+    )
+
+    with pytest.raises(package_audit.PackageAuditError, match="default-mode reports differ"):
         package_audit._smoke(tmp_path)
 
 
