@@ -16,6 +16,7 @@ import argparse
 import ctypes
 import errno
 import hashlib
+import importlib.util
 import io
 import json
 import math
@@ -56,7 +57,6 @@ from learned_order import (  # noqa: E402
     extract_order_features,
     mib_is_input_compatible,
 )
-from lite_dataset import FloorplanDatasetLite  # noqa: E402
 from scripts.train_order_model import (  # noqa: E402
     SourceFile,
     _block_count,
@@ -66,8 +66,8 @@ from scripts.train_order_model import (  # noqa: E402
 )
 
 
-CACHE_SCHEMA_VERSION = 2
-BUILDER_VERSION = 2
+CACHE_SCHEMA_VERSION = 3
+BUILDER_VERSION = 3
 MANIFEST_NAME = "manifest.json"
 DEFAULT_HOLDOUTS = (
     ROOT / "results" / "folds" / "heavy_clean_v1.json",
@@ -242,6 +242,8 @@ FLOORSET_PROVENANCE_KEYS = frozenset(
         "data_root_mode",
         "loader_relative_path",
         "loader_sha256",
+        "loader_module_name",
+        "dataset_class_name",
         "official_sources_sha256",
     }
 )
@@ -580,6 +582,8 @@ def _provenance_context(
             "data_root_mode": "pinned_git_checkout_root",
             "loader_relative_path": "lite_dataset.py",
             "loader_sha256": loader_sha256,
+            "loader_module_name": f"_verified_floorset_lite_{loader_sha256[:16]}",
+            "dataset_class_name": "FloorplanDatasetLite",
             "official_sources_sha256": _file_sha256(
                 ROOT / "docs" / "official_sources.json"
             ),
@@ -1051,19 +1055,26 @@ def _validate_npz_container(path: Path) -> None:
         with zipfile.ZipFile(path, "r") as archive:
             infos = archive.infolist()
             names = [info.filename for info in infos]
-            expected = {f"{name}.npy" for name in ALL_ARRAYS}
+            expected = [f"{name}.npy" for name in sorted(ALL_ARRAYS)]
             if len(names) != len(set(names)):
                 raise CacheError("duplicate_npz_member", str(path))
-            if set(names) != expected:
-                raise CacheError("npz_member_names", str(path))
+            if names != expected:
+                raise CacheError("noncanonical_npz_member_order", str(path))
             if archive.comment:
                 raise CacheError("npz_archive_comment", str(path))
             for info in infos:
                 if (
                     info.is_dir()
-                    or info.flag_bits & 1
+                    or info.flag_bits != 0
                     or info.date_time != (1980, 1, 1, 0, 0, 0)
                     or info.compress_type != zipfile.ZIP_DEFLATED
+                    or info.external_attr != 0o100644 << 16
+                    or info.internal_attr != 0
+                    or info.create_system != 3
+                    or info.create_version != 20
+                    or info.extract_version != 20
+                    or info.extra
+                    or info.comment
                 ):
                     raise CacheError("nondeterministic_npz_member", info.filename)
     except CacheError:
@@ -1193,6 +1204,24 @@ def _validated_clique_components(
     if pairs != expected_pairs:
         raise CacheError(f"incomplete_{name}_clique")
     return components
+
+
+def _validate_vertical_support_overlap(
+    golden_rectangles: np.ndarray, supports: np.ndarray, *, tolerance: float = 1e-6
+) -> None:
+    for child, support_value in enumerate(supports.tolist()):
+        parent = int(support_value)
+        if parent < 0:
+            continue
+        child_x, _child_y, child_width, _child_height = golden_rectangles[child]
+        parent_x, _parent_y, parent_width, _parent_height = golden_rectangles[parent]
+        overlap = min(
+            float(child_x + child_width), float(parent_x + parent_width)
+        ) - max(float(child_x), float(parent_x))
+        if overlap <= tolerance:
+            raise CacheError(
+                "vertical_support_no_x_overlap", f"child {child}, parent {parent}"
+            )
 
 
 def _validate_layout_semantics(
@@ -1345,6 +1374,7 @@ def _validate_layout_semantics(
         raise CacheError("invalid_vertical_support", f"{shard_name}#{layout_index}")
     if any(int(support[block]) == block for block in range(block_count)):
         raise CacheError("vertical_self_support", f"{shard_name}#{layout_index}")
+    _validate_vertical_support_overlap(golden, support)
     y_values: list[float | None] = [None] * block_count
     y_visiting: set[int] = set()
 
@@ -1641,6 +1671,9 @@ def _validate_provenance_schema(
         or floorset["data_root_mode"] != "pinned_git_checkout_root"
         or floorset["loader_relative_path"] != "lite_dataset.py"
         or not _is_sha256(floorset["loader_sha256"])
+        or floorset["loader_module_name"]
+        != f"_verified_floorset_lite_{floorset['loader_sha256'][:16]}"
+        or floorset["dataset_class_name"] != "FloorplanDatasetLite"
         or not _is_sha256(floorset["official_sources_sha256"])
     ):
         raise CacheError("invalid_floorset_provenance")
@@ -1819,6 +1852,57 @@ def _verify_data_root_provenance(
         raise CacheError("official_floorset_provenance_mismatch")
 
 
+def _instantiate_verified_dataset(
+    data_root: Path, provenance: dict[str, Any]
+) -> Any:
+    """Execute the exact hash-bound loader bytes and instantiate its class."""
+    data_root = data_root.resolve()
+    _verify_data_root_provenance(provenance, data_root)
+    floorset = provenance["floorset"]
+    loader_path = data_root / floorset["loader_relative_path"]
+    try:
+        loader_bytes = loader_path.read_bytes()
+    except OSError as exc:
+        raise CacheError("floorset_loader_read_failed", str(exc)) from exc
+    observed_sha256 = hashlib.sha256(loader_bytes).hexdigest()
+    if observed_sha256 != floorset["loader_sha256"]:
+        raise CacheError("floorset_loader_import_hash_mismatch")
+    module_name = floorset["loader_module_name"]
+    spec = importlib.util.spec_from_file_location(module_name, loader_path)
+    if spec is None or spec.loader is None:
+        raise CacheError("floorset_loader_import_spec")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        code = compile(loader_bytes, str(loader_path), "exec", dont_inherit=True)
+        exec(code, module.__dict__)
+    except Exception as exc:
+        sys.modules.pop(module_name, None)
+        raise CacheError("floorset_loader_import_failed", str(exc)) from exc
+    if Path(module.__file__ or "").resolve() != loader_path:
+        raise CacheError("floorset_loader_module_path_mismatch")
+    dataset_class = getattr(module, floorset["dataset_class_name"], None)
+    if (
+        not isinstance(dataset_class, type)
+        or dataset_class.__module__ != module_name
+        or dataset_class.__name__ != floorset["dataset_class_name"]
+    ):
+        raise CacheError("floorset_dataset_class_mismatch")
+    try:
+        dataset = dataset_class(str(data_root))
+    except Exception as exc:
+        raise CacheError("floorset_dataset_instantiation_failed", str(exc)) from exc
+    layouts_per_file = getattr(dataset, "layouts_per_file", None)
+    all_files = getattr(dataset, "all_files", None)
+    if (
+        not _is_plain_int(layouts_per_file, minimum=1)
+        or not isinstance(all_files, list)
+        or not all_files
+    ):
+        raise CacheError("floorset_dataset_contract")
+    return dataset
+
+
 def _verify_local_provenance(
     provenance: dict[str, Any],
     *,
@@ -1861,6 +1945,119 @@ def _verify_local_provenance(
         raise CacheError("code_provenance_mismatch")
 
 
+def _validate_record_types(record: Any, expected_index: int) -> None:
+    if not isinstance(record, dict) or set(record) != RECORD_KEYS:
+        raise CacheError("record_keys", str(expected_index))
+    integer_fields = {
+        "record_index": 0,
+        "file_offset": 0,
+        "source_size_bytes": 0,
+        "block_count": 1,
+        "b2b_edge_count": 0,
+        "mib_pair_count": 0,
+        "cluster_pair_count": 0,
+        "shape_option_count": 1,
+        "mib_inconsistent_block_count": 0,
+        "local_layout": 0,
+    }
+    for field, minimum in integer_fields.items():
+        if not _is_plain_int(record[field], minimum=minimum):
+            raise CacheError("invalid_record_type", f"{expected_index}: {field}")
+    for field in (
+        "clean_offset_selected",
+        "strict_mib_decodable",
+        "mib_input_compatible",
+        "mib_features_masked",
+    ):
+        if not isinstance(record[field], bool):
+            raise CacheError("invalid_record_type", f"{expected_index}: {field}")
+    for field in (
+        "partition",
+        "source_file",
+        "source_sha256",
+        "input_sha256",
+        "optimizer_target_sha256",
+        "tree_sha256",
+        "golden_geometry_sha256",
+        "golden_metrics_sha256",
+        "shard",
+    ):
+        if not isinstance(record[field], str) or not record[field]:
+            raise CacheError("invalid_record_type", f"{expected_index}: {field}")
+    for field in ("oracle_max_coordinate_delta", "oracle_max_dimension_delta"):
+        if not isinstance(record[field], float) or not math.isfinite(record[field]):
+            raise CacheError("invalid_record_type", f"{expected_index}: {field}")
+    groups = record["mib_inconsistent_groups"]
+    if not isinstance(groups, list) or any(
+        not _is_plain_int(group, minimum=1) for group in groups
+    ):
+        raise CacheError(
+            "invalid_record_type", f"{expected_index}: mib_inconsistent_groups"
+        )
+
+
+def _verify_record_payloads_from_dataset(
+    dataset: Any,
+    *,
+    data_root: Path,
+    layouts_per_source: int,
+    records: list[dict[str, Any]],
+) -> None:
+    if int(dataset.layouts_per_file) != layouts_per_source:
+        raise CacheError("dataset_layout_count_mismatch")
+    root = data_root.resolve()
+    source_indices: dict[str, int] = {}
+    for file_index, path_value in enumerate(dataset.all_files):
+        path = Path(path_value).resolve()
+        try:
+            relative = _canonical_path(str(path.relative_to(root)))
+        except ValueError as exc:
+            raise CacheError("dataset_source_outside_data_root", str(path)) from exc
+        if relative in source_indices:
+            raise CacheError("duplicate_dataset_source", relative)
+        source_indices[relative] = file_index
+    for record in records:
+        source = record["source_file"]
+        file_index = source_indices.get(source)
+        if file_index is None:
+            raise CacheError("record_source_missing_from_dataset", source)
+        dataset_index = file_index * layouts_per_source + record["file_offset"]
+        try:
+            sample = dataset[dataset_index]
+            area_targets, _b2b, _p2b, _pins, constraints = sample["input"]
+            tree, fp_solution, metrics = sample["label"]
+            block_count = _block_count(area_targets)
+            golden = training_rectangles(fp_solution, block_count)
+            hard_targets = hard_targets_from_golden(constraints, golden)
+            observed = {
+                "input_sha256": _hash_input(sample),
+                "optimizer_target_sha256": _hash_hard_targets(hard_targets),
+                "tree_sha256": _hash_tensor("tree", tree),
+                "golden_geometry_sha256": _hash_tensor(
+                    "fp_solution", fp_solution
+                ),
+                "golden_metrics_sha256": _hash_tensor("metrics", metrics),
+            }
+        except CacheError:
+            raise
+        except (KeyError, IndexError, TypeError, ValueError, OSError) as exc:
+            raise CacheError(
+                "record_payload_reload_failed",
+                f"{source}#{record['file_offset']}: {exc}",
+            ) from exc
+        if block_count != record["block_count"]:
+            raise CacheError(
+                "record_payload_block_count_mismatch",
+                f"{source}#{record['file_offset']}",
+            )
+        for field, digest in observed.items():
+            if digest != record[field]:
+                raise CacheError(
+                    "record_payload_hash_mismatch",
+                    f"{source}#{record['file_offset']}: {field}",
+                )
+
+
 def validate_cache(
     cache_dir: Path,
     *,
@@ -1873,6 +2070,8 @@ def validate_cache(
     if manifest_path.is_symlink():
         raise CacheError("manifest_symlink_forbidden")
     observed_manifest_sha256 = _file_sha256(manifest_path)
+    if data_root is not None and expected_manifest_sha256 is None:
+        raise CacheError("expected_manifest_required_for_full_validation")
     if expected_manifest_sha256 is not None and not _is_sha256(
         expected_manifest_sha256
     ):
@@ -1906,6 +2105,11 @@ def validate_cache(
         cache_dir=cache_dir,
         data_root=data_root,
         holdout_paths=holdout_paths,
+    )
+    verified_dataset = (
+        None
+        if data_root is None
+        else _instantiate_verified_dataset(data_root, provenance)
     )
     layouts_per_source = configuration.get("layouts_per_source")
     mib_policy = configuration.get("mib_feature_policy")
@@ -2017,8 +2221,7 @@ def validate_cache(
         "mib_features_masked",
     )
     for expected_index, record in enumerate(records):
-        if not isinstance(record, dict) or set(record) != RECORD_KEYS:
-            raise CacheError("record_keys", str(expected_index))
+        _validate_record_types(record, expected_index)
         if record.get("record_index") != expected_index:
             raise CacheError("record_index_sequence", str(expected_index))
         partition = record.get("partition")
@@ -2156,6 +2359,13 @@ def validate_cache(
                 raise CacheError("source_size_mismatch", source)
             if _file_sha256(path) != expected_sha:
                 raise CacheError("source_sha256_mismatch", source)
+        assert verified_dataset is not None
+        _verify_record_payloads_from_dataset(
+            verified_dataset,
+            data_root=root,
+            layouts_per_source=layouts_per_source,
+            records=records,
+        )
 
     reconstructed_rows = {
         partition: [
@@ -2273,7 +2483,6 @@ def validate_cache(
 
 
 def build_cache(
-    dataset: Any,
     *,
     data_root: Path,
     output_dir: Path,
@@ -2305,27 +2514,36 @@ def build_cache(
         raise CacheError("invalid_shard_layout_count")
     if max_layouts_per_source is not None and max_layouts_per_source < 1:
         raise CacheError("invalid_max_layouts_per_source")
-    layouts_per_file = int(dataset.layouts_per_file)
-    configuration = _validate_configuration(
-        {
-            "seed": seed,
-            "block_count_range": [min_blocks, max_blocks],
-            "layouts_per_source": layouts_per_file,
-            "max_sources": max_sources,
-            "max_layouts_per_source": max_layouts_per_source,
-            "shard_layouts": shard_layouts,
-            "message_steps": message_steps,
-            "mib_feature_policy": mib_feature_policy,
-            "layout_selection": layout_selection,
-            "oracle_tolerance": 1e-6,
-            "oracle_mib_policy": "strict_then_mask_inconsistent_shape_supervision",
-        }
-    )
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
         tempfile.mkdtemp(prefix=f".{output_dir.name}.tmp-", dir=output_dir.parent)
     )
     try:
+        bootstrap_provenance = _provenance_context(
+            data_root,
+            holdout_paths,
+            allow_dirty=allow_dirty,
+            ignored_roots=(staging,),
+        )
+        dataset = _instantiate_verified_dataset(data_root, bootstrap_provenance)
+        layouts_per_file = int(dataset.layouts_per_file)
+        configuration = _validate_configuration(
+            {
+                "seed": seed,
+                "block_count_range": [min_blocks, max_blocks],
+                "layouts_per_source": layouts_per_file,
+                "max_sources": max_sources,
+                "max_layouts_per_source": max_layouts_per_source,
+                "shard_layouts": shard_layouts,
+                "message_steps": message_steps,
+                "mib_feature_policy": mib_feature_policy,
+                "layout_selection": layout_selection,
+                "oracle_tolerance": 1e-6,
+                "oracle_mib_policy": (
+                    "strict_then_mask_inconsistent_shape_supervision"
+                ),
+            }
+        )
         partitions, partition_provenance = _partition_sources(
             dataset,
             data_root=data_root,
@@ -2344,6 +2562,15 @@ def build_cache(
             allow_dirty=allow_dirty,
             ignored_roots=(staging,),
         )
+        if (
+            provenance["floorset"] != bootstrap_provenance["floorset"]
+            or provenance["code_sha256"] != bootstrap_provenance["code_sha256"]
+            or provenance["repository"]["commit"]
+            != bootstrap_provenance["repository"]["commit"]
+            or provenance["repository"]["tree"]
+            != bootstrap_provenance["repository"]["tree"]
+        ):
+            raise CacheError("provenance_changed_during_dataset_scan")
         source_fingerprints: dict[str, tuple[str, int]] = {}
         records: list[dict[str, Any]] = []
         shard_descriptors: list[dict[str, Any]] = []
@@ -2498,8 +2725,12 @@ def build_cache(
             json.dumps(manifest, indent=2, sort_keys=True, allow_nan=False) + "\n",
             encoding="utf-8",
         )
+        manifest_sha256 = _file_sha256(manifest_path)
         validation = validate_cache(
-            staging, data_root=data_root, holdout_paths=holdout_paths
+            staging,
+            data_root=data_root,
+            holdout_paths=holdout_paths,
+            expected_manifest_sha256=manifest_sha256,
         )
         _atomic_publish_noreplace(staging, output_dir)
         validation["cache_dir"] = str(output_dir)
@@ -2511,10 +2742,8 @@ def build_cache(
 
 def _build_command(args: argparse.Namespace) -> int:
     data_root = args.data_root.resolve()
-    dataset = FloorplanDatasetLite(str(data_root))
     holdouts = args.holdout_manifest or list(DEFAULT_HOLDOUTS)
     report = build_cache(
-        dataset,
         data_root=data_root,
         output_dir=args.output,
         holdout_paths=holdouts,
@@ -2594,7 +2823,10 @@ def _parser() -> argparse.ArgumentParser:
     validate.add_argument(
         "--data-root",
         type=Path,
-        help="also re-hash every referenced FloorSet source file",
+        help=(
+            "full validation: verify the loader and replay every recorded "
+            "source offset (requires --expected-manifest-sha256)"
+        ),
     )
     validate.add_argument(
         "--holdout-manifest",
@@ -2604,7 +2836,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     validate.add_argument(
         "--expected-manifest-sha256",
-        help="require an externally recorded manifest digest",
+        help="require an externally recorded manifest digest; mandatory with --data-root",
     )
     validate.set_defaults(handler=_validate_command)
     return parser
