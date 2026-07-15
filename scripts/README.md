@@ -43,6 +43,8 @@ artifacts:
   --release-manifest results/release_manifest.json \
   --require-notices --smoke
 .venv/bin/python scripts/check_public_release.py
+.venv/bin/python scripts/audit_native_release_evidence.py \
+  /path/to/native-package-tournament-<head>-<attempt>.zip
 .venv/bin/python scripts/audit_results.py \
   results/integrated_v32.json --expected-cases 100 --require-positions
 .venv/bin/python scripts/analyze_results.py results/integrated_v32.json --top 20
@@ -63,6 +65,7 @@ artifacts:
 | [`preflight_official_solver.py`](preflight_official_solver.py) | Import and behavior-check the registry-copied solver before official evaluation. | `setup_and_evaluate.sh` runs it with real Torch; it rejects model-integrity drift, incomplete replacement coverage, unexpected abstentions, and a broken safe-MIB repair path. |
 | [`solver_components.py`](solver_components.py) | Define the authoritative live solver-module set used by copy, synchronization, and holdout-provenance workflows. | Add every new live implementation module here, together with any generated deployment artifact it imports. |
 | [`check_public_release.py`](check_public_release.py) | Fail-closed release gate for manifest hashes, source and package provenance, result integrity, score limits, public-safe text, and optional optimizer-copy parity. | The no-argument command consumes [`results/release_manifest.json`](../results/release_manifest.json). Run it after building the exact archive intended for release. |
+| [`audit_native_release_evidence.py`](audit_native_release_evidence.py) | Replay the manifest-bound native tournament release asset down to all 2,000 raw official executions. | Verifies safe ZIP inventory and every ledger hash; fixed build/timing schemas; immutable run, source, package, and public-result bindings; exact Williams scheduling; raw-result quality/position parity; recomputed summaries and runtime frontier. Run it on the separately preserved release ZIP after `check_public_release.py`. |
 | [`audit_results.py`](audit_results.py) | Validate evaluator JSON structure, summaries, finite metrics, case IDs, feasibility, and optionally every saved rectangle. | Run before comparing or publishing any full result. `--require-positions` is expected for a release artifact. |
 | [`compare_results.py`](compare_results.py) | Compare a public full-result candidate with a baseline and fail on infeasibility, missing cases, or a non-improvement. | This is the RF=1 public-quality gate; it is not a holdout uncertainty test and does not infer the leaderboard runtime denominator. |
 | [`check_position_parity.py`](check_position_parity.py) | Require exact saved rectangle and non-runtime quality parity between source and packaged-wrapper evaluator runs. | Defaults to a complete 100-case panel, audits both inputs, and compares coordinates as IEEE-754 binary64 values; both runs must save positions. |
@@ -88,7 +91,8 @@ required `decision_evidence` object binds:
   asset (GitHub's REST download wrapper is not assumed byte-identical to the
   upload-artifact digest);
 - SHA-256 digests for its build manifest, timing manifest, and preserved
-  `native-evidence.sha256` bundle ledger;
+  `native-evidence.sha256` bundle ledger, with build schema 2 and timing
+  schema 3 required explicitly;
 - the selected mode and package digest, which must match the solver and release
   archive, plus an assertion that the selected variant did not patch the
   committed solver source;

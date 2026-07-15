@@ -115,6 +115,8 @@ def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
                 ),
                 "preserved_asset_size_bytes": 120000,
                 "preserved_asset_sha256": "7" * 64,
+                "build_manifest_schema_version": 2,
+                "timing_manifest_schema_version": 3,
                 "build_manifest_sha256": "4" * 64,
                 "timing_manifest_sha256": "5" * 64,
                 "evidence_bundle_sha256": "6" * 64,
@@ -255,6 +257,12 @@ def test_release_manifest_accepts_non_override_matching_sealed_policy(tmp_path):
                 "conclusion", "cancelled"
             ),
             "conclusion",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "timing_manifest_schema_version", 2
+            ),
+            "timing_manifest_schema_version",
         ),
         (
             lambda value: value["decision_evidence"]["native_tournament"].__setitem__(

@@ -242,6 +242,8 @@ def _validate_decision_evidence(
             "preserved_asset_name",
             "preserved_asset_size_bytes",
             "preserved_asset_sha256",
+            "build_manifest_schema_version",
+            "timing_manifest_schema_version",
             "build_manifest_sha256",
             "timing_manifest_sha256",
             "evidence_bundle_sha256",
@@ -290,6 +292,16 @@ def _validate_decision_evidence(
         if native.get("conclusion") != "success":
             errors.append(
                 "decision_evidence.native_tournament.conclusion must be 'success'"
+            )
+        if native.get("build_manifest_schema_version") != 2:
+            errors.append(
+                "decision_evidence.native_tournament."
+                "build_manifest_schema_version must be 2"
+            )
+        if native.get("timing_manifest_schema_version") != 3:
+            errors.append(
+                "decision_evidence.native_tournament."
+                "timing_manifest_schema_version must be 3"
             )
 
         head_sha = native.get("head_sha")

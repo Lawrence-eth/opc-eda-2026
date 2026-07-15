@@ -12,7 +12,7 @@ permissions:
 jobs:
   tests-and-release-gate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Check out full history
@@ -46,17 +46,19 @@ jobs:
       - name: Run unit tests
         run: python -m pytest -q
 
-      - name: Restore the manifest-bound release package
+      - name: Restore manifest-bound release assets
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p submission
-          gh release download v32-prebeta-20260711 \
+          mkdir -p submission release-assets
+          gh release download v33-beta-20260715 \
             --repo "$GITHUB_REPOSITORY" \
             --pattern iccad2026_submission.tar.gz \
             --dir submission
-          echo "72d8fc5b6c4831a6af3547bacc16f19c800f1991b413500efbe467db8aec72c3  submission/iccad2026_submission.tar.gz" \
-            | sha256sum --check -
+          gh release download v33-beta-20260715 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern native-package-tournament-1f3797d7f60aca26743d5be28a424937074995c5-1.zip \
+            --dir release-assets
 
       - name: Audit and smoke-test the release package
         run: >-
@@ -71,6 +73,11 @@ jobs:
           python scripts/check_public_release.py
           --floorset external/FloorSet
           --require-floorset
+
+      - name: Replay preserved native release evidence
+        run: >-
+          python scripts/audit_native_release_evidence.py
+          release-assets/native-package-tournament-1f3797d7f60aca26743d5be28a424937074995c5-1.zip
 
       - name: Verify organizer-wrapper provenance
         run: |
