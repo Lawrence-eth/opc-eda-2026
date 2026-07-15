@@ -5,6 +5,7 @@ import json
 import math
 import os
 import shutil
+import subprocess
 import tarfile
 from pathlib import Path
 
@@ -185,7 +186,7 @@ def _official_result(case_id=79, runtime=0.25):
     return {
         "submission_name": "op_wrapper",
         "timestamp": "2026-07-14T00:00:00",
-        "total_score": 1.0,
+        "total_score": 1.15,
         "test_results": [
             {
                 "test_id": case_id,
@@ -195,7 +196,7 @@ def _official_result(case_id=79, runtime=0.25):
                 "area_gap": 0.2,
                 "violations_relative": 0.0,
                 "runtime_seconds": runtime,
-                "cost": 1.1,
+                "cost": 1.15,
                 "positions": [[0.0, 0.0, 1.0, 1.0], [1.0, 0.0, 1.0, 1.0]],
                 "error": None,
             }
@@ -203,7 +204,7 @@ def _official_result(case_id=79, runtime=0.25):
         "summary": {
             "num_tests": 1,
             "num_feasible": 1,
-            "avg_cost": 1.1,
+            "avg_cost": 1.15,
             "avg_runtime": runtime,
         },
     }
@@ -225,6 +226,11 @@ def test_official_result_validator_binds_case_quality_and_positions(tmp_path):
         (lambda result: result["test_results"][0].__setitem__("is_feasible", False), "infeasible"),
         (lambda result: result["test_results"][0].__setitem__("runtime_seconds", 0), "positive"),
         (lambda result: result["test_results"][0].__setitem__("positions", []), "block count"),
+        (lambda result: result["test_results"][0]["positions"][0].__setitem__(2, 0), "positive dimensions"),
+        (lambda result: result["test_results"][0].__setitem__("cost", 1.2), "neutral RF=1"),
+        (lambda result: result.__setitem__("total_score", 1.2), "total score or summary"),
+        (lambda result: result["summary"].__setitem__("avg_cost", 1.2), "total score or summary"),
+        (lambda result: result["summary"].__setitem__("avg_runtime", 1.2), "total score or summary"),
         (lambda result: result["summary"].__setitem__("num_feasible", 0), "summary"),
     ],
 )
@@ -274,6 +280,25 @@ def test_selected_public_cases_bind_official_order_and_exact_bytes(tmp_path):
     extra.write_bytes(b"unexpected")
     with pytest.raises(ValueError, match="exactly one input/label"):
         TOURNAMENT._selected_public_case_artifacts(tmp_path, [79])
+
+
+def test_official_public_data_root_must_be_verified_checkout(tmp_path):
+    official = tmp_path / "official"
+    other = tmp_path / "other"
+    official.mkdir()
+    other.mkdir()
+    assert (
+        TOURNAMENT._require_verified_official_data_root(official, official)
+        == official.resolve()
+    )
+    alias = tmp_path / "official-alias"
+    alias.symlink_to(official, target_is_directory=True)
+    assert (
+        TOURNAMENT._require_verified_official_data_root(official, alias)
+        == official.resolve()
+    )
+    with pytest.raises(ValueError, match="exact verified official_root"):
+        TOURNAMENT._require_verified_official_data_root(official, other)
 
 
 def test_output_and_workspace_are_required_outside_source_repository(tmp_path):
@@ -393,7 +418,7 @@ def _build_manifest():
             ).hexdigest(),
             "build_submission_sha256": "1" * 64,
             "package_audit_sha256": "2" * 64,
-            "package_self_test_sha256": "3" * 64,
+            "package_self_test_sha256": "8" * 64,
             "official_sources_sha256": "4" * 64,
             "organizer_wrapper_sha256": "5" * 64,
             "solver_registry_sha256": "6" * 64,
@@ -402,6 +427,197 @@ def _build_manifest():
         "build_host": {"platform": "Linux", "machine": "x86_64", "python": "3.13"},
         "variants": variants,
     }
+
+
+def _git_output(repository, *arguments):
+    return subprocess.check_output(
+        ["git", "-C", str(repository), *arguments], text=True
+    ).strip()
+
+
+def _committed_source_contract_fixture(tmp_path):
+    repository = tmp_path / "source-repository"
+    repository.mkdir()
+    component_names = TOURNAMENT._component_names(ROOT)
+    optimizer_bytes = _optimizer_source().encode()
+    files = {
+        "scripts/package_mode_tournament.py": b"orchestrator fixture\n",
+        "packaging/build_submission.sh": b"build fixture\n",
+        "scripts/audit_submission_package.py": b"audit fixture\n",
+        "packaging/solver_main.py": b"self-test fixture\n",
+        "docs/official_sources.json": b"{}\n",
+        "packaging/op_wrapper.py": b"wrapper fixture\n",
+        "scripts/solver_components.py": b"registry fixture\n",
+        "scripts/check_official_sources.py": b"checker fixture\n",
+        "packaging/torch_stub.py": b"torch fixture\n",
+        "packaging/eval_stub.py": b"evaluator stub fixture\n",
+        "contest_solution/my_optimizer.py": optimizer_bytes,
+    }
+    for component in component_names:
+        files.setdefault(
+            f"contest_solution/{component}", f"{component} fixture\n".encode()
+        )
+    for relative, data in files.items():
+        path = repository / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repository), "config", "user.name", "Test"], check=True
+    )
+    subprocess.run(["git", "-C", str(repository), "add", "."], check=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "commit", "-q", "-m", "fixture"],
+        check=True,
+    )
+
+    commit = _git_output(repository, "rev-parse", "HEAD")
+    tree = _git_output(repository, "rev-parse", "HEAD^{tree}")
+    manifest = _build_manifest()
+    manifest["source"] = {
+        "commit": commit,
+        "tree": tree,
+        "git_archive_sha256": TOURNAMENT._git_archive_sha256(repository, commit),
+        "base_optimizer_sha256": hashlib.sha256(optimizer_bytes).hexdigest(),
+    }
+    manifest["tooling"] = {
+        field: hashlib.sha256((repository / relative).read_bytes()).hexdigest()
+        for field, relative in TOURNAMENT.TOOLING_PATHS.items()
+    }
+    committed_solver = {
+        f"contest_solution/{name}": hashlib.sha256(
+            (repository / "contest_solution" / name).read_bytes()
+        ).hexdigest()
+        for name in component_names
+    }
+    committed_support = {
+        name: hashlib.sha256((repository / name).read_bytes()).hexdigest()
+        for name in (
+            "packaging/torch_stub.py",
+            "packaging/eval_stub.py",
+            "packaging/solver_main.py",
+        )
+    }
+    optimizer_source = optimizer_bytes.decode()
+    for variant in manifest["variants"]:
+        mode = variant["mode"]
+        replacement = f'        self._learned_order_mode = "{mode}"'
+        patched = optimizer_source.replace(TOURNAMENT.DEFAULT_ASSIGNMENT, replacement, 1)
+        patched_sha256 = hashlib.sha256(patched.encode()).hexdigest()
+        solver = dict(committed_solver)
+        solver["contest_solution/my_optimizer.py"] = patched_sha256
+        variant["source_patch"]["sha256_before"] = manifest["source"][
+            "base_optimizer_sha256"
+        ]
+        variant["source_patch"]["sha256_after"] = patched_sha256
+        variant["solver_components"] = solver
+        variant["package_support_sources"] = dict(committed_support)
+        variant["archived_source_sha256"] = {
+            **{
+                f"source_fallback/{Path(name).name}": digest
+                for name, digest in solver.items()
+            },
+            "source_fallback/torch.py": committed_support["packaging/torch_stub.py"],
+            "source_fallback/iccad2026_evaluate.py": committed_support[
+                "packaging/eval_stub.py"
+            ],
+            "source_fallback/solver_main.py": committed_support[
+                "packaging/solver_main.py"
+            ],
+        }
+        variant["wrapper"]["sha256"] = manifest["tooling"][
+            "organizer_wrapper_sha256"
+        ]
+    variants = {variant["mode"]: variant for variant in manifest["variants"]}
+    return repository, manifest, variants
+
+
+def test_build_source_contract_rederives_commit_tree_archive_and_tooling(tmp_path):
+    repository, manifest, variants = _committed_source_contract_fixture(tmp_path)
+    independently_built_archive = TOURNAMENT._extract_git_snapshot(
+        repository,
+        manifest["source"]["commit"],
+        tmp_path / "independent-snapshot",
+    )
+    assert independently_built_archive == manifest["source"]["git_archive_sha256"]
+    result = TOURNAMENT._verify_build_source_contract(
+        manifest,
+        variants,
+        repository=repository,
+        running_orchestrator=repository / "scripts/package_mode_tournament.py",
+    )
+    assert result["status"] == "PASS"
+    assert result["repository_head"] == manifest["source"]["commit"]
+    assert result["tooling_sha256"] == manifest["tooling"]
+    assert result["variant_source_contract"] == "PASS"
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda value: value["source"].__setitem__("commit", "0" * 40), "HEAD"),
+        (lambda value: value["source"].__setitem__("tree", "0" * 40), "tree"),
+        (
+            lambda value: value["source"].__setitem__(
+                "git_archive_sha256", "0" * 64
+            ),
+            "Git archive",
+        ),
+        (
+            lambda value: value["source"].__setitem__(
+                "base_optimizer_sha256", "0" * 64
+            ),
+            "optimizer",
+        ),
+        (
+            lambda value: value["tooling"].__setitem__(
+                "build_submission_sha256", "0" * 64
+            ),
+            "build tooling binding",
+        ),
+        (
+            lambda value: value["variants"][2]["solver_components"].__setitem__(
+                "contest_solution/dissect.py", "0" * 64
+            ),
+            "solver sources",
+        ),
+        (
+            lambda value: value["variants"][0][
+                "package_support_sources"
+            ].__setitem__("packaging/eval_stub.py", "0" * 64),
+            "support sources",
+        ),
+    ],
+)
+def test_build_source_contract_rejects_manifest_tamper(
+    tmp_path, mutate, message
+):
+    repository, manifest, _variants = _committed_source_contract_fixture(tmp_path)
+    mutate(manifest)
+    variants = {variant["mode"]: variant for variant in manifest["variants"]}
+    with pytest.raises(ValueError, match=message):
+        TOURNAMENT._verify_build_source_contract(
+            manifest,
+            variants,
+            repository=repository,
+            running_orchestrator=repository / "scripts/package_mode_tournament.py",
+        )
+
+
+def test_build_source_contract_rejects_current_tracked_drift(tmp_path):
+    repository, manifest, variants = _committed_source_contract_fixture(tmp_path)
+    (repository / "packaging/build_submission.sh").write_text("drifted\n")
+    with pytest.raises(ValueError, match="tracked modifications"):
+        TOURNAMENT._verify_build_source_contract(
+            manifest,
+            variants,
+            repository=repository,
+            running_orchestrator=repository / "scripts/package_mode_tournament.py",
+        )
 
 
 def test_build_manifest_requires_all_four_ordered_variants(tmp_path):
@@ -440,6 +656,7 @@ def test_schema_one_build_manifests_are_intentionally_rejected(tmp_path):
         (lambda value: value["variants"][0]["solver_components"].pop("contest_solution/dissect.py"), "solver registry source inventory"),
         (lambda value: value["variants"][0]["wrapper"].__setitem__("sha256", "0" * 64), "wrapper differs"),
         (lambda value: value["variants"][0]["binary"].__setitem__("path", "wrong/binary"), "binary path"),
+        (lambda value: value["variants"][0]["package_support_sources"].__setitem__("packaging/solver_main.py", "0" * 64), "self-test differs"),
         (lambda value: value["variants"][0]["audit"]["log"].pop("size_bytes"), "must have exactly"),
         (lambda value: value["variants"][0]["audit"]["details"].__setitem__("default_mode", "replacement"), "audit attestation"),
     ],
@@ -504,6 +721,7 @@ def test_timing_environment_is_allowlisted_and_thread_pinned():
     })
     assert result["PATH"] == "/usr/bin"
     assert result["PYTHONHASHSEED"] == "0"
+    assert result["PYTHONDONTWRITEBYTECODE"] == "1"
     assert result["OMP_NUM_THREADS"] == "1"
     assert not ({"MY_OPT_BIN", "PYTHONPATH", "SOLVER_DEBUG", "QEMU_CPU", "SECRET_TOKEN"} & set(result))
 
@@ -617,6 +835,60 @@ def test_post_timing_binding_mutation_is_rejected():
         TOURNAMENT._require_unchanged_bindings(before, after)
 
 
+def _package_tree(tmp_path):
+    root = tmp_path / "iccad2026_submission"
+    internal = root / "dist/my_optimizer/_internal"
+    internal.mkdir(parents=True)
+    (root / "op_wrapper.py").write_text("wrapper\n")
+    (root / "dist/my_optimizer/my_optimizer").write_bytes(b"binary")
+    (internal / "libpython3.13.so.1.0").write_bytes(b"runtime")
+    return root
+
+
+def test_extracted_package_tree_binding_covers_every_regular_file(tmp_path):
+    root = _package_tree(tmp_path)
+    bindings = TOURNAMENT._regular_tree_bindings(root)
+    assert set(bindings) == {
+        "op_wrapper.py",
+        "dist/my_optimizer/my_optimizer",
+        "dist/my_optimizer/_internal/libpython3.13.so.1.0",
+    }
+    assert bindings["dist/my_optimizer/_internal/libpython3.13.so.1.0"] == {
+        "size_bytes": 7,
+        "sha256": hashlib.sha256(b"runtime").hexdigest(),
+    }
+
+
+@pytest.mark.parametrize("mutation", ["modify", "add", "remove"])
+def test_extracted_package_tree_tamper_changes_binding(tmp_path, mutation):
+    root = _package_tree(tmp_path)
+    before = TOURNAMENT._regular_tree_bindings(root)
+    internal = root / "dist/my_optimizer/_internal"
+    if mutation == "modify":
+        (internal / "libpython3.13.so.1.0").write_bytes(b"tampered")
+    elif mutation == "add":
+        (internal / "injected.so").write_bytes(b"injected")
+    else:
+        (root / "op_wrapper.py").unlink()
+    after = TOURNAMENT._regular_tree_bindings(root)
+    with pytest.raises(ValueError, match="changed between pre- and post-run rehash"):
+        TOURNAMENT._require_unchanged_bindings(before, after)
+
+
+@pytest.mark.parametrize("kind", ["symlink", "fifo", "hardlink"])
+def test_extracted_package_tree_rejects_links_and_special_files(tmp_path, kind):
+    root = _package_tree(tmp_path)
+    internal = root / "dist/my_optimizer/_internal"
+    if kind == "symlink":
+        (internal / "link").symlink_to(root / "op_wrapper.py")
+    elif kind == "fifo":
+        os.mkfifo(internal / "pipe")
+    else:
+        os.link(root / "op_wrapper.py", internal / "hardlink")
+    with pytest.raises(ValueError, match="link or special"):
+        TOURNAMENT._regular_tree_bindings(root)
+
+
 def test_fake_evaluator_executes_exact_wrapper_command_contract(tmp_path):
     wrapper = tmp_path / "op_wrapper.py"
     wrapper.write_text("print('bound')\n")
@@ -633,8 +905,10 @@ def test_fake_evaluator_executes_exact_wrapper_command_contract(tmp_path):
         "assert pathlib.Path(a.data_path).is_dir() and a.test_id == 7\n"
         "n=28; row={'test_id':7,'block_count':n,'is_feasible':True,"
         "'hpwl_gap':0.1,'area_gap':0.2,'violations_relative':0.0,"
-        "'runtime_seconds':0.25,'cost':1.0,'positions':[[0,0,1,1]]*n,'error':None}\n"
-        "json.dump({'test_results':[row], 'summary':{'num_tests':1,'num_feasible':1}}, open(a.output,'w'))\n"
+        "'runtime_seconds':0.25,'cost':1.15,'positions':[[0,0,1,1]]*n,'error':None}\n"
+        "json.dump({'total_score':1.15,'test_results':[row],"
+        "'summary':{'num_tests':1,'num_feasible':1,'avg_cost':1.15,"
+        "'avg_runtime':0.25}},open(a.output,'w'))\n"
     )
     command = TOURNAMENT._official_evaluator_command(
         evaluator, wrapper, data, 7, output

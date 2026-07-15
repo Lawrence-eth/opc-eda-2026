@@ -43,7 +43,7 @@ ASSIGNMENT_RE = re.compile(
 BUILD_MODE = "four_mode_submission_package_build"
 TIMING_MODE = "organizer_wrapper_williams_timing"
 BUILD_SCHEMA_VERSION = 2
-TIMING_SCHEMA_VERSION = 2
+TIMING_SCHEMA_VERSION = 3
 ARCHIVE_ROOT = "iccad2026_submission"
 INTERNAL_BINARY_PATH = f"{ARCHIVE_ROOT}/dist/my_optimizer/my_optimizer"
 INTERNAL_WRAPPER_PATH = f"{ARCHIVE_ROOT}/op_wrapper.py"
@@ -64,6 +64,16 @@ EMULATION_ENV_NAMES = (
 )
 MAX_SNAPSHOT_MEMBERS = 100_000
 MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024 * 1024
+TOOLING_PATHS = {
+    "orchestrator_sha256": "scripts/package_mode_tournament.py",
+    "build_submission_sha256": "packaging/build_submission.sh",
+    "package_audit_sha256": "scripts/audit_submission_package.py",
+    "package_self_test_sha256": "packaging/solver_main.py",
+    "official_sources_sha256": "docs/official_sources.json",
+    "organizer_wrapper_sha256": "packaging/op_wrapper.py",
+    "solver_registry_sha256": "scripts/solver_components.py",
+    "official_source_checker_sha256": "scripts/check_official_sources.py",
+}
 
 
 def _sha256_bytes(raw: bytes) -> str:
@@ -234,6 +244,30 @@ def _verify_committed_orchestrator(repository: Path, commit: str) -> None:
             "the running package-mode orchestrator is not the version bound by "
             f"source commit {commit}"
         )
+
+
+def _git_archive_sha256(repository: Path, commit: str) -> str:
+    """Recreate and hash the exact Git archive without materializing its tree."""
+
+    with tempfile.TemporaryDirectory(prefix="opc-git-archive-rehash-") as temporary:
+        archive_path = Path(temporary) / "source.tar"
+        with archive_path.open("xb") as stream:
+            try:
+                completed = subprocess.run(
+                    ["git", "-C", str(repository), "archive", "--format=tar", commit],
+                    stdout=stream,
+                    stderr=subprocess.PIPE,
+                    timeout=300,
+                    check=False,
+                )
+            except (OSError, subprocess.TimeoutExpired) as error:
+                raise ValueError(f"cannot recreate Git archive for {commit}: {error}") from error
+        if completed.returncode != 0:
+            raise ValueError(
+                "cannot recreate Git archive for "
+                f"{commit}: {completed.stderr.decode('utf-8', errors='replace').strip()}"
+            )
+        return _sha256_file(archive_path)
 
 
 def _safe_extract_tar(archive_path: Path, destination: Path, *, expected_prefix: str | None = None) -> None:
@@ -830,16 +864,7 @@ def _validate_build_manifest(
     if contract["timing_design"] != [list(row) for row in williams_sequences()]:
         raise ValueError("build manifest Williams design changed")
     tooling = manifest["tooling"]
-    required_tooling = {
-        "orchestrator_sha256",
-        "build_submission_sha256",
-        "package_audit_sha256",
-        "package_self_test_sha256",
-        "official_sources_sha256",
-        "organizer_wrapper_sha256",
-        "solver_registry_sha256",
-        "official_source_checker_sha256",
-    }
+    required_tooling = set(TOOLING_PATHS)
     _require_exact_keys(tooling, required_tooling, "build tooling")
     for field in required_tooling:
         _require_sha256(tooling[field], f"build tooling {field}")
@@ -934,6 +959,13 @@ def _validate_build_manifest(
                 _require_sha256(digest, f"variant {mode} {group_name} source {name}")
         if solver_sources[OPTIMIZER_RELATIVE_PATH.as_posix()] != patch["sha256_after"]:
             raise ValueError(f"variant {mode} patch hash differs from solver inventory")
+        if (
+            support_sources["packaging/solver_main.py"]
+            != tooling["package_self_test_sha256"]
+        ):
+            raise ValueError(
+                f"variant {mode} package self-test differs from its tooling binding"
+            )
 
         sources = variant["archived_source_sha256"]
         if not isinstance(sources, dict) or set(sources) != expected_archived_sources:
@@ -998,6 +1030,112 @@ def _validate_build_manifest(
     return raw, manifest, by_mode
 
 
+def _verify_build_source_contract(
+    manifest: dict[str, Any],
+    variants: dict[str, dict[str, Any]],
+    *,
+    repository: Path = ROOT,
+    running_orchestrator: Path | None = None,
+) -> dict[str, Any]:
+    """Re-derive every committed source/tooling binding used by the build."""
+
+    repository = repository.resolve()
+    commit = manifest["source"]["commit"]
+    head, head_tree = _resolve_commit(repository, "HEAD")
+    if head != commit:
+        raise ValueError(
+            f"timing repository HEAD {head} differs from build source commit {commit}"
+        )
+    if head_tree != manifest["source"]["tree"]:
+        raise ValueError("build source tree differs from the timing repository HEAD tree")
+    commit_tree = _git_text(repository, "show", "-s", "--format=%T", commit)
+    if commit_tree != manifest["source"]["tree"]:
+        raise ValueError("build source commit does not resolve to its recorded tree")
+    tracked_status = _git_text(
+        repository, "status", "--porcelain", "--untracked-files=no"
+    )
+    if tracked_status:
+        raise ValueError("timing source repository has tracked modifications")
+
+    archive_sha256 = _git_archive_sha256(repository, commit)
+    if archive_sha256 != manifest["source"]["git_archive_sha256"]:
+        raise ValueError("recreated Git archive differs from the build source binding")
+
+    optimizer_bytes = _git_bytes(
+        repository, commit, OPTIMIZER_RELATIVE_PATH.as_posix()
+    )
+    optimizer_sha256 = _sha256_bytes(optimizer_bytes)
+    if optimizer_sha256 != manifest["source"]["base_optimizer_sha256"]:
+        raise ValueError("committed optimizer differs from the build source binding")
+    try:
+        optimizer_source = optimizer_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ValueError("committed optimizer is not UTF-8") from error
+    _default_assignment(optimizer_source)
+
+    committed_tooling = {}
+    for field, relative in TOOLING_PATHS.items():
+        committed_digest = _sha256_bytes(_git_bytes(repository, commit, relative))
+        current_path = repository / relative
+        if current_path.is_symlink() or not current_path.is_file():
+            raise ValueError(f"current build tooling is not a regular file: {relative}")
+        current_digest = _sha256_file(current_path)
+        if current_digest != committed_digest:
+            raise ValueError(f"current build tooling differs from committed bytes: {relative}")
+        if manifest["tooling"][field] != committed_digest:
+            raise ValueError(f"build tooling binding differs from committed bytes: {relative}")
+        committed_tooling[field] = committed_digest
+
+    orchestrator = (
+        Path(__file__) if running_orchestrator is None else running_orchestrator
+    )
+    if orchestrator.is_symlink() or not orchestrator.is_file():
+        raise ValueError("running package-mode orchestrator is not a regular file")
+    orchestrator = orchestrator.resolve()
+    if _sha256_file(orchestrator) != committed_tooling["orchestrator_sha256"]:
+        raise ValueError("running package-mode orchestrator differs from committed bytes")
+
+    committed_solver_sources = {
+        name: _sha256_bytes(_git_bytes(repository, commit, name))
+        for name in variants["replacement"]["solver_components"]
+    }
+    committed_support_sources = {
+        name: _sha256_bytes(_git_bytes(repository, commit, name))
+        for name in variants["replacement"]["package_support_sources"]
+    }
+    for mode in MODES:
+        replacement = f'        self._learned_order_mode = "{mode}"'
+        patched_optimizer = optimizer_source.replace(DEFAULT_ASSIGNMENT, replacement, 1)
+        patched_optimizer_sha256 = _sha256_bytes(patched_optimizer.encode("utf-8"))
+        variant = variants[mode]
+        if variant["source_patch"]["sha256_after"] != patched_optimizer_sha256:
+            raise ValueError(
+                f"variant {mode} optimizer patch differs from committed source bytes"
+            )
+        expected_solver_sources = dict(committed_solver_sources)
+        expected_solver_sources[OPTIMIZER_RELATIVE_PATH.as_posix()] = (
+            patched_optimizer_sha256
+        )
+        if variant["solver_components"] != expected_solver_sources:
+            raise ValueError(
+                f"variant {mode} solver sources differ from committed source bytes"
+            )
+        if variant["package_support_sources"] != committed_support_sources:
+            raise ValueError(
+                f"variant {mode} support sources differ from committed source bytes"
+            )
+
+    return {
+        "status": "PASS",
+        "repository_head": head,
+        "repository_tree": head_tree,
+        "git_archive_sha256": archive_sha256,
+        "tracked_worktree": "clean",
+        "tooling_sha256": committed_tooling,
+        "variant_source_contract": "PASS",
+    }
+
+
 def _canonical_positions_sha256(value: Any, expected_count: int) -> str:
     if not isinstance(value, list) or len(value) != expected_count:
         raise ValueError("official result positions have the wrong block count")
@@ -1011,6 +1149,10 @@ def _canonical_positions_sha256(value: Any, expected_count: int) -> str:
                 for number in row
             ]
         )
+        if rows[-1][2] <= 0.0 or rows[-1][3] <= 0.0:
+            raise ValueError(
+                f"official result position {index} must have positive dimensions"
+            )
     encoded = json.dumps(
         rows, sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode("utf-8")
@@ -1041,6 +1183,9 @@ def _validate_official_result(
     runtime = _require_number(row.get("runtime_seconds"), "official runtime", minimum=0.0)
     if runtime <= 0.0:
         raise ValueError("official wrapper runtime must be positive")
+    reported_cost = _require_number(
+        row.get("cost"), "official cost", minimum=0.0
+    )
     quality = {
         "test_id": case_id,
         "block_count": block_count,
@@ -1050,11 +1195,16 @@ def _validate_official_result(
         "violations_relative": _require_number(
             row.get("violations_relative"), "official violations", minimum=0.0
         ),
-        "cost": _require_number(row.get("cost"), "official cost", minimum=0.0),
+        "cost": reported_cost,
         "positions_sha256": _canonical_positions_sha256(
             row.get("positions"), block_count
         ),
     }
+    neutral_cost = _official_scenario_cost(quality, 1.0, 1.0)
+    if not math.isclose(reported_cost, neutral_cost, rel_tol=1e-12, abs_tol=1e-12):
+        raise ValueError(
+            "official result cost is inconsistent with the neutral RF=1 formula"
+        )
     summary = payload.get("summary")
     if (
         not isinstance(summary, dict)
@@ -1062,6 +1212,23 @@ def _validate_official_result(
         or summary.get("num_feasible") != 1
     ):
         raise ValueError("official wrapper summary is inconsistent")
+    summary_cost = _require_number(
+        summary.get("avg_cost"), "official summary average cost", minimum=0.0
+    )
+    summary_runtime = _require_number(
+        summary.get("avg_runtime"), "official summary average runtime", minimum=0.0
+    )
+    total_score = _require_number(
+        payload.get("total_score"), "official total score", minimum=0.0
+    )
+    if (
+        not math.isclose(summary_cost, neutral_cost, rel_tol=1e-12, abs_tol=1e-12)
+        or not math.isclose(summary_runtime, runtime, rel_tol=1e-12, abs_tol=1e-12)
+        or not math.isclose(total_score, neutral_cost, rel_tol=1e-12, abs_tol=1e-12)
+    ):
+        raise ValueError(
+            "official wrapper total score or summary is inconsistent with its raw case"
+        )
     return {"runtime_seconds": runtime, "quality": quality}
 
 
@@ -1289,6 +1456,19 @@ def _verify_official_checkout(
     return _sha256_bytes(completed.stdout.encode("utf-8"))
 
 
+def _require_verified_official_data_root(
+    official_root: Path, data_root: Path
+) -> Path:
+    official = official_root.resolve()
+    data = data_root.resolve()
+    if data != official:
+        raise ValueError(
+            "official-public timing requires data_root to be the exact verified "
+            "official_root checkout"
+        )
+    return official
+
+
 def _selected_public_case_artifacts(
     data_root: Path, case_ids: list[int]
 ) -> list[dict[str, Any]]:
@@ -1305,6 +1485,12 @@ def _selected_public_case_artifacts(
                 "public dataset must contain exactly one input/label file for "
                 f"config_{block_count}; observed {len(inputs)}/{len(labels)}"
             )
+        for kind, path in (("input", inputs[0]), ("label", labels[0])):
+            metadata = path.lstat()
+            if path.is_symlink() or not stat.S_ISREG(metadata.st_mode):
+                raise ValueError(
+                    f"public config_{block_count} {kind} is not a regular file"
+                )
         input_id = inputs[0].stem.removeprefix("litedata_")
         label_id = labels[0].stem.removeprefix("litelabel_")
         if input_id != label_id:
@@ -1499,6 +1685,7 @@ def _sanitized_timing_environment(
     }
     environment.update({
         "PYTHONHASHSEED": "0",
+        "PYTHONDONTWRITEBYTECODE": "1",
         "OMP_NUM_THREADS": "1",
         "OPENBLAS_NUM_THREADS": "1",
         "MKL_NUM_THREADS": "1",
@@ -1542,6 +1729,75 @@ def _official_evaluator_command(
         "--output",
         str(result_path),
     ]
+
+
+def _regular_tree_bindings(root: Path) -> dict[str, dict[str, Any]]:
+    """Hash every regular file and reject links/special files anywhere below root."""
+
+    if root.is_symlink():
+        raise ValueError(f"extracted package root is a symbolic link: {root}")
+    try:
+        root_metadata = root.lstat()
+    except OSError as error:
+        raise ValueError(f"cannot inspect extracted package root {root}: {error}") from error
+    if not stat.S_ISDIR(root_metadata.st_mode):
+        raise ValueError(f"extracted package root is not a directory: {root}")
+    root = root.resolve()
+    bindings: dict[str, dict[str, Any]] = {}
+    for current_text, directory_names, file_names in os.walk(
+        root, topdown=True, followlinks=False
+    ):
+        directory_names.sort()
+        file_names.sort()
+        current = Path(current_text)
+        for name in directory_names:
+            path = current / name
+            metadata = path.lstat()
+            if path.is_symlink() or not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError(
+                    f"extracted package contains a link or special directory: {path}"
+                )
+        for name in file_names:
+            path = current / name
+            metadata_before = path.lstat()
+            relative = path.relative_to(root).as_posix()
+            if (
+                path.is_symlink()
+                or not stat.S_ISREG(metadata_before.st_mode)
+                or metadata_before.st_nlink != 1
+            ):
+                raise ValueError(
+                    f"extracted package contains a link or special file: {relative}"
+                )
+            digest = _sha256_file(path)
+            metadata_after = path.lstat()
+            identity_before = (
+                metadata_before.st_dev,
+                metadata_before.st_ino,
+                metadata_before.st_mode,
+                metadata_before.st_nlink,
+                metadata_before.st_size,
+                metadata_before.st_mtime_ns,
+            )
+            identity_after = (
+                metadata_after.st_dev,
+                metadata_after.st_ino,
+                metadata_after.st_mode,
+                metadata_after.st_nlink,
+                metadata_after.st_size,
+                metadata_after.st_mtime_ns,
+            )
+            if identity_before != identity_after:
+                raise ValueError(
+                    f"extracted package file changed while it was hashed: {relative}"
+                )
+            bindings[relative] = {
+                "size_bytes": metadata_after.st_size,
+                "sha256": digest,
+            }
+    if not bindings:
+        raise ValueError(f"extracted package contains no regular files: {root}")
+    return bindings
 
 
 def _artifact_bindings(
@@ -1589,6 +1845,10 @@ def _artifact_bindings(
                 INTERNAL_BINARY_PATH,
                 package_roots[mode] / "dist/my_optimizer/my_optimizer",
             )
+            for mode in MODES
+        },
+        "extracted_package_files": {
+            mode: _regular_tree_bindings(package_roots[mode])
             for mode in MODES
         },
     }
@@ -1729,7 +1989,9 @@ def time_mode_packages(
     official_root = official_root.resolve()
     data_root = data_root.resolve()
     official_sources = official_sources.resolve()
+    _require_verified_official_data_root(official_root, data_root)
     manifest_raw, manifest, variants = _validate_build_manifest(build_manifest)
+    build_source_verification = _verify_build_source_contract(manifest, variants)
     if _sha256_file(official_sources) != manifest["tooling"]["official_sources_sha256"]:
         raise ValueError("official-source manifest differs from package build")
     official_check_sha256 = _verify_official_checkout(
@@ -1911,7 +2173,9 @@ def time_mode_packages(
                 "discarded_balanced_warmup_per_case": list(MODES),
                 "sequence_row_start": "rotated by (case_index + cycle) modulo 4",
                 "environment": "allowlisted and thread-count pinned",
+                "data_root_is_verified_official_root": True,
             },
+            "build_source_verification": build_source_verification,
             "official": {
                 "floorset_commit": official_payload["floorset"]["commit"],
                 "evaluator_sha256": expected_evaluator_sha,
@@ -1930,8 +2194,9 @@ def time_mode_packages(
                 "fixed_environment": {
                     name: environment[name]
                     for name in (
-                        "PYTHONHASHSEED", "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
-                        "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
+                        "PYTHONHASHSEED", "PYTHONDONTWRITEBYTECODE",
+                        "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                        "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS",
                     )
                 },
                 "pre": host_pre,

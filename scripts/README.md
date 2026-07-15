@@ -102,7 +102,10 @@ schema-2 build manifest binds the source commit/tree, exact patch, complete
 live-registry and package-support inventories, every archived-source hash,
 binary/package/wrapper descriptors, build and audit logs, and all harnesses.
 Legacy schema-1 tournament manifests are deliberately rejected because they
-do not contain those bindings.
+do not contain those bindings. Before timing, every recorded commit, tree,
+Git-archive, tooling, registry/support source, and patched optimizer hash is
+re-derived from a clean checkout of the exact build commit; the running
+orchestrator must also be byte-identical to that commit.
 
 Timing requires explicit public case IDs so a full campaign cannot start by
 accident. Each case first receives one balanced four-mode warmup pass whose
@@ -111,10 +114,12 @@ four-row Williams design—16 wrapper/binary executions per case—and the first
 row rotates by case and cycle. Each run invokes the pinned official evaluator
 on the package's verbatim organizer `op_wrapper.py` in an allowlisted,
 thread-pinned environment; `MY_OPT_BIN`, `PYTHONPATH`, solver debug variables,
-and emulator variables are absent. The timing gate rehashes and re-audits all
-packages first, rejects infeasibility, wrong dataset block counts, or
-nondeterministic repeated positions, and writes raw official result files plus
-a hash-bound summary atomically:
+emulator variables, and Python bytecode writes are absent. The public timing
+command requires the data root to be the exact Git-verified official checkout.
+The timing gate rehashes and re-audits all packages first, rejects
+infeasibility, non-positive block dimensions, wrong dataset block counts,
+neutral-RF cost/summary drift, or nondeterministic repeated positions, and
+writes raw official result files plus a hash-bound summary atomically:
 
 ```bash
 .venv/bin/python scripts/package_mode_tournament.py time \
@@ -130,9 +135,12 @@ ordinary native GitHub AMD64 virtualization is allowed. CPU identity, process
 affinity, frequency governors, load averages, and pre/post drift are recorded.
 After the final run, the tool rehashes every selected input and label, the
 evaluator, organizer wrappers, packages, binaries, official-source checker,
-source manifest, and build manifest, then reruns official-source integrity.
+source manifest, and build manifest. It also inventories and rehashes every
+regular file in each extracted package, including the complete PyInstaller
+`_internal` runtime tree, and rejects links or special files. It then reruns
+official-source integrity.
 
-The schema-2 report recomputes the exact feasible contest formula from each
+The schema-3 timing report recomputes the exact feasible contest formula from each
 mode/case's median wrapper runtime for hypothetical field medians of 0.25,
 0.5, 1, 2, and 3 seconds, including the 9.999999 cap and `exp(n/12)` case
 weights. It reports deltas against both `off` and `replacement`, per-scenario
