@@ -208,6 +208,7 @@ def _validate_decision_evidence(
     manifest: dict[str, Any],
     root: Path,
     selected_mode: Any,
+    solver_commit: Any,
     errors: list[str],
     *,
     verify_native_commit: bool,
@@ -271,6 +272,15 @@ def _validate_decision_evidence(
             errors.append(
                 "decision_evidence.native_tournament.head_sha must be a lowercase "
                 "40-character Git commit"
+            )
+        elif (
+            isinstance(solver_commit, str)
+            and GIT_COMMIT_RE.fullmatch(solver_commit) is not None
+            and head_sha != solver_commit
+        ):
+            errors.append(
+                "decision_evidence.native_tournament.head_sha must equal "
+                "solver.commit"
             )
         elif verify_native_commit:
             completed = subprocess.run(
@@ -550,6 +560,7 @@ def validate_release_manifest(
         manifest,
         root,
         learned_order_mode,
+        commit,
         errors,
         verify_native_commit=verify_solver_commit,
     )
