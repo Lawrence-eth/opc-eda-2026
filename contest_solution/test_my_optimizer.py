@@ -416,6 +416,13 @@ def test_additive_learning_is_withheld_until_final_v32_reference(monkeypatch):
         return candidates[0]
 
     monkeypatch.setattr(optimizer, "_select_candidate", select_first)
+    learned_trades = []
+
+    def reject_learned_trade(candidate, incumbent, *args, **kwargs):
+        learned_trades.append((incumbent == learned, candidate == learned))
+        return False
+
+    monkeypatch.setattr(optimizer, "_learned_trade_wins", reject_learned_trade)
     area_targets = torch.ones(block_count)
     empty_edges = torch.empty((0, 3))
     constraints = torch.zeros((block_count, 5))
@@ -432,8 +439,8 @@ def test_additive_learning_is_withheld_until_final_v32_reference(monkeypatch):
 
     assert result == standard
     assert set((0.8, 0.9, 1.0, 1.1, 1.2)).issubset(standard_widths)
-    assert all(not any(pool) for pool in selector_pools[:-1])
-    assert selector_pools[-1] == (False, True)
+    assert all(not any(pool) for pool in selector_pools)
+    assert learned_trades == [(False, True)]
     assert repaired_inputs == [standard, learned]
     assert optimizer._debug_final_nonlearned_reference == standard
 

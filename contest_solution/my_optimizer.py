@@ -936,30 +936,15 @@ class MyOptimizer(FloorplanOptimizer):
                 constraints,
                 target_positions,
             )
-            try:
-                challenger = self._select_candidate(
-                    [best_positions, learned_final_candidate],
-                    constraints,
-                    area_targets,
-                    b2b_edges,
-                    p2b_edges,
-                    pins_l,
-                    target_positions,
-                )
-            except Exception:
-                challenger = None
-            if (
-                challenger is learned_final_candidate
-                and self._accept_learned_trade(
-                    learned_final_candidate,
-                    best_positions,
-                    constraints,
-                    area_targets,
-                    b2b_edges,
-                    p2b_edges,
-                    pins_l,
-                    target_positions,
-                )
+            if self._learned_trade_wins(
+                learned_final_candidate,
+                best_positions,
+                constraints,
+                area_targets,
+                b2b_edges,
+                p2b_edges,
+                pins_l,
+                target_positions,
             ):
                 best_positions = learned_final_candidate
                 self._learned_candidate_selected = True
@@ -1083,6 +1068,153 @@ class MyOptimizer(FloorplanOptimizer):
             delta_quality = (
                 candidate_hpwl / incumbent_hpwl
                 + candidate_area / incumbent_area
+                - 2.0
+            )
+            delta_violations = candidate_v - incumbent_v
+            if delta_violations > 0.04:
+                return False
+            if delta_violations >= 0.0:
+                return delta_quality <= 0.0
+            return delta_quality <= 4.0 * (-delta_violations)
+        except Exception:
+            return False
+
+    def _learned_trade_metrics(
+        self,
+        positions,
+        constraints,
+        area_targets,
+        b2b,
+        p2b,
+        pins_pos,
+        target_positions,
+    ):
+        """Compute the final learned-gate metrics once, or fail closed.
+
+        The former final gate called ``_select_candidate`` and then
+        ``_accept_learned_trade``.  Those two routines independently repeated
+        feasibility, HPWL, bounding-box, and soft-violation work for the same
+        rectangles.  Keeping one immutable metric snapshot preserves both
+        decision formulae while removing that duplicated runtime.
+        """
+        try:
+            feasible = self._is_feasible(
+                positions, constraints, area_targets, target_positions
+            )
+            hpwl = _calculate_hpwl_edges(positions, b2b, p2b, pins_pos)
+            area = calculate_bbox_area(positions)
+            violations = self._soft_violation_count(positions, constraints)
+            n_soft = max(self._n_soft(constraints, len(positions)), 1)
+            return {
+                "feasible": feasible,
+                "hpwl": hpwl,
+                "area": area,
+                "violations": violations,
+                "n_soft": n_soft,
+            }
+        except Exception:
+            return None
+
+    def _learned_trade_wins(
+        self,
+        candidate,
+        incumbent,
+        constraints,
+        area_targets,
+        b2b,
+        p2b,
+        pins_pos,
+        target_positions,
+    ):
+        """Fuse the unchanged final selector and conservative trade guard."""
+        incumbent_metrics = self._learned_trade_metrics(
+            incumbent,
+            constraints,
+            area_targets,
+            b2b,
+            p2b,
+            pins_pos,
+            target_positions,
+        )
+        candidate_metrics = self._learned_trade_metrics(
+            candidate,
+            constraints,
+            area_targets,
+            b2b,
+            p2b,
+            pins_pos,
+            target_positions,
+        )
+        if incumbent_metrics is None or candidate_metrics is None:
+            return False
+
+        try:
+            if incumbent_metrics["hpwl"] <= 0.0 or incumbent_metrics["area"] <= 0.0:
+                return False
+            if self._hpwl_baseline and self._area_baseline:
+                incumbent_hg = max(
+                    0.0,
+                    (incumbent_metrics["hpwl"] - self._hpwl_baseline)
+                    / self._hpwl_baseline,
+                )
+                incumbent_ag = max(
+                    0.0,
+                    (incumbent_metrics["area"] - self._area_baseline)
+                    / self._area_baseline,
+                )
+                candidate_hg = max(
+                    0.0,
+                    (candidate_metrics["hpwl"] - self._hpwl_baseline)
+                    / self._hpwl_baseline,
+                )
+                candidate_ag = max(
+                    0.0,
+                    (candidate_metrics["area"] - self._area_baseline)
+                    / self._area_baseline,
+                )
+            else:
+                incumbent_hg = incumbent_ag = 0.0
+                candidate_hg = (
+                    candidate_metrics["hpwl"] - incumbent_metrics["hpwl"]
+                ) / incumbent_metrics["hpwl"]
+                candidate_ag = (
+                    candidate_metrics["area"] - incumbent_metrics["area"]
+                ) / incumbent_metrics["area"]
+
+            incumbent_cost = (
+                1.0 + 0.5 * (incumbent_hg + incumbent_ag)
+            ) * math.exp(
+                2.0
+                * incumbent_metrics["violations"]
+                / incumbent_metrics["n_soft"]
+            )
+            candidate_cost = (
+                1.0 + 0.5 * (candidate_hg + candidate_ag)
+            ) * math.exp(
+                2.0
+                * candidate_metrics["violations"]
+                / candidate_metrics["n_soft"]
+            )
+            incumbent_key = (
+                0 if incumbent_metrics["feasible"] else 1,
+                incumbent_cost,
+            )
+            candidate_key = (
+                0 if candidate_metrics["feasible"] else 1,
+                candidate_cost,
+            )
+            if candidate_key >= incumbent_key or not candidate_metrics["feasible"]:
+                return False
+
+            candidate_v = (
+                candidate_metrics["violations"] / candidate_metrics["n_soft"]
+            )
+            incumbent_v = (
+                incumbent_metrics["violations"] / candidate_metrics["n_soft"]
+            )
+            delta_quality = (
+                candidate_metrics["hpwl"] / incumbent_metrics["hpwl"]
+                + candidate_metrics["area"] / incumbent_metrics["area"]
                 - 2.0
             )
             delta_violations = candidate_v - incumbent_v

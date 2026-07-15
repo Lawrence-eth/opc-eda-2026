@@ -191,6 +191,48 @@ def test_preplaced_aspect_pass_feature_gate_is_narrow():
     assert not any(should_try_preplaced_aspect_pass(*case) for case in rejected)
 
 
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        [(0.0, 0.0, 1.0, 1.0), (2.0, 0.0, 1.0, 1.0)],
+        [(0.0, 0.0, 1.0, 1.0), (12.0, 0.0, 1.0, 1.0)],
+        [(0.0, 0.0, 1.0, 1.0), (0.5, 0.0, 1.0, 1.0)],
+    ],
+)
+def test_fused_learned_trade_gate_matches_legacy_composition(
+    monkeypatch, candidate
+):
+    monkeypatch.setattr(
+        optimizer_module,
+        "calculate_bbox_area",
+        lambda positions: (
+            max(x + width for x, _, width, _ in positions)
+            - min(x for x, _, _, _ in positions)
+        )
+        * (
+            max(y + height for _, y, _, height in positions)
+            - min(y for _, y, _, _ in positions)
+        ),
+    )
+    incumbent = [(0.0, 0.0, 1.0, 1.0), (10.0, 0.0, 1.0, 1.0)]
+    constraints = _constraints(2)
+    areas = torch.ones(2)
+    targets = torch.full((2, 4), -1.0)
+    b2b = [(0, 1, 1.0)]
+    optimizer = MyOptimizer()
+
+    selected = optimizer._select_candidate(
+        [incumbent, candidate], constraints, areas, b2b, [], [], targets
+    )
+    legacy = selected is candidate and optimizer._accept_learned_trade(
+        candidate, incumbent, constraints, areas, b2b, [], [], targets
+    )
+
+    assert optimizer._learned_trade_wins(
+        candidate, incumbent, constraints, areas, b2b, [], [], targets
+    ) is legacy
+
+
 def test_group_components_requires_exact_positive_length_edge_contact():
     opt = MyOptimizer()
     exact = [(0.0, 0.0, 1.0, 1.0), (1.0, 0.25, 1.0, 0.5)]
