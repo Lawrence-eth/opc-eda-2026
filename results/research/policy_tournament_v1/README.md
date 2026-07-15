@@ -120,7 +120,7 @@ committed evidence base:
   `1f53d0ae17c55efdb6ddb9fee8310411a1dfc76707a5c3d5fc8eaefe754dc290`
 - `final_selector.json`:
   `6f4dd39cf16448e712ca1335f1ad4e02f33b8d68bd60a156fb8b756a0e509259`
-- `sealed_selector.json`: `PENDING_CLEAN_REPLAY`
+- `sealed_selector.json`: `257da348874ca78483a5efece693ec62e55e3f2f9f5b383d5acbe52c87e6f47f`
 
 ## Directory layout
 
