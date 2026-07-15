@@ -1,6 +1,9 @@
-import json
+import copy
 import hashlib
+import json
 from pathlib import Path
+
+import pytest
 
 from scripts import check_public_release
 from scripts.solver_components import (
@@ -54,14 +57,28 @@ def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
     package.parent.mkdir()
     package.write_bytes(b"release package")
 
+    sealed_selector = tmp_path / check_public_release.SEALED_SELECTOR_PATH
+    sealed_selector.parent.mkdir(parents=True)
+    sealed_selector.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "status": "sealed_confirmation_failed_fallback_off",
+                "final_mode": "off",
+            }
+        ),
+        encoding="utf-8",
+    )
+
     manifest = {
-        "schema_version": 1,
+        "schema_version": check_public_release.RELEASE_MANIFEST_SCHEMA_VERSION,
         "release": "incumbent_test",
         "verified_on": "2026-07-10",
         "solver": {
             "version": "test",
             "commit": "1" * 40,
             "entrypoint": "contest_solution/my_optimizer.py",
+            "learned_order_mode": "replacement",
             "sources": sources,
         },
         "public_result": {
@@ -78,6 +95,28 @@ def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
         "floorset": {
             "repository": "https://github.com/IntelLabs/FloorSet.git",
             "commit": "2" * 40,
+        },
+        "decision_evidence": {
+            "native_tournament": {
+                "run_id": 123456789,
+                "run_url": (
+                    "https://github.com/Lawrence-eth/opc-eda-2026/"
+                    "actions/runs/123456789"
+                ),
+                "head_sha": "3" * 40,
+                "build_manifest_sha256": "4" * 64,
+                "timing_manifest_sha256": "5" * 64,
+                "evidence_bundle_sha256": "6" * 64,
+            },
+            "sealed_selector": {
+                "path": check_public_release.SEALED_SELECTOR_PATH,
+                "sha256": _sha256(sealed_selector),
+                "status": "sealed_confirmation_failed_fallback_off",
+            },
+            "sealed_policy_overridden": True,
+            "rationale": (
+                "Native package evidence supports the explicit expected-score choice."
+            ),
         },
     }
     return manifest, source, result, package
@@ -159,6 +198,183 @@ def test_release_manifest_validates_artifact_bindings_and_supplies_defaults(tmp_
     assert ok
     assert errors == []
     assert defaults == (result, 1, 2.0, tmp_path / "contest_solution" / "my_optimizer.py")
+
+
+def test_release_manifest_accepts_non_override_matching_sealed_policy(tmp_path):
+    manifest, _, _, _ = _release_fixture(tmp_path)
+    manifest["solver"]["learned_order_mode"] = "off"
+    manifest["decision_evidence"]["sealed_policy_overridden"] = False
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+
+    assert ok
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda value: value.__setitem__("schema_version", 1), "schema_version"),
+        (
+            lambda value: value["solver"].__setitem__("learned_order_mode", "unknown"),
+            "solver.learned_order_mode",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "run_id", True
+            ),
+            "run_id",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "run_url",
+                "https://github.com/Lawrence-eth/opc-eda-2026/actions/runs/987654321",
+            ),
+            "run URL and run ID disagree",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "run_url",
+                "https://github.com/unrelated/project/actions/runs/123456789",
+            ),
+            "canonical GitHub Actions run URL",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].pop(
+                "build_manifest_sha256"
+            ),
+            "must contain exactly",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "head_sha", "A" * 40
+            ),
+            "head_sha",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "timing_manifest_sha256", "not-a-digest"
+            ),
+            "timing_manifest_sha256",
+        ),
+        (
+            lambda value: value["decision_evidence"]["sealed_selector"].__setitem__(
+                "path", "results/research/other-selector.json"
+            ),
+            "canonical selector",
+        ),
+        (
+            lambda value: value["decision_evidence"]["sealed_selector"].__setitem__(
+                "status", "invented_status"
+            ),
+            "status is unsupported",
+        ),
+        (
+            lambda value: value["decision_evidence"].__setitem__(
+                "sealed_policy_overridden", False
+            ),
+            "sealed_policy_overridden disagrees",
+        ),
+        (
+            lambda value: value["decision_evidence"].__setitem__("rationale", "short"),
+            "rationale",
+        ),
+        (
+            lambda value: value["decision_evidence"].__setitem__("extra", True),
+            "must contain exactly",
+        ),
+    ],
+)
+def test_release_manifest_v2_rejects_malformed_decision_authority(
+    tmp_path, mutate, message
+):
+    manifest, _, _, _ = _release_fixture(tmp_path)
+    malformed = copy.deepcopy(manifest)
+    mutate(malformed)
+
+    ok, errors = check_public_release.validate_release_manifest(
+        malformed,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+
+    assert not ok
+    assert any(message in error for error in errors), errors
+
+
+def test_release_manifest_v2_rejects_sealed_selector_byte_or_status_drift(tmp_path):
+    manifest, _, _, _ = _release_fixture(tmp_path)
+    selector = tmp_path / check_public_release.SEALED_SELECTOR_PATH
+    selector.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "status": "sealed_confirmation_passed",
+                "final_mode": "replacement",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+
+    assert not ok
+    assert any("sealed_selector.sha256 hash mismatch" in error for error in errors)
+    assert any("sealed-selector status does not match" in error for error in errors)
+
+
+def test_release_manifest_v2_rejects_unsupported_selector_final_mode(tmp_path):
+    manifest, _, _, _ = _release_fixture(tmp_path)
+    selector = tmp_path / check_public_release.SEALED_SELECTOR_PATH
+    selector.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "status": "sealed_confirmation_failed_fallback_off",
+                "final_mode": "invented_mode",
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest["decision_evidence"]["sealed_selector"]["sha256"] = _sha256(selector)
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=False,
+    )
+
+    assert not ok
+    assert any("unsupported final_mode" in error for error in errors)
+
+
+def test_release_manifest_v2_rejects_unavailable_native_head_commit(tmp_path):
+    manifest, _, _, _ = _release_fixture(tmp_path)
+
+    ok, errors = check_public_release.validate_release_manifest(
+        manifest,
+        tmp_path,
+        verify_solver_commit=True,
+    )
+
+    assert not ok
+    assert any("native tournament head commit is unavailable" in error for error in errors)
+
+
+def test_release_manifest_loader_rejects_duplicate_json_keys(tmp_path):
+    path = tmp_path / "release_manifest.json"
+    path.write_text('{"schema_version":2,"schema_version":2}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate JSON object key"):
+        check_public_release.load_release_manifest(path)
 
 
 def test_release_manifest_rejects_artifact_drift(tmp_path):

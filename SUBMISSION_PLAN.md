@@ -174,7 +174,8 @@ echo "72d8fc5b6c4831a6af3547bacc16f19c800f1991b413500efbe467db8aec72c3  submissi
     | sha256sum --check -
 python3 scripts/check_public_release.py
 python3 scripts/audit_submission_package.py \
-  --release-manifest results/release_manifest.json
+  --release-manifest results/release_manifest.json \
+  --require-notices --smoke
 ```
 
 After any optimizer change, build and prove the new package instead:
