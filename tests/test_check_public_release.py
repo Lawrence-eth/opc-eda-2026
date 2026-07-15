@@ -99,14 +99,23 @@ def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
         "decision_evidence": {
             "native_tournament": {
                 "run_id": 123456789,
+                "run_attempt": 1,
                 "run_url": (
                     "https://github.com/Lawrence-eth/opc-eda-2026/"
                     "actions/runs/123456789"
                 ),
                 "head_sha": "1" * 40,
+                "conclusion": "success",
+                "artifact_id": 987654321,
+                "artifact_name": f"native-package-tournament-{'1' * 40}-1",
+                "artifact_size_bytes": 123456,
+                "artifact_zip_sha256": "3" * 64,
                 "build_manifest_sha256": "4" * 64,
                 "timing_manifest_sha256": "5" * 64,
                 "evidence_bundle_sha256": "6" * 64,
+                "selected_mode": "replacement",
+                "selected_package_sha256": _sha256(package),
+                "selected_source_patch_changed": False,
             },
             "sealed_selector": {
                 "path": check_public_release.SEALED_SELECTOR_PATH,
@@ -203,6 +212,7 @@ def test_release_manifest_validates_artifact_bindings_and_supplies_defaults(tmp_
 def test_release_manifest_accepts_non_override_matching_sealed_policy(tmp_path):
     manifest, _, _, _ = _release_fixture(tmp_path)
     manifest["solver"]["learned_order_mode"] = "off"
+    manifest["decision_evidence"]["native_tournament"]["selected_mode"] = "off"
     manifest["decision_evidence"]["sealed_policy_overridden"] = False
 
     ok, errors = check_public_release.validate_release_manifest(
@@ -228,6 +238,24 @@ def test_release_manifest_accepts_non_override_matching_sealed_policy(tmp_path):
                 "run_id", True
             ),
             "run_id",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "run_attempt", False
+            ),
+            "run_attempt",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "conclusion", "cancelled"
+            ),
+            "conclusion",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "artifact_name", "unbound-artifact"
+            ),
+            "artifact_name",
         ),
         (
             lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
@@ -266,6 +294,24 @@ def test_release_manifest_accepts_non_override_matching_sealed_policy(tmp_path):
                 "timing_manifest_sha256", "not-a-digest"
             ),
             "timing_manifest_sha256",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "selected_mode", "off"
+            ),
+            "selected_mode",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "selected_package_sha256", "7" * 64
+            ),
+            "selected package",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "selected_source_patch_changed", True
+            ),
+            "selected_source_patch_changed",
         ),
         (
             lambda value: value["decision_evidence"]["sealed_selector"].__setitem__(
