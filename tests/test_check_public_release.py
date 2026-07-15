@@ -103,7 +103,7 @@ def _release_fixture(tmp_path: Path) -> tuple[dict, Path, Path, Path]:
                     "https://github.com/Lawrence-eth/opc-eda-2026/"
                     "actions/runs/123456789"
                 ),
-                "head_sha": "3" * 40,
+                "head_sha": "1" * 40,
                 "build_manifest_sha256": "4" * 64,
                 "timing_manifest_sha256": "5" * 64,
                 "evidence_bundle_sha256": "6" * 64,
@@ -254,6 +254,12 @@ def test_release_manifest_accepts_non_override_matching_sealed_policy(tmp_path):
                 "head_sha", "A" * 40
             ),
             "head_sha",
+        ),
+        (
+            lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
+                "head_sha", "2" * 40
+            ),
+            "head_sha must equal solver.commit",
         ),
         (
             lambda value: value["decision_evidence"]["native_tournament"].__setitem__(
