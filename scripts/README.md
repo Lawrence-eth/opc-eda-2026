@@ -40,7 +40,8 @@ artifacts:
 .venv/bin/python -m pytest -q
 .venv/bin/python scripts/check_official_sources.py
 .venv/bin/python scripts/audit_submission_package.py \
-  --release-manifest results/release_manifest.json
+  --release-manifest results/release_manifest.json \
+  --require-notices --smoke
 .venv/bin/python scripts/check_public_release.py
 .venv/bin/python scripts/audit_results.py \
   results/integrated_v32.json --expected-cases 100 --require-positions
@@ -56,7 +57,7 @@ artifacts:
 | Tool | Role | Important notes |
 |---|---|---|
 | [`check_official_sources.py`](check_official_sources.py) | Verify the pinned FloorSet commit/tree/files, tracked wrapper and document extracts, and optional original Drive downloads without network access. | CI requires the pinned checkout; pass `--materials-dir` to recheck locally retained PDFs. |
-| [`audit_submission_package.py`](audit_submission_package.py) | Reject unsafe archives, wrong-architecture or too-new ELF payloads, wrapper/source drift, real-torch leakage, and optionally smoke-run the binary. | Pass `--release-manifest` for a frozen asset and `--smoke` on AMD64. New builds require notices. |
+| [`audit_submission_package.py`](audit_submission_package.py) | Reject unsafe archives, wrong-architecture or too-new ELF payloads, wrapper/source drift, real-torch leakage, and optionally smoke-run the binary. | A manifest-bound audit requires `--smoke` on AMD64 and compares the source/binary default-mode reports with `solver.learned_order_mode`. Release archives also require `--require-notices`. |
 | [`package_mode_tournament.py`](package_mode_tournament.py) | Report-only package construction and timing | Build `off`, `replacement`, `additive`, and `additive_first_pass` packages from one explicit committed tree without editing the source worktree, then benchmark the audited binaries through the exact organizer wrapper in a balanced Williams sequence. This does not change or select the production default. |
 | [`setup_and_evaluate.sh`](setup_and_evaluate.sh) | Bootstrap the pinned official checkout, run tests, run the official 100-case evaluator, save positions, and audit the result. | Mutates `.venv` and the optimizer copy under `external/FloorSet`; set `OUTPUT=/tmp/opc-eda-evaluation.json` to avoid replacing a repository artifact. |
 | [`preflight_official_solver.py`](preflight_official_solver.py) | Import and behavior-check the registry-copied solver before official evaluation. | `setup_and_evaluate.sh` runs it with real Torch; it rejects model-integrity drift, incomplete replacement coverage, unexpected abstentions, and a broken safe-MIB repair path. |
@@ -74,6 +75,26 @@ and [`packaging/README_SUBMISSION.md`](../packaging/README_SUBMISSION.md). Build
 the archive is a mutating operation; follow it with wrapper position parity,
 `audit_results.py`, and `check_public_release.py` as described in
 [`HANDOFF.md`](../HANDOFF.md).
+
+### Release-manifest v2 authority
+
+Schema 2 makes the beta policy choice and its evidence machine-readable. The
+`solver.learned_order_mode` value is the selected compiled default. The
+required `decision_evidence` object binds:
+
+- the canonical GitHub Actions native-tournament run ID, URL, and head SHA;
+- SHA-256 digests for its build manifest, timing manifest, and preserved
+  `native-evidence.sha256` bundle ledger;
+- the canonical tracked sealed-selector path, bytes, and recorded status; and
+- a substantive rationale plus `sealed_policy_overridden`, which must be true
+  exactly when the selected mode differs from the sealed selector's actual
+  `final_mode`.
+
+The checker rejects unknown keys inside these evidence objects, malformed or
+inconsistent run identity, missing commits, selector drift, unsupported modes
+or statuses, and a contradictory override flag. Populate these fields only
+from the downloaded and checksum-verified native artifact; never use pending
+placeholders in a release manifest.
 
 ### Four-mode package timing (report only)
 

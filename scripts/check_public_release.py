@@ -78,19 +78,51 @@ TEXT_SUFFIXES = {
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
+RELEASE_GITHUB_REPOSITORY = "Lawrence-eth/opc-eda-2026"
+GITHUB_ACTIONS_RUN_RE = re.compile(
+    rf"^https://github\.com/{re.escape(RELEASE_GITHUB_REPOSITORY)}"
+    r"/actions/runs/([1-9][0-9]*)$"
+)
+RELEASE_MANIFEST_SCHEMA_VERSION = 2
+LEARNED_ORDER_MODES = {
+    "off",
+    "replacement",
+    "additive",
+    "additive_first_pass",
+}
+SEALED_SELECTOR_PATH = (
+    "results/research/policy_tournament_v1/sealed_selector.json"
+)
+SEALED_SELECTOR_STATUSES = {
+    "sealed_confirmation_passed",
+    "sealed_confirmation_failed_fallback_off",
+}
+
+
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object key: {key!r}")
+        value[key] = item
+    return value
+
+
+def _load_json_object(path: Path, description: str) -> dict[str, Any]:
+    try:
+        with path.open(encoding="utf-8") as handle:
+            data = json.load(handle, object_pairs_hook=_reject_duplicate_object)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"cannot load {description} {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"{description} {path} must contain a JSON object")
+    return data
 
 
 def load_release_manifest(path: Path) -> dict[str, Any]:
     """Load a release manifest with a useful error for malformed input."""
 
-    try:
-        with path.open(encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"cannot load release manifest {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ValueError(f"release manifest {path} must contain a JSON object")
-    return data
+    return _load_json_object(path, "release manifest")
 
 
 def _resolve_repo_path(root: Path, value: Any, field: str) -> Path:
@@ -153,6 +185,207 @@ def _check_file_hash(path: Path, expected: Any, field: str, errors: list[str]) -
         errors.append(f"{field} hash mismatch for {path}: expected {expected}, got {actual}")
 
 
+def _require_exact_keys(
+    value: Any,
+    expected: set[str],
+    field: str,
+    errors: list[str],
+) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        errors.append(f"{field} must be an object")
+        return None
+    observed = set(value)
+    if observed != expected:
+        errors.append(
+            f"{field} must contain exactly {sorted(expected)}; "
+            f"observed {sorted(observed)}"
+        )
+        return None
+    return value
+
+
+def _validate_decision_evidence(
+    manifest: dict[str, Any],
+    root: Path,
+    selected_mode: Any,
+    errors: list[str],
+    *,
+    verify_native_commit: bool,
+) -> None:
+    decision = _require_exact_keys(
+        manifest.get("decision_evidence"),
+        {
+            "native_tournament",
+            "sealed_selector",
+            "sealed_policy_overridden",
+            "rationale",
+        },
+        "decision_evidence",
+        errors,
+    )
+    if decision is None:
+        return
+
+    native = _require_exact_keys(
+        decision.get("native_tournament"),
+        {
+            "run_id",
+            "run_url",
+            "head_sha",
+            "build_manifest_sha256",
+            "timing_manifest_sha256",
+            "evidence_bundle_sha256",
+        },
+        "decision_evidence.native_tournament",
+        errors,
+    )
+    if native is not None:
+        run_id = native.get("run_id")
+        if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id < 1:
+            errors.append(
+                "decision_evidence.native_tournament.run_id must be a positive integer"
+            )
+        run_url = native.get("run_url")
+        match = (
+            GITHUB_ACTIONS_RUN_RE.fullmatch(run_url)
+            if isinstance(run_url, str)
+            else None
+        )
+        if match is None:
+            errors.append(
+                "decision_evidence.native_tournament.run_url must be a canonical "
+                f"GitHub Actions run URL for {RELEASE_GITHUB_REPOSITORY}"
+            )
+        elif isinstance(run_id, int) and not isinstance(run_id, bool):
+            if int(match.group(1)) != run_id:
+                errors.append(
+                    "decision_evidence native tournament run URL and run ID disagree"
+                )
+
+        head_sha = native.get("head_sha")
+        head_valid = (
+            isinstance(head_sha, str)
+            and GIT_COMMIT_RE.fullmatch(head_sha) is not None
+        )
+        if not head_valid:
+            errors.append(
+                "decision_evidence.native_tournament.head_sha must be a lowercase "
+                "40-character Git commit"
+            )
+        elif verify_native_commit:
+            completed = subprocess.run(
+                ["git", "-C", str(root), "cat-file", "-e", f"{head_sha}^{{commit}}"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if completed.returncode != 0:
+                errors.append(
+                    "decision_evidence native tournament head commit is unavailable: "
+                    f"{head_sha}"
+                )
+
+        for field in (
+            "build_manifest_sha256",
+            "timing_manifest_sha256",
+            "evidence_bundle_sha256",
+        ):
+            if (
+                not isinstance(native.get(field), str)
+                or SHA256_RE.fullmatch(native[field]) is None
+            ):
+                errors.append(
+                    f"decision_evidence.native_tournament.{field} must be a "
+                    "lowercase SHA-256 digest"
+                )
+
+    sealed = _require_exact_keys(
+        decision.get("sealed_selector"),
+        {"path", "sha256", "status"},
+        "decision_evidence.sealed_selector",
+        errors,
+    )
+    sealed_final_mode = None
+    if sealed is not None:
+        declared_path = sealed.get("path")
+        if declared_path != SEALED_SELECTOR_PATH:
+            errors.append(
+                "decision_evidence.sealed_selector.path must name the canonical "
+                f"selector {SEALED_SELECTOR_PATH!r}"
+            )
+            selector_path = None
+        else:
+            try:
+                selector_path = _resolve_repo_path(
+                    root,
+                    declared_path,
+                    "decision_evidence.sealed_selector.path",
+                )
+            except ValueError as exc:
+                errors.append(str(exc))
+                selector_path = None
+
+        declared_status = sealed.get("status")
+        if declared_status not in SEALED_SELECTOR_STATUSES:
+            errors.append(
+                "decision_evidence.sealed_selector.status is unsupported"
+            )
+        declared_sha = sealed.get("sha256")
+        if not isinstance(declared_sha, str) or SHA256_RE.fullmatch(declared_sha) is None:
+            errors.append(
+                "decision_evidence.sealed_selector.sha256 must be a lowercase "
+                "SHA-256 digest"
+            )
+
+        if selector_path is not None:
+            _check_file_hash(
+                selector_path,
+                declared_sha,
+                "decision_evidence.sealed_selector.sha256",
+                errors,
+            )
+            if selector_path.is_file():
+                try:
+                    selector = _load_json_object(selector_path, "sealed selector")
+                except ValueError as exc:
+                    errors.append(str(exc))
+                else:
+                    actual_status = selector.get("status")
+                    if actual_status != declared_status:
+                        errors.append(
+                            "decision_evidence sealed-selector status does not match "
+                            f"{selector_path}: expected {declared_status!r}, "
+                            f"got {actual_status!r}"
+                        )
+                    sealed_final_mode = selector.get("final_mode")
+                    if sealed_final_mode not in LEARNED_ORDER_MODES:
+                        errors.append(
+                            "canonical sealed selector has an unsupported final_mode"
+                        )
+
+    overridden = decision.get("sealed_policy_overridden")
+    if not isinstance(overridden, bool):
+        errors.append("decision_evidence.sealed_policy_overridden must be a boolean")
+    elif selected_mode in LEARNED_ORDER_MODES and sealed_final_mode in LEARNED_ORDER_MODES:
+        expected_override = selected_mode != sealed_final_mode
+        if overridden is not expected_override:
+            errors.append(
+                "decision_evidence.sealed_policy_overridden disagrees with the "
+                "selected mode and canonical sealed-selector final_mode"
+            )
+
+    rationale = decision.get("rationale")
+    if (
+        not isinstance(rationale, str)
+        or len(rationale.strip()) < 20
+        or "\x00" in rationale
+    ):
+        errors.append(
+            "decision_evidence.rationale must be a substantive string of at least "
+            "20 non-padding characters"
+        )
+
+
 def validate_release_manifest(
     manifest: dict[str, Any],
     root: Path = ROOT,
@@ -162,8 +395,10 @@ def validate_release_manifest(
     """Validate release metadata and every incumbent artifact binding."""
 
     errors: list[str] = []
-    if manifest.get("schema_version") != 1:
-        errors.append("schema_version must be 1")
+    if manifest.get("schema_version") != RELEASE_MANIFEST_SCHEMA_VERSION:
+        errors.append(
+            f"schema_version must be {RELEASE_MANIFEST_SCHEMA_VERSION}"
+        )
     if not isinstance(manifest.get("release"), str) or not manifest.get("release"):
         errors.append("release must be a non-empty string")
     verified_on = manifest.get("verified_on")
@@ -184,6 +419,12 @@ def validate_release_manifest(
         errors.append("solver.commit must be a lowercase 40-character Git commit")
     if not isinstance(solver.get("version"), str) or not solver.get("version"):
         errors.append("solver.version must be a non-empty string")
+    learned_order_mode = solver.get("learned_order_mode")
+    if learned_order_mode not in LEARNED_ORDER_MODES:
+        errors.append(
+            "solver.learned_order_mode must be one of "
+            + ", ".join(sorted(LEARNED_ORDER_MODES))
+        )
     sources = solver.get("sources")
     if not isinstance(sources, dict) or not sources:
         errors.append("solver.sources must be a non-empty path-to-SHA-256 object")
@@ -304,6 +545,14 @@ def validate_release_manifest(
         errors.append("floorset.commit must be a lowercase 40-character Git commit")
     if not isinstance(floorset.get("repository"), str) or not floorset.get("repository"):
         errors.append("floorset.repository must be a non-empty string")
+
+    _validate_decision_evidence(
+        manifest,
+        root,
+        learned_order_mode,
+        errors,
+        verify_native_commit=verify_solver_commit,
+    )
 
     return not errors, errors
 

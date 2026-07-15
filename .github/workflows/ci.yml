@@ -63,6 +63,7 @@ jobs:
           python scripts/audit_submission_package.py
           submission/iccad2026_submission.tar.gz
           --release-manifest results/release_manifest.json
+          --require-notices
           --smoke
 
       - name: Run manifest-bound public release gate

@@ -46,6 +46,7 @@ EXPECTED_LEARNED_MODEL_PAYLOAD_SHA256 = (
     "c94b4af92a7088f04206a5fa20dfbf807f945d9bdd80d9ffcbdc0b8b45f18beb"
 )
 LEARNED_ORDER_MODES = {"off", "replacement", "additive", "additive_first_pass"}
+RELEASE_MANIFEST_SCHEMA_VERSION = 2
 
 LIVE_SOLVER_COMPONENTS = validate_live_solver_components(LIVE_SOLVER_COMPONENTS)
 LIVE_SOURCE_BINDINGS = {
@@ -72,14 +73,42 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _reject_duplicate_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value: dict[str, Any] = {}
+    for key, item in pairs:
+        if key in value:
+            raise ValueError(f"duplicate JSON object key: {key!r}")
+        value[key] = item
+    return value
+
+
 def _load_json(path: Path, description: str) -> dict[str, Any]:
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        value = json.loads(
+            path.read_text(encoding="utf-8"),
+            object_pairs_hook=_reject_duplicate_object,
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         raise PackageAuditError(f"cannot load {description} {path}: {exc}") from exc
     if not isinstance(value, dict):
         raise PackageAuditError(f"{description} {path} must contain a JSON object")
     return value
+
+
+def _release_manifest(path: Path) -> dict[str, Any]:
+    manifest = _load_json(path, "release manifest")
+    if manifest.get("schema_version") != RELEASE_MANIFEST_SCHEMA_VERSION:
+        raise PackageAuditError(
+            "release manifest schema_version must be "
+            f"{RELEASE_MANIFEST_SCHEMA_VERSION}"
+        )
+    solver = manifest.get("solver")
+    mode = solver.get("learned_order_mode") if isinstance(solver, dict) else None
+    if mode not in LEARNED_ORDER_MODES:
+        raise PackageAuditError(
+            "release manifest solver.learned_order_mode is unsupported"
+        )
+    return manifest
 
 
 def official_wrapper_sha(path: Path) -> str:
@@ -94,7 +123,7 @@ def official_wrapper_sha(path: Path) -> str:
 
 
 def release_package_sha(path: Path) -> str:
-    manifest = _load_json(path, "release manifest")
+    manifest = _release_manifest(path)
     package = manifest.get("submission_package")
     if not isinstance(package, dict):
         raise PackageAuditError("release manifest lacks submission_package")
@@ -105,7 +134,7 @@ def release_package_sha(path: Path) -> str:
 
 
 def release_source_hashes(path: Path) -> dict[str, str]:
-    manifest = _load_json(path, "release manifest")
+    manifest = _release_manifest(path)
     solver = manifest.get("solver")
     sources = solver.get("sources") if isinstance(solver, dict) else None
     if not isinstance(sources, dict) or not sources:
@@ -150,6 +179,11 @@ def release_source_hashes(path: Path) -> dict[str, str]:
         packaged[packaged_name] = digest
 
     return packaged
+
+
+def release_learned_order_mode(path: Path) -> str:
+    manifest = _release_manifest(path)
+    return manifest["solver"]["learned_order_mode"]
 
 
 def _safe_member_name(name: str) -> PurePosixPath:
@@ -368,8 +402,17 @@ def audit_archive(
     require_notices: bool = False,
     max_glibc: tuple[int, int] = (2, 41),
     smoke: bool = False,
+    expected_default_mode: str | None = None,
 ) -> list[str]:
     """Audit one archive and return concise success details."""
+
+    if expected_default_mode is not None:
+        if expected_default_mode not in LEARNED_ORDER_MODES:
+            raise PackageAuditError("expected default mode is unsupported")
+        if not smoke:
+            raise PackageAuditError(
+                "manifest-bound default-mode verification requires --smoke"
+            )
 
     archive_path = archive_path.resolve()
     if not archive_path.is_file():
@@ -493,6 +536,15 @@ def audit_archive(
                 # a directory, and within the size/count limits above.
                 archive.extractall(temporary, filter="fully_trusted")
                 default_mode = _smoke(Path(temporary))
+                if (
+                    expected_default_mode is not None
+                    and default_mode != expected_default_mode
+                ):
+                    raise PackageAuditError(
+                        "smoked source/binary default mode differs from release "
+                        f"manifest: expected {expected_default_mode!r}, "
+                        f"got {default_mode!r}"
+                    )
 
     glibc_text = f"{highest_glibc[0]}.{highest_glibc[1]}" if observed_glibc else "none"
     details = [
@@ -524,6 +576,11 @@ def main() -> None:
         wrapper_sha = official_wrapper_sha(args.official_sources)
         expected_sha = release_package_sha(args.release_manifest) if args.release_manifest else None
         expected_sources = release_source_hashes(args.release_manifest) if args.release_manifest else None
+        expected_mode = (
+            release_learned_order_mode(args.release_manifest)
+            if args.release_manifest
+            else None
+        )
         messages = audit_archive(
             args.archive,
             wrapper_sha256=wrapper_sha,
@@ -533,6 +590,7 @@ def main() -> None:
             require_notices=args.require_notices,
             max_glibc=max_glibc,
             smoke=args.smoke,
+            expected_default_mode=expected_mode,
         )
     except (PackageAuditError, ValueError) as exc:
         print(f"Submission package audit: FAIL\n  {exc}")

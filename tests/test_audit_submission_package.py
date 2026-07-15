@@ -86,7 +86,18 @@ def _release_manifest(tmp_path: Path, *, extra_sources=None) -> Path:
     }
     sources.update(extra_sources or {})
     path = tmp_path / "release_manifest.json"
-    path.write_text(json.dumps({"solver": {"sources": sources}}), encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": package_audit.RELEASE_MANIFEST_SCHEMA_VERSION,
+                "solver": {
+                    "learned_order_mode": "replacement",
+                    "sources": sources,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     return path
 
 
@@ -154,6 +165,45 @@ def test_required_notices_are_fail_closed(tmp_path):
 
     with pytest.raises(package_audit.PackageAuditError, match="lacks required notice"):
         _audit(path, require_notices=True)
+
+
+def test_manifest_bound_default_mode_requires_smoke(tmp_path):
+    with pytest.raises(
+        package_audit.PackageAuditError,
+        match="default-mode verification requires --smoke",
+    ):
+        _audit(
+            _archive(tmp_path),
+            expected_default_mode="replacement",
+        )
+
+
+def test_manifest_bound_default_mode_matches_smoked_source_and_binary(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(package_audit, "_smoke", lambda _root: "replacement")
+
+    messages = _audit(
+        _archive(tmp_path),
+        smoke=True,
+        expected_default_mode="replacement",
+    )
+
+    assert "default_mode=replacement" in messages
+
+
+def test_manifest_bound_default_mode_rejects_smoked_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setattr(package_audit, "_smoke", lambda _root: "off")
+
+    with pytest.raises(
+        package_audit.PackageAuditError,
+        match="differs from release manifest",
+    ):
+        _audit(
+            _archive(tmp_path),
+            smoke=True,
+            expected_default_mode="replacement",
+        )
 
 
 def test_source_binding_requires_every_registry_component(tmp_path):
@@ -224,6 +274,34 @@ def test_release_source_hashes_retain_package_support_sources(tmp_path):
     hashes = package_audit.release_source_hashes(_release_manifest(tmp_path))
 
     assert set(package_audit.SUPPORT_SOURCE_BINDINGS.values()).issubset(hashes)
+
+
+def test_release_manifest_selected_mode_is_schema_bound(tmp_path):
+    manifest = _release_manifest(tmp_path)
+
+    assert package_audit.release_learned_order_mode(manifest) == "replacement"
+
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["schema_version"] = 1
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(package_audit.PackageAuditError, match="schema_version must be 2"):
+        package_audit.release_learned_order_mode(manifest)
+
+
+def test_release_manifest_selected_mode_rejects_unknown_or_duplicate_fields(tmp_path):
+    manifest = _release_manifest(tmp_path)
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["solver"]["learned_order_mode"] = "unknown"
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(package_audit.PackageAuditError, match="is unsupported"):
+        package_audit.release_learned_order_mode(manifest)
+
+    manifest.write_text(
+        '{"schema_version":2,"schema_version":2,"solver":{}}',
+        encoding="utf-8",
+    )
+    with pytest.raises(package_audit.PackageAuditError, match="duplicate JSON object key"):
+        package_audit.release_learned_order_mode(manifest)
 
 
 def test_binary_smoke_requires_positions_object(tmp_path, monkeypatch):
