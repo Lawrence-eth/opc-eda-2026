@@ -19,3 +19,41 @@ The gate passed all 105 layouts (11,550 blocks): geometry and official metrics
 match golden exactly, all 11,445 B*-tree edges hold, and the decoded RF=1 score
 is identical to golden at `1.1077270456502948`. The JSON binds the manifest,
 official evaluator, decoder, and audit script by SHA-256.
+
+## Phase-1 dual-parent cache
+
+`scripts/build_dual_parent_cache.py` converts that representation into
+schema-versioned numeric research shards without implementing or selecting a
+neural model. A production build excludes the union of the clean, raw-hash,
+and sealed-v2 source-file manifests by default, then makes deterministic,
+source-disjoint train/development/calibration partitions. Run it only from a
+clean committed tree:
+
+```bash
+.venv/bin/python scripts/build_dual_parent_cache.py build \
+  --data-root external/FloorSet \
+  --output /tmp/dual-parent-cache-v1 \
+  --source-index-cache /tmp/floorset-source-index-v1.json \
+  --progress-every-sources 100
+
+.venv/bin/python scripts/build_dual_parent_cache.py validate \
+  --cache-dir /tmp/dual-parent-cache-v1 \
+  --data-root external/FloorSet \
+  --holdout-manifest results/folds/heavy_clean_v1.json \
+  --holdout-manifest results/folds/heavy_raw_hash_v1.json \
+  --holdout-manifest results/folds/heavy_sealed_v2.json \
+  --expected-manifest-sha256 <digest-reported-by-build>
+```
+
+The output path must not already exist. The builder writes deterministic NPZ
+members into a sibling staging directory, validates every shard with
+`allow_pickle=False`, re-hashes every referenced source, and publishes with a
+single directory rename. Source paths and layout offsets occur only in
+`manifest.json`; the manifest also binds source bytes, input/tree/golden
+payloads, code, the pinned FloorSet revision, holdout manifests, and shard
+descriptors. Raw layouts with internally inconsistent golden MIB dimensions
+retain topology labels but receive per-block shape-supervision masks.
+
+For a deliberately incomplete real-data smoke, add a small `--max-sources`,
+`--max-layouts-per-source 1`, and `--allow-partial-partitions`. Such a cache is
+marked partial in its manifest and is not a production training corpus.
